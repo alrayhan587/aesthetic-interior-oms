@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Lead {
+  id         String    @id @default(cuid())
+  name       String
+  phone      String?
+  email      String
+  status     String
+  assignedTo String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  assignee   User?     @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
+
+  @@index([assignedTo])
+  @@index([email])
+}
+
+model User {
+  id              String           @id @default(cuid())
+  fullName        String
+  email           String           @unique
+  phone           String
+  clerkUserId     String?          @unique
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+
+  leads           Lead[]           @relation("UserAssignedLeads")
+  userRoles       UserRole[]
+  userDepartments UserDepartment[]
+}
+
+model Role {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  userRoles   UserRole[]
+}
+
+model Department {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  userDepartments UserDepartment[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  created_at DateTime @default(now())
+
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model UserDepartment {
+  userId       String
+  departmentId String
+  created_at   DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, departmentId])
+  @@index([departmentId])
+}
