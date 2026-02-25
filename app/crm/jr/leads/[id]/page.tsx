@@ -92,18 +92,18 @@ export default function LeadDetailPage() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
-        <p className="mt-4 text-slate-600">Lead not found</p>
+        <p className="mt-4 text-muted-foreground">Lead not found</p>
       </div>
     )
   }
 
   const statusColors: Record<string, string> = {
-    NEW: 'bg-gray-100 text-gray-800',
-    CONTACTED: 'bg-blue-100 text-blue-800',
-    FOLLOWUP: 'bg-yellow-100 text-yellow-800',
-    VISIT_SCHEDULED: 'bg-purple-100 text-purple-800',
-    REJECTED: 'bg-red-100 text-red-800',
-    CONVERTED: 'bg-green-100 text-green-800',
+    NEW: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+    CONTACTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+    FOLLOWUP: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
+    VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
+    REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+    CONVERTED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
   }
 
   return (
@@ -125,7 +125,7 @@ export default function LeadDetailPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="text-2xl">{lead.name}</CardTitle>
-                  <p className="text-slate-600 mt-1">{lead.location}</p>
+                  <p className="mt-1 text-muted-foreground">{lead.location}</p>
                 </div>
                 <span className={`px-4 py-2 rounded-full text-sm font-medium ${statusColors[status]}`}>
                   {status}
@@ -135,27 +135,27 @@ export default function LeadDetailPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-600">Phone</p>
+                  <p className="text-sm text-muted-foreground">Phone</p>
                   <p className="font-semibold">{lead.phone}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Email</p>
+                  <p className="text-sm text-muted-foreground">Email</p>
                   <p className="font-semibold">{lead.email}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Project Type</p>
+                  <p className="text-sm text-muted-foreground">Project Type</p>
                   <p className="font-semibold">{lead.project_type}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Project Size</p>
+                  <p className="text-sm text-muted-foreground">Project Size</p>
                   <p className="font-semibold">{lead.project_size}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Source</p>
+                  <p className="text-sm text-muted-foreground">Source</p>
                   <p className="font-semibold capitalize">{lead.source}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Created</p>
+                  <p className="text-sm text-muted-foreground">Created</p>
                   <p className="font-semibold">{lead.created_at}</p>
                 </div>
               </div>
@@ -193,10 +193,10 @@ export default function LeadDetailPage() {
                   <Card key={note.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between mb-2">
-                        <p className="font-semibold text-slate-900">{note.author}</p>
-                        <p className="text-xs text-slate-500">{note.date}</p>
+                        <p className="font-semibold text-foreground">{note.author}</p>
+                        <p className="text-xs text-muted-foreground">{note.date}</p>
                       </div>
-                      <p className="text-slate-700">{note.content}</p>
+                      <p className="text-muted-foreground">{note.content}</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -211,9 +211,9 @@ export default function LeadDetailPage() {
                       <div className="flex items-start gap-4">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="font-semibold text-slate-900">{activity.action}</p>
-                          <p className="text-sm text-slate-600">{activity.description}</p>
-                          <div className="flex justify-between items-center mt-2 text-xs text-slate-500">
+                          <p className="font-semibold text-foreground">{activity.action}</p>
+                          <p className="text-sm text-muted-foreground">{activity.description}</p>
+                          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                             <span>{activity.user}</span>
                             <span>{activity.date}</span>
                           </div>
@@ -232,10 +232,10 @@ export default function LeadDetailPage() {
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">{followup.date}</p>
-                          <p className="text-sm text-slate-600 capitalize">{followup.type}: {followup.note}</p>
+                          <p className="font-semibold text-foreground">{followup.date}</p>
+                          <p className="text-sm capitalize text-muted-foreground">{followup.type}: {followup.note}</p>
                         </div>
-                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-medium">
+                        <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200">
                           {followup.status}
                         </span>
                       </div>

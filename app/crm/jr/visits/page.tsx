@@ -14,10 +14,10 @@ const sampleVisits = [
 ]
 
 const statusColors: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
-  rescheduled: 'bg-yellow-100 text-yellow-800',
+  scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+  completed: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
+  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+  rescheduled: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
 }
 
 export default function VisitsPage() {
@@ -32,8 +32,8 @@ export default function VisitsPage() {
       <CardContent className="pt-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900">{visit.lead}</h3>
-            <div className="flex flex-col gap-2 mt-3 text-sm text-slate-600">
+            <h3 className="font-semibold text-foreground">{visit.lead}</h3>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4" />
                 {visit.date} - {visit.time}
@@ -58,8 +58,8 @@ export default function VisitsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Visits</h1>
-          <p className="text-slate-600 mt-1">Schedule and manage site visits</p>
+          <h1 className="text-3xl font-bold text-foreground">Visits</h1>
+          <p className="mt-1 text-muted-foreground">Schedule and manage site visits</p>
         </div>
         <Button className="gap-2">
           <Plus className="w-4 h-4" />
@@ -81,7 +81,7 @@ export default function VisitsPage() {
             <CardContent>
               <div className="grid grid-cols-7 gap-4">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                  <div key={day} className="text-center font-semibold text-slate-600">
+                  <div key={day} className="text-center font-semibold text-muted-foreground">
                     {day}
                   </div>
                 ))}
@@ -98,23 +98,23 @@ export default function VisitsPage() {
         <TabsContent value="list" className="mt-6">
           <div className="space-y-6">
             <div>
-              <h3 className="font-semibold text-slate-900 mb-3">Scheduled ({scheduledVisits.length})</h3>
+              <h3 className="mb-3 font-semibold text-foreground">Scheduled ({scheduledVisits.length})</h3>
               {scheduledVisits.length > 0 ? (
                 scheduledVisits.map((visit) => (
                   <VisitCard key={visit.id} visit={visit} />
                 ))
               ) : (
-                <p className="text-slate-500">No scheduled visits</p>
+                <p className="text-muted-foreground">No scheduled visits</p>
               )}
             </div>
             <div>
-              <h3 className="font-semibold text-slate-900 mb-3">Completed ({completedVisits.length})</h3>
+              <h3 className="mb-3 font-semibold text-foreground">Completed ({completedVisits.length})</h3>
               {completedVisits.length > 0 ? (
                 completedVisits.map((visit) => (
                   <VisitCard key={visit.id} visit={visit} />
                 ))
               ) : (
-                <p className="text-slate-500">No completed visits</p>
+                <p className="text-muted-foreground">No completed visits</p>
               )}
             </div>
           </div>

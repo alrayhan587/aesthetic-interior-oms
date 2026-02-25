@@ -9,11 +9,13 @@ import {
   Calendar,
   CheckSquare,
   LogOut,
-  Menu,
+  Moon,
+  Sun,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
+import { useTheme } from '@/components/theme-provider'
 
 interface SidebarProps {
   open: boolean
@@ -33,6 +35,7 @@ const navigationItems = {
 export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const { theme, toggleTheme } = useTheme()
   const items = navigationItems[role as keyof typeof navigationItems] || []
 
   const handleLogout = async () => {
@@ -53,15 +56,15 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-30 h-screen w-64 bg-slate-900 text-white transition-transform duration-300 md:translate-x-0',
+          'fixed top-0 left-0 z-30 h-screen w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 md:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-slate-700">
-          <h1 className="text-lg font-bold">CRM System</h1>
+        <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
+          <h1 className="text-lg font-bold">OMS System</h1>
           <button
             onClick={() => onOpenChange(false)}
-            className="md:hidden p-1 hover:bg-slate-800 rounded"
+            className="md:hidden rounded p-1 hover:bg-sidebar-accent"
           >
             <X className="w-5 h-5" />
           </button>
@@ -77,7 +80,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                   variant={isActive ? 'secondary' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
-                    isActive && 'bg-blue-600 hover:bg-blue-700'
+                    isActive && 'bg-primary text-primary-foreground hover:bg-primary/90'
                   )}
                 >
                   <Icon className="w-5 h-5" />
@@ -89,11 +92,30 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
         </nav>
 
         {/* Logout */}
-        <div className="p-4 border-t border-slate-700">
+        <div className="space-y-2 border-t border-sidebar-border p-4">
+          {/* Replace the theme Button with this custom toggle */}
+          <div className="w-full flex justify-start items-center gap-1">
+            {/* <span className="mr-2 text-sm text-muted-foreground">Theme</span> */}
+            <div
+              className="relative inline-flex items-center cursor-pointer w-12 h-6 bg-gray-100 dark:bg-gray-700 rounded-full transition-colors duration-300"
+              onClick={toggleTheme}
+            >
+              <div
+                className={`absolute w-5 h-5 bg-white dark:bg-gray-900 rounded-full  transform transition-transform duration-300 flex items-center justify-center 
+                  ${theme === 'dark' ? 'translate-x-6 bg-gray-700' : 'translate-x-1'}`}
+              >
+                {theme === 'dark' ? (
+                  <Moon className="w-3 h-3 text-gray-100" />
+                ) : (
+                  <Sun className="w-3 h-3 text-yellow-500" />
+                )}
+              </div>
+            </div>
+          </div>
           <Button
             onClick={handleLogout}
             variant="ghost"
-            className="w-full justify-start gap-3 text-red-400 hover:text-red-300 hover:bg-slate-800"
+            className="w-full justify-start gap-3 text-red-500 hover:bg-sidebar-accent hover:text-red-500"
           >
             <LogOut className="w-5 h-5" />
             Logout

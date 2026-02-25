@@ -23,7 +23,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   }
 
   return (
-    <header className="h-16 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
+    <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
       <Button
         variant="ghost"
         size="icon"

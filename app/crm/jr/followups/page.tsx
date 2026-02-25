@@ -29,10 +29,10 @@ export default function FollowupsPage() {
       <CardContent className="pt-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <h3 className="font-semibold text-slate-900">{followup.lead}</h3>
-            <p className="text-sm text-slate-600 mt-1">{followup.note}</p>
-            <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
-              <span className="capitalize bg-blue-100 text-blue-800 px-2 py-1 rounded">
+            <h3 className="font-semibold text-foreground">{followup.lead}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{followup.note}</p>
+            <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="rounded bg-blue-100 px-2 py-1 capitalize text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
                 {followup.type}
               </span>
               <span>{followup.date}</span>
@@ -56,8 +56,8 @@ export default function FollowupsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Followups</h1>
-          <p className="text-slate-600 mt-1">Track all your followup tasks</p>
+          <h1 className="text-3xl font-bold text-foreground">Followups</h1>
+          <p className="mt-1 text-muted-foreground">Track all your followup tasks</p>
         </div>
         <Button className="gap-2">
           <Plus className="w-4 h-4" />
@@ -81,7 +81,7 @@ export default function FollowupsPage() {
           ) : (
             <Card>
               <CardContent className="pt-12 text-center">
-                <p className="text-slate-500">No followups for today</p>
+                <p className="text-muted-foreground">No followups for today</p>
               </CardContent>
             </Card>
           )}
@@ -95,7 +95,7 @@ export default function FollowupsPage() {
           ) : (
             <Card>
               <CardContent className="pt-12 text-center">
-                <p className="text-slate-500">No upcoming followups</p>
+                <p className="text-muted-foreground">No upcoming followups</p>
               </CardContent>
             </Card>
           )}
@@ -109,7 +109,7 @@ export default function FollowupsPage() {
           ) : (
             <Card>
               <CardContent className="pt-12 text-center">
-                <p className="text-slate-500">No overdue followups</p>
+                <p className="text-muted-foreground">No overdue followups</p>
               </CardContent>
             </Card>
           )}
@@ -123,7 +123,7 @@ export default function FollowupsPage() {
           ) : (
             <Card>
               <CardContent className="pt-12 text-center">
-                <p className="text-slate-500">No completed followups</p>
+                <p className="text-muted-foreground">No completed followups</p>
               </CardContent>
             </Card>
           )}

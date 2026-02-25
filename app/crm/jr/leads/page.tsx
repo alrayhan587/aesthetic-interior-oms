@@ -25,12 +25,12 @@ const sampleLeads = [
 ]
 
 const statusColors: Record<string, string> = {
-  NEW: 'bg-gray-100 text-gray-800',
-  CONTACTED: 'bg-blue-100 text-blue-800',
-  FOLLOWUP: 'bg-yellow-100 text-yellow-800',
-  VISIT_SCHEDULED: 'bg-purple-100 text-purple-800',
-  REJECTED: 'bg-red-100 text-red-800',
-  CONVERTED: 'bg-green-100 text-green-800',
+  NEW: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+  CONTACTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+  FOLLOWUP: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
+  VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
+  REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+  CONVERTED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
 }
 
 export default function LeadsPage() {
@@ -53,8 +53,8 @@ export default function LeadsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Leads</h1>
-          <p className="text-slate-600 mt-1">Manage and track all your leads</p>
+          <h1 className="text-3xl font-bold text-foreground">Leads</h1>
+          <p className="mt-1 text-muted-foreground">Manage and track all your leads</p>
         </div>
         <Button className="gap-2">
           <Plus className="w-4 h-4" />
@@ -67,8 +67,8 @@ export default function LeadsPage() {
         {statuses.map((status) => (
           <Card key={status} className="text-center">
             <CardContent className="pt-6">
-              <div className="text-2xl font-bold text-slate-900">{statusCounts[status]}</div>
-              <p className="text-xs text-slate-600 mt-1">{status}</p>
+              <div className="text-2xl font-bold text-foreground">{statusCounts[status]}</div>
+              <p className="mt-1 text-xs text-muted-foreground">{status}</p>
             </CardContent>
           </Card>
         ))}
@@ -77,7 +77,7 @@ export default function LeadsPage() {
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by name or phone..."
             value={search}
@@ -110,17 +110,17 @@ export default function LeadsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-3 px-4 font-semibold text-slate-600">Lead Name</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-600">Phone</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-600">Project Type</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-600">Location</th>
-                  <th className="text-left py-3 px-4 font-semibold text-slate-600">Status</th>
-                  <th className="text-center py-3 px-4 font-semibold text-slate-600">Action</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Lead Name</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Phone</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Project Type</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Location</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="border-b hover:bg-slate-50">
+                  <tr key={lead.id} className="border-b hover:bg-muted/50">
                     <td className="py-4 px-4">{lead.name}</td>
                     <td className="py-4 px-4">{lead.phone}</td>
                     <td className="py-4 px-4">{lead.project_type}</td>

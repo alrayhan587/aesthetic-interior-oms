@@ -1,85 +1,104 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, CheckCircle, Calendar, TrendingUp } from 'lucide-react'
 
-const dashboardCards = [
-  {
-    title: 'Total Leads',
-    value: '48',
-    icon: Users,
-    color: 'bg-blue-500',
-  },
-  {
-    title: 'Today Followups',
-    value: '12',
-    icon: CheckCircle,
-    color: 'bg-green-500',
-  },
-  {
-    title: 'Today Visits',
-    value: '5',
-    icon: Calendar,
-    color: 'bg-purple-500',
-  },
-  {
-    title: 'Conversion Rate',
-    value: '18%',
-    icon: TrendingUp,
-    color: 'bg-orange-500',
-  },
-]
+import { ActivityTimeline } from "@/components/crm/junior/activity-timeline"
+import { MetricCards } from "@/components/crm/junior/metric-cards"
+import { ConversionFunnelChart, FollowupDisciplineChart, LeadSourceChart, LeadTrendChart, RatesTrendChart, VisitManagementChart } from "@/components/crm/junior/performance-charts"
+import { RecentLeadsTable } from "@/components/crm/junior/recent-leads-table"
+import { TodaysTasks } from "@/components/crm/junior/todays-tasks"
+import { VisitScheduleCard } from "@/components/crm/junior/visit-schedule"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function DashboardPage() {
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-600 mt-1">Welcome back! Here's your CRM overview.</p>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {dashboardCards.map((card) => {
-          const Icon = card.icon
-          return (
-            <Card key={card.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
-                <div className={`${card.color} p-2 rounded-lg`}>
-                  <Icon className="w-4 h-4 text-white" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{card.value}</div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[
-              { action: 'Lead Created', description: 'Acme Corp - New Lead', time: '2 hours ago' },
-              { action: 'Status Updated', description: 'Lead moved to Contacted', time: '4 hours ago' },
-              { action: 'Visit Scheduled', description: 'Site visit scheduled', time: '1 day ago' },
-            ].map((item, idx) => (
-              <div key={idx} className="flex items-start gap-4 pb-4 border-b last:border-b-0">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2" />
-                <div className="flex-1">
-                  <p className="font-medium text-slate-900">{item.action}</p>
-                  <p className="text-sm text-slate-600">{item.description}</p>
-                </div>
-                <p className="text-xs text-slate-500">{item.time}</p>
-              </div>
-            ))}
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              OMS Dashboard
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Welcome back! Here is your daily overview.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              Feb 25, 2026
+            </span>
+            <div className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium">
+              AK
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1440px] px-6 py-6">
+        <div className="flex flex-col gap-6">
+          {/* Block 1 - Performance Metric Cards */}
+          <MetricCards />
+
+          {/* Performance Charts Section */}
+          <section>
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="leads">Lead Handling</TabsTrigger>
+                <TabsTrigger value="followups">Follow-Ups</TabsTrigger>
+                <TabsTrigger value="visits">Visits</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview" className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <LeadTrendChart />
+                  <RatesTrendChart />
+                  <LeadSourceChart />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="leads" className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <LeadTrendChart />
+                  <ConversionFunnelChart />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="followups" className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FollowupDisciplineChart />
+                  <RatesTrendChart />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="visits" className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <VisitManagementChart />
+                  <LeadSourceChart />
+                </div>
+              </TabsContent>
+            </Tabs>
+          </section>
+
+          {/* Main Content: Recent Leads Table + Activity Timeline */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left 2/3 - Recent Leads + Tasks */}
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              {/* Block 2 - Recent Leads Table */}
+              <RecentLeadsTable />
+
+              {/* Block 3 & 4 - Today's Tasks + Visit Schedule */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <TodaysTasks />
+                <VisitScheduleCard />
+              </div>
+            </div>
+
+            {/* Right 1/3 - Activity Timeline (Block 5) */}
+            <div className="lg:col-span-1">
+              <ActivityTimeline />
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   )
 }
