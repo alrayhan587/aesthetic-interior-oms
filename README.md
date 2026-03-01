@@ -2,6 +2,19 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create a `.env` file and set your PostgreSQL connection string:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB_NAME"
+```
+
+Run migrations and seed the database:
+
+```bash
+npx prisma migrate dev
+npm run db:seed
+```
+
 First, run the development server:
 
 ```bash
