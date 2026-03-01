@@ -74,20 +74,20 @@ export default function MyVisitsPage() {
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white">My Visits</h1>
-        <p className="text-slate-400 mt-1">Track your visit history and upcoming appointments</p>
+        <h1 className="text-3xl font-bold text-foreground">My Visits</h1>
+        <p className="text-muted-foreground mt-1">Track your visit history and upcoming appointments</p>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="upcoming" className="w-full">
-        <TabsList className="bg-slate-800 border-slate-700">
-          <TabsTrigger value="upcoming" className="data-[state=active]:bg-blue-600">
+        <TabsList className="bg-background border-border">
+          <TabsTrigger value="upcoming" className="data-[state=active]:bg-primary">
             Upcoming
           </TabsTrigger>
-          <TabsTrigger value="completed" className="data-[state=active]:bg-blue-600">
+          <TabsTrigger value="completed" className="data-[state=active]:bg-primary">
             Completed
           </TabsTrigger>
-          <TabsTrigger value="history" className="data-[state=active]:bg-blue-600">
+          <TabsTrigger value="history" className="data-[state=active]:bg-primary">
             History
           </TabsTrigger>
         </TabsList>
@@ -95,12 +95,12 @@ export default function MyVisitsPage() {
         {/* Upcoming Tab */}
         <TabsContent value="upcoming" className="space-y-4">
           {upcomingVisits.map((visit) => (
-            <Card key={visit.id} className="bg-slate-800 border-slate-700">
+            <Card key={visit.id} className="bg-card border-border">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <p className="font-semibold text-white text-lg">{visit.clientName}</p>
-                    <div className="flex gap-4 mt-3 text-sm text-slate-300">
+                    <p className="font-semibold text-foreground text-lg">{visit.clientName}</p>
+                    <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
                       <span className="flex items-center gap-2">
                         <MapPin size={16} />
                         {visit.location}
@@ -120,10 +120,10 @@ export default function MyVisitsPage() {
                       Scheduled
                     </span>
                     <div className="flex gap-2 mt-3">
-                      <Button size="sm" variant="default" className="bg-blue-600 hover:bg-blue-700">
+                      <Button size="sm" variant="default" className="bg-primary hover:bg-primary/90">
                         Check-in
                       </Button>
-                      <Button size="sm" variant="outline" className="border-slate-600">
+                      <Button size="sm" variant="outline">
                         Reschedule
                       </Button>
                     </div>
@@ -139,15 +139,15 @@ export default function MyVisitsPage() {
           {visitHistory
             .filter((v) => v.status === 'completed')
             .map((visit) => (
-              <Card key={visit.id} className="bg-slate-800 border-slate-700">
+              <Card key={visit.id} className="bg-card border-border">
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 size={20} className="text-green-500" />
-                        <p className="font-semibold text-white text-lg">{visit.clientName}</p>
+                        <p className="font-semibold text-foreground text-lg">{visit.clientName}</p>
                       </div>
-                      <div className="flex gap-4 mt-3 text-sm text-slate-300 ml-7">
+                      <div className="flex gap-4 mt-3 text-sm text-muted-foreground ml-7">
                         <span className="flex items-center gap-1">
                           <MapPin size={14} />
                           {visit.location}
@@ -158,7 +158,7 @@ export default function MyVisitsPage() {
                         </span>
                       </div>
                       {visit.notes && (
-                        <p className="text-sm text-slate-300 mt-3 ml-7 italic">"{visit.notes}"</p>
+                        <p className="text-sm text-muted-foreground mt-3 ml-7 italic">"{visit.notes}"</p>
                       )}
                     </div>
                     <div className="flex-shrink-0">
@@ -175,7 +175,7 @@ export default function MyVisitsPage() {
         {/* History Tab */}
         <TabsContent value="history" className="space-y-4">
           {visitHistory.map((visit) => (
-            <Card key={visit.id} className="bg-slate-800 border-slate-700">
+            <Card key={visit.id} className="bg-card border-border">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
@@ -185,9 +185,9 @@ export default function MyVisitsPage() {
                       ) : (
                         <AlertCircle size={20} className="text-red-500" />
                       )}
-                      <p className="font-semibold text-white text-lg">{visit.clientName}</p>
+                      <p className="font-semibold text-foreground text-lg">{visit.clientName}</p>
                     </div>
-                    <div className="flex gap-4 mt-3 text-sm text-slate-300 ml-7">
+                    <div className="flex gap-4 mt-3 text-sm text-muted-foreground ml-7">
                       <span className="flex items-center gap-1">
                         <MapPin size={14} />
                         {visit.location}
@@ -204,7 +204,7 @@ export default function MyVisitsPage() {
                       )}
                     </div>
                     {visit.notes && (
-                      <p className="text-sm text-slate-300 mt-3 ml-7 italic">"{visit.notes}"</p>
+                      <p className="text-sm text-muted-foreground mt-3 ml-7 italic">"{visit.notes}"</p>
                     )}
                   </div>
                   <div className="flex-shrink-0">

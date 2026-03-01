@@ -7,25 +7,25 @@ const stats = [
     label: 'Today\'s Visits',
     value: '3',
     icon: Calendar,
-    color: 'bg-blue-500/10 text-blue-600',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   },
   {
     label: 'Scheduled This Week',
     value: '12',
     icon: Clock,
-    color: 'bg-green-500/10 text-green-600',
+    color: 'bg-green-500/10 text-green-600 dark:text-green-400',
   },
   {
     label: 'Completed',
     value: '28',
     icon: Users,
-    color: 'bg-purple-500/10 text-purple-600',
+    color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
   },
   {
     label: 'Pending',
     value: '5',
     icon: MapPin,
-    color: 'bg-orange-500/10 text-orange-600',
+    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
   },
 ]
 
@@ -69,8 +69,8 @@ export default function VisitDashboard() {
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white">Visit Dashboard</h1>
-        <p className="text-slate-400 mt-1">Manage your scheduled visits and track your visit history</p>
+        <h1 className="text-3xl font-bold text-foreground">Visit Dashboard</h1>
+        <p className="text-muted-foreground mt-1">Manage your scheduled visits and track your visit history</p>
       </div>
 
       {/* Stats Grid */}
@@ -78,12 +78,12 @@ export default function VisitDashboard() {
         {stats.map((stat) => {
           const Icon = stat.icon
           return (
-            <Card key={stat.label} className="bg-slate-800 border-slate-700">
+            <Card key={stat.label} className="bg-card border-border">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-400">{stat.label}</p>
-                    <p className="text-2xl font-bold text-white mt-2">{stat.value}</p>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold text-foreground mt-2">{stat.value}</p>
                   </div>
                   <div className={`p-3 rounded-lg ${stat.color}`}>
                     <Icon size={24} />
@@ -96,9 +96,9 @@ export default function VisitDashboard() {
       </div>
 
       {/* Upcoming Visits */}
-      <Card className="bg-slate-800 border-slate-700">
+      <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-white">Upcoming Visits</CardTitle>
+          <CardTitle className="text-foreground">Upcoming Visits</CardTitle>
           <CardDescription>Your next scheduled visits</CardDescription>
         </CardHeader>
         <CardContent>
@@ -106,11 +106,11 @@ export default function VisitDashboard() {
             {upcomingVisits.map((visit) => (
               <div
                 key={visit.id}
-                className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600 hover:bg-slate-700 transition-colors"
+                className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg border border-border hover:bg-secondary transition-colors"
               >
                 <div className="flex-1">
-                  <p className="font-medium text-white">{visit.clientName}</p>
-                  <div className="flex gap-4 mt-2 text-sm text-slate-300">
+                  <p className="font-medium text-foreground">{visit.clientName}</p>
+                  <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <MapPin size={16} />
                       {visit.location}
@@ -122,12 +122,12 @@ export default function VisitDashboard() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-slate-400">{visit.date}</p>
+                  <p className="text-sm text-muted-foreground">{visit.date}</p>
                   <span
                     className={`inline-block mt-2 px-3 py-1 rounded text-xs font-medium ${
                       visit.status === 'confirmed'
-                        ? 'bg-green-500/20 text-green-400'
-                        : 'bg-blue-500/20 text-blue-400'
+                        ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                        : 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
                     }`}
                   >
                     {visit.status.charAt(0).toUpperCase() + visit.status.slice(1)}
@@ -141,8 +141,8 @@ export default function VisitDashboard() {
 
       {/* Quick Actions */}
       <div className="flex gap-3">
-        <Button className="bg-blue-600 hover:bg-blue-700">Schedule New Visit</Button>
-        <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-800">
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">Schedule New Visit</Button>
+        <Button variant="outline" className="border-border text-foreground hover:bg-secondary">
           View Calendar
         </Button>
       </div>

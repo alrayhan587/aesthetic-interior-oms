@@ -9,6 +9,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -16,14 +18,24 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname() || ''
+  const isVisits = pathname.startsWith('/visits')
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
   }
 
+  const headerClasses = cn(
+    'flex h-16 items-center justify-between px-6',
+    isVisits
+      ? 'border-b border-slate-800 bg-slate-900'
+      : 'border-b border-border bg-background'
+  )
+
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
+    <header className={headerClasses}>
+      {/** keep the mobile menu trigger in both modes */}
       <Button
         variant="ghost"
         size="icon"
@@ -32,6 +44,9 @@ export function Header({ onMenuClick }: HeaderProps) {
       >
         <Menu className="w-5 h-5" />
       </Button>
+
+      {/* push right‑hand controls to edge (visits header had an empty flex-1) */}
+      {isVisits && <div className="flex-1" />}
 
       <div className="flex items-center gap-4 ml-auto">
         <Button variant="ghost" size="icon">

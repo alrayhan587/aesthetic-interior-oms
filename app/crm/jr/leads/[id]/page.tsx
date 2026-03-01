@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -16,72 +15,72 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Plus } from 'lucide-react'
 
-// Sample lead data
-const leadData = {
-  1: {
-    id: 1,
-    name: 'Acme Corp',
-    phone: '+91 9876543210',
-    email: 'contact@acmecorp.com',
-    location: 'Mumbai',
-    project_type: 'Commercial',
-    project_size: '50000 sqft',
+// Bangladesh sample leads (matches sampleLeads used on list page)
+const sampleLeads = [
+  {
+    id: 'lead_1',
+    name: 'Dhaka Interiors Ltd',
+    phone: '+8801712345678',
+    email: 'info@dhakainteriors.com.bd',
+    location: 'Dhaka',
+    project_type: 'Commercial Fitout',
+    project_size: '4,500 sqft',
     status: 'NEW',
-    source: 'facebook',
-    assigned_to: 'Rajesh Kumar',
+    source: 'Website',
+    assigned_to: 'Sabbir Ahmed',
     created_at: '2024-02-20',
   },
-  2: {
-    id: 2,
-    name: 'Tech Startup',
-    phone: '+91 9876543211',
-    email: 'info@techstartup.com',
-    location: 'Bangalore',
-    project_type: 'Office',
-    project_size: '10000 sqft',
+  {
+    id: 'lead_2',
+    name: 'Chittagong Constructions',
+    phone: '+8801812345679',
+    email: 'contact@chittagongcons.com.bd',
+    location: 'Chittagong',
+    project_type: 'Office Renovation',
+    project_size: '3,200 sqft',
     status: 'CONTACTED',
-    source: 'manual',
-    assigned_to: 'Priya Singh',
+    source: 'Referral',
+    assigned_to: 'Nazmul Hossain',
     created_at: '2024-02-18',
   },
-  3: {
-    id: 3,
-    name: 'Retail Store',
-    phone: '+91 9876543212',
-    email: 'store@retail.com',
-    location: 'Delhi',
-    project_type: 'Retail',
-    project_size: '15000 sqft',
+  {
+    id: 'lead_3',
+    name: 'Sylhet Traders',
+    phone: '+8801912345680',
+    email: 'hello@sylhettraders.com.bd',
+    location: 'Sylhet',
+    project_type: 'Retail Fitout',
+    project_size: '1,500 sqft',
     status: 'VISIT_SCHEDULED',
-    source: 'referral',
-    assigned_to: 'Amit Patel',
-    created_at: '2024-02-15',
+    source: 'Cold Call',
+    assigned_to: 'Rumana Akter',
+    created_at: '2024-02-17',
   },
-}
+  // add more entries if needed...
+]
 
 const sampleNotes = [
-  { id: 1, author: 'Rajesh Kumar', date: '2024-02-24', content: 'Client prefers modern design with glass elements.' },
-  { id: 2, author: 'System', date: '2024-02-23', content: 'Lead created from Facebook leads.' },
+  { id: 1, author: 'Sabbir Ahmed', date: '2024-02-24', content: 'Client prefers minimalist design with local materials.' },
+  { id: 2, author: 'System', date: '2024-02-23', content: 'Lead created from website submission.' },
 ]
 
 const sampleActivities = [
-  { id: 1, action: 'Status Changed', description: 'Moved to CONTACTED', user: 'Rajesh Kumar', date: '2024-02-24' },
-  { id: 2, action: 'Note Added', description: 'Added client preferences', user: 'Rajesh Kumar', date: '2024-02-23' },
+  { id: 1, action: 'Status Changed', description: 'Moved to CONTACTED', user: 'Nazmul Hossain', date: '2024-02-24' },
+  { id: 2, action: 'Note Added', description: 'Added client preferences', user: 'Sabbir Ahmed', date: '2024-02-23' },
   { id: 3, action: 'Lead Created', description: 'New lead added to system', user: 'System', date: '2024-02-20' },
 ]
 
 const sampleFollowups = [
-  { id: 1, date: '2024-02-25', type: 'call', note: 'Follow up on proposal', status: 'pending' },
-  { id: 2, date: '2024-02-27', type: 'meeting', note: 'Site visit discussion', status: 'pending' },
+  { id: 1, date: '2024-02-25', type: 'call', note: 'Confirm site availability', status: 'pending' },
+  { id: 2, date: '2024-02-27', type: 'meeting', note: 'Site visit with client', status: 'pending' },
 ]
 
 export default function LeadDetailPage() {
   const params = useParams()
   const router = useRouter()
   const leadId = params.id as string
-  const leadIdNum = Number(leadId)
-  const lead = leadData[leadIdNum as keyof typeof leadData]
-  
+  const lead = sampleLeads.find((l) => l.id === leadId)
+
   const [status, setStatus] = useState(lead?.status || 'NEW')
   const [newNote, setNewNote] = useState('')
 
@@ -124,7 +123,7 @@ export default function LeadDetailPage() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div>
-                  <CardTitle className="text-2xl">{lead.name}</CardTitle>
+                  <CardTitle className="text-2xl text-foreground">{lead.name}</CardTitle>
                   <p className="mt-1 text-muted-foreground">{lead.location}</p>
                 </div>
                 <span className={`px-4 py-2 rounded-full text-sm font-medium ${statusColors[status]}`}>
@@ -136,27 +135,27 @@ export default function LeadDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Phone</p>
-                  <p className="font-semibold">{lead.phone}</p>
+                  <p className="font-semibold text-foreground">{lead.phone}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-semibold">{lead.email}</p>
+                  <p className="font-semibold text-foreground">{lead.email}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Project Type</p>
-                  <p className="font-semibold">{lead.project_type}</p>
+                  <p className="font-semibold text-foreground">{lead.project_type}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Project Size</p>
-                  <p className="font-semibold">{lead.project_size}</p>
+                  <p className="font-semibold text-foreground">{lead.project_size}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Source</p>
-                  <p className="font-semibold capitalize">{lead.source}</p>
+                  <p className="font-semibold text-foreground capitalize">{lead.source}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="font-semibold">{lead.created_at}</p>
+                  <p className="font-semibold text-foreground">{lead.created_at}</p>
                 </div>
               </div>
             </CardContent>
@@ -205,7 +204,7 @@ export default function LeadDetailPage() {
 
             <TabsContent value="activity" className="mt-6">
               <div className="space-y-3">
-                {sampleActivities.map((activity, idx) => (
+                {sampleActivities.map((activity) => (
                   <Card key={activity.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-start gap-4">
@@ -254,7 +253,7 @@ export default function LeadDetailPage() {
               <CardTitle className="text-base">Assigned To</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="font-semibold">{lead.assigned_to}</p>
+              <p className="font-semibold text-foreground">{lead.assigned_to}</p>
             </CardContent>
           </Card>
 

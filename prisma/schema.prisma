@@ -14,19 +14,83 @@ datasource db {
 }
 
 model Lead {
-  id         String    @id @default(cuid())
-  name       String
-  phone      String?
-  email      String
-  status     String
-  assignedTo String?
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
+  id            String     @id @default(cuid())
+  name          String
+  phone         String?
+  email         String
+  source        String?
+  status        LeadStatus @default(NEW)
+  budget        Float?
+  location      String?
+  remarks       String?
+  assignedTo    String?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
 
-  assignee   User?     @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
+  assignee          User?                @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
+  followUps         FollowUp[]
+  notes             Note[]
+  activities        ActivityLog[]
+  statusHistory     LeadStatusHistory[]
 
   @@index([assignedTo])
   @@index([email])
+}
+
+model LeadStatusHistory {
+  id          String     @id @default(cuid())
+  leadId      String
+  lead        Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  oldStatus   LeadStatus
+  newStatus   LeadStatus
+  changedById String
+  changedBy   User       @relation(fields: [changedById], references: [id], onDelete: Cascade)
+  changedAt   DateTime   @default(now())
+
+  @@index([leadId])
+  @@index([changedById])
+}
+
+model ActivityLog {
+  id          String       @id @default(cuid())
+  leadId      String
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  description String
+  createdAt   DateTime     @default(now())
+
+  @@index([leadId])
+  @@index([userId])
+}
+
+model FollowUp {
+  id           String           @id @default(cuid())
+  leadId       String
+  lead         Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedToId String
+  assignedTo   User             @relation(fields: [assignedToId], references: [id], onDelete: Cascade)
+  followupDate DateTime
+  status       FollowUpStatus   @default(PENDING)
+  notes        String?
+  createdAt    DateTime         @default(now())
+
+  @@index([leadId])
+  @@index([assignedToId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([userId])
 }
 
 model User {
@@ -38,25 +102,27 @@ model User {
   created_at      DateTime         @default(now())
   updated_at      DateTime         @updatedAt
 
-  leads           Lead[]           @relation("UserAssignedLeads")
-  userRoles       UserRole[]
-  userDepartments UserDepartment[]
+  leads                Lead[]           @relation("UserAssignedLeads")
+  followUps            FollowUp[]
+  notes                Note[]
+  activities           ActivityLog[]
+  statusChanges        LeadStatusHistory[]
+  userRoles            UserRole[]
+  userDepartments      UserDepartment[]
 }
 
 model Role {
-  id          String @id @default(cuid())
-  name        String @unique
+  id          String     @id @default(cuid())
+  name        String     @unique
   description String?
-
   userRoles   UserRole[]
 }
 
 model Department {
-  id          String @id @default(cuid())
-  name        String @unique
-  description String?
-
-  userDepartments UserDepartment[]
+  id                String           @id @default(cuid())
+  name              String           @unique
+  description       String?
+  userDepartments   UserDepartment[]
 }
 
 model UserRole {
@@ -81,4 +147,26 @@ model UserDepartment {
 
   @@id([userId, departmentId])
   @@index([departmentId])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  FOLLOWUP
+  VISIT_SCHEDULED
+  REJECTED
+  QUALIFIED
+}
+
+enum FollowUpStatus {
+  PENDING
+  DONE
+  MISSED
+}
+
+enum ActivityType {
+  CALL
+  STATUS_CHANGE
+  NOTE
+  FOLLOWUP_SET
 }

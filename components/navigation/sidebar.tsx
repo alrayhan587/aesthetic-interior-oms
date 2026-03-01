@@ -12,10 +12,13 @@ import {
   Moon,
   Sun,
   X,
+  Home,
+  ListTodo,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/theme-provider'
+import { useEffect, useState } from 'react'
 
 interface SidebarProps {
   open: boolean
@@ -32,11 +35,30 @@ const navigationItems = {
   ],
 }
 
+const visitsNavItems = [
+  { icon: Home, label: 'Dashboard', href: '/visit-team/visit-dashboard' },
+  { icon: Calendar, label: 'Visit Schedule', href: '/visit-team/visit-today' },
+  { icon: ListTodo, label: 'My Visits', href: '/visit-team/my-visits' },
+]
+
 export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() || ''
   const router = useRouter()
   const { theme, toggleTheme } = useTheme()
-  const items = navigationItems[role as keyof typeof navigationItems] || []
+
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // true for any route that lives under /visits
+  const isVisits = pathname.startsWith('/visit-team')
+
+  // choose the appropriate set of items
+  const items = isVisits
+    ? visitsNavItems
+    : navigationItems[role as keyof typeof navigationItems] || []
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -61,7 +83,12 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
         )}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
-          <h1 className="text-lg font-bold">OMS System</h1>
+          <div>
+            <h1 className="text-lg font-bold">
+              OMS System
+            </h1>
+            <p className="text-xs text-muted-foreground">{role}</p>
+          </div>
           <button
             onClick={() => onOpenChange(false)}
             className="md:hidden rounded p-1 hover:bg-sidebar-accent"
@@ -73,14 +100,16 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
         <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
           {items.map((item) => {
             const Icon = item.icon
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link key={item.href} href={item.href}>
                 <Button
                   variant={isActive ? 'secondary' : 'ghost'}
                   className={cn(
                     'w-full justify-start gap-3',
-                    isActive && 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    isActive &&
+                    'bg-primary text-primary-foreground hover:bg-primary/90'
                   )}
                 >
                   <Icon className="w-5 h-5" />
@@ -91,25 +120,24 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
           })}
         </nav>
 
-        {/* Logout */}
+        {/* Footer – theme toggle + logout; no “back to CRM” in visits mode */}
         <div className="space-y-2 border-t border-sidebar-border p-4">
-          {/* Replace the theme Button with this custom toggle */}
           <div className="w-full flex justify-start items-center gap-1">
-            {/* <span className="mr-2 text-sm text-muted-foreground">Theme</span> */}
             <div
               className="relative inline-flex items-center cursor-pointer w-12 h-6 bg-gray-100 dark:bg-gray-700 rounded-full transition-colors duration-300"
               onClick={toggleTheme}
             >
-              <div
-                className={`absolute w-5 h-5 bg-white dark:bg-gray-900 rounded-full  transform transition-transform duration-300 flex items-center justify-center 
+              {mounted && (
+                <div
+                  className={`absolute w-5 h-5 bg-white dark:bg-gray-900 rounded-full  transform transition-transform duration-300 flex items-center justify-center 
                   ${theme === 'dark' ? 'translate-x-6 bg-gray-700' : 'translate-x-1'}`}
-              >
-                {theme === 'dark' ? (
-                  <Moon className="w-3 h-3 text-gray-100" />
-                ) : (
-                  <Sun className="w-3 h-3 text-yellow-500" />
-                )}
-              </div>
+                >
+                  {theme === 'dark' ? (
+                    <Moon className="w-3 h-3 text-gray-100" />
+                  ) : (
+                    <Sun className="w-3 h-3 text-yellow-500" />
+                  )}
+                </div>)}
             </div>
           </div>
           <Button

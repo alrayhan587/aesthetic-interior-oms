@@ -1,3 +1,4 @@
+import { MainLayout } from '@/components/layout/mainlayout'
 import { VisitsHeader } from '@/components/navigation/visits-header'
 import { VisitsSidebar } from '@/components/navigation/visits-sidebar'
 
@@ -13,14 +14,8 @@ export default function VisitsLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex h-screen bg-slate-950">
-      <VisitsSidebar />
-      <div className="flex-1 flex flex-col md:ml-0 ml-0">
-        <VisitsHeader />
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          {children}
-        </main>
-      </div>
-    </div>
+    <MainLayout role="Visit Team">
+      {children}
+    </MainLayout>
   )
 }

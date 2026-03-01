@@ -1,183 +1,277 @@
-import { PrismaClient } from "../generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
 
-const prisma = new PrismaClient({ adapter });
+const connectionString = process.env.DATABASE_URL!;
+const pool = new Pool({ connectionString });
 
-const roles = [
-  { name: "admin", description: "Full system access" },
-  { name: "srCRM", description: "Senior CRM manager" },
-  { name: "jrCRM", description: "Junior CRM manager" },
-  { name: "cad_operator", description: "CAD operations specialist" },
-  { name: "3d_visualizer", description: "3D visualization specialist" },
-];
+// PrismaPg’s constructor takes two params; the second is optional
+// but typed as required in the definition.
+const adapter = new PrismaPg(pool /* , { /* adapter options here */ } */ );
 
-const departments = [
-  { name: "CRM", description: "Customer relationship management" },
-  { name: "CAD", description: "CAD design team" },
-  { name: "3D", description: "3D visualization team" },
-  { name: "Accounts", description: "Finance and accounts team" },
-];
-
-const users = [
-  {
-    fullName: "Alice Johnson",
-    email: "alice@aesthetic-crm.io",
-    phone: "+1-555-0101",
-    clerkUserId: "clerk_alice_001",
-    roles: ["admin"],
-    departments: ["CRM"],
-  },
-  {
-    fullName: "Bob Smith",
-    email: "bob@aesthetic-crm.io",
-    phone: "+1-555-0102",
-    clerkUserId: "clerk_bob_001",
-    roles: ["srCRM"],
-    departments: ["CRM"],
-  },
-  {
-    fullName: "Carol Davis",
-    email: "carol@aesthetic-crm.io",
-    phone: "+1-555-0103",
-    clerkUserId: "clerk_carol_001",
-    roles: ["jrCRM"],
-    departments: ["CRM"],
-  },
-  {
-    fullName: "Dina Rahman",
-    email: "dina@aesthetic-crm.io",
-    phone: "+1-555-0104",
-    clerkUserId: "clerk_dina_001",
-    roles: ["cad_operator"],
-    departments: ["CAD"],
-  },
-  {
-    fullName: "Evan Lee",
-    email: "evan@aesthetic-crm.io",
-    phone: "+1-555-0105",
-    clerkUserId: "clerk_evan_001",
-    roles: ["3d_visualizer"],
-    departments: ["3D"],
-  },
-];
-
-const leads = [
-  {
-    name: "John Doe",
-    email: "john.doe@email.com",
-    phone: "+1-555-0201",
-    status: "new",
-    assigneeEmail: "bob@aesthetic-crm.io",
-  },
-  {
-    name: "Jane Wilson",
-    email: "jane.wilson@email.com",
-    phone: "+1-555-0202",
-    status: "contacted",
-    assigneeEmail: "carol@aesthetic-crm.io",
-  },
-  {
-    name: "Michael Brown",
-    email: "michael.brown@email.com",
-    phone: "+1-555-0203",
-    status: "qualified",
-    assigneeEmail: "alice@aesthetic-crm.io",
-  },
-];
+const prisma = new PrismaClient({ adapter });     // ← one argument supplied
+// if you ever call it with no options you can do:
+// const prisma = new PrismaClient({});
 
 async function main() {
-  console.log("Seeding roles...");
-  for (const role of roles) {
-    await prisma.role.upsert({
-      where: { name: role.name },
-      update: { description: role.description },
-      create: role,
-    });
-  }
+  // Clear existing data
+  await prisma.userDepartment.deleteMany();
+  await prisma.userRole.deleteMany();
+  await prisma.note.deleteMany();
+  await prisma.activityLog.deleteMany();
+  await prisma.followUp.deleteMany();
+  await prisma.leadStatusHistory.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.department.deleteMany();
+  await prisma.role.deleteMany();
 
-  console.log("Seeding departments...");
-  for (const department of departments) {
-    await prisma.department.upsert({
-      where: { name: department.name },
-      update: { description: department.description },
-      create: department,
-    });
-  }
+  // Create Roles
+  const adminRole = await prisma.role.create({
+    data: {
+      name: "Admin",
+      description: "Administrator with full access",
+    },
+  });
 
-  console.log("Seeding users...");
-  for (const user of users) {
-    await prisma.user.upsert({
-      where: { email: user.email },
-      update: {
-        fullName: user.fullName,
-        phone: user.phone,
-        clerkUserId: user.clerkUserId,
-      },
-      create: {
-        fullName: user.fullName,
-        email: user.email,
-        phone: user.phone,
-        clerkUserId: user.clerkUserId,
-      },
-    });
-  }
+  const salesRole = await prisma.role.create({
+    data: {
+      name: "Sales",
+      description: "Sales representative",
+    },
+  });
 
-  console.log("Seeding user-role mappings...");
-  for (const user of users) {
-    const dbUser = await prisma.user.findUniqueOrThrow({ where: { email: user.email } });
-    for (const roleName of user.roles) {
-      const role = await prisma.role.findUniqueOrThrow({ where: { name: roleName } });
-      await prisma.userRole.upsert({
-        where: { userId_roleId: { userId: dbUser.id, roleId: role.id } },
-        update: {},
-        create: { userId: dbUser.id, roleId: role.id },
-      });
-    }
-  }
+  const managerRole = await prisma.role.create({
+    data: {
+      name: "Manager",
+      description: "Sales manager",
+    },
+  });
 
-  console.log("Seeding user-department mappings...");
-  for (const user of users) {
-    const dbUser = await prisma.user.findUniqueOrThrow({ where: { email: user.email } });
-    for (const departmentName of user.departments) {
-      const department = await prisma.department.findUniqueOrThrow({ where: { name: departmentName } });
-      await prisma.userDepartment.upsert({
-        where: {
-          userId_departmentId: { userId: dbUser.id, departmentId: department.id },
-        },
-        update: {},
-        create: { userId: dbUser.id, departmentId: department.id },
-      });
-    }
-  }
+  // Create Departments
+  const salesDept = await prisma.department.create({
+    data: {
+      name: "Sales",
+      description: "Sales department",
+    },
+  });
 
-  console.log("Resetting and seeding leads...");
-  await prisma.lead.deleteMany({});
-  for (const lead of leads) {
-    const assignee = await prisma.user.findUnique({ where: { email: lead.assigneeEmail } });
-    await prisma.lead.create({
-      data: {
-        name: lead.name,
-        email: lead.email,
-        phone: lead.phone,
-        status: lead.status,
-        assignedTo: assignee?.id ?? null,
-      },
-    });
-  }
+  const designDept = await prisma.department.create({
+    data: {
+      name: "Design",
+      description: "Design department",
+    },
+  });
 
-  console.log("Seed completed successfully.");
+  // Create Users
+  const user1 = await prisma.user.create({
+    data: {
+      fullName: "John Doe",
+      email: "john@example.com",
+      phone: "1234567890",
+      clerkUserId: "clerk_123",
+    },
+  });
+
+  const user2 = await prisma.user.create({
+    data: {
+      fullName: "Jane Smith",
+      email: "jane@example.com",
+      phone: "0987654321",
+      clerkUserId: "clerk_456",
+    },
+  });
+
+  const user3 = await prisma.user.create({
+    data: {
+      fullName: "Mike Johnson",
+      email: "mike@example.com",
+      phone: "5555555555",
+      clerkUserId: "clerk_789",
+    },
+  });
+
+  // Assign Users to Roles
+  await prisma.userRole.create({
+    data: {
+      userId: user1.id,
+      roleId: adminRole.id,
+    },
+  });
+
+  await prisma.userRole.create({
+    data: {
+      userId: user2.id,
+      roleId: salesRole.id,
+    },
+  });
+
+  await prisma.userRole.create({
+    data: {
+      userId: user3.id,
+      roleId: managerRole.id,
+    },
+  });
+
+  // Assign Users to Departments
+  await prisma.userDepartment.create({
+    data: {
+      userId: user1.id,
+      departmentId: salesDept.id,
+    },
+  });
+
+  await prisma.userDepartment.create({
+    data: {
+      userId: user2.id,
+      departmentId: salesDept.id,
+    },
+  });
+
+  await prisma.userDepartment.create({
+    data: {
+      userId: user3.id,
+      departmentId: designDept.id,
+    },
+  });
+
+  // Create Leads
+  const lead1 = await prisma.lead.create({
+    data: {
+      name: "Alice Brown",
+      phone: "1111111111",
+      email: "alice@example.com",
+      source: "Website",
+      status: "NEW",
+      budget: 50000,
+      location: "New York",
+      remarks: "Interested in modern design",
+      assignedTo: user2.id,
+    },
+  });
+
+  const lead2 = await prisma.lead.create({
+    data: {
+      name: "Bob Wilson",
+      phone: "2222222222",
+      email: "bob@example.com",
+      source: "Referral",
+      status: "CONTACTED",
+      budget: 75000,
+      location: "Los Angeles",
+      remarks: "Follow up next week",
+      assignedTo: user2.id,
+    },
+  });
+
+  const lead3 = await prisma.lead.create({
+    data: {
+      name: "Carol Davis",
+      phone: "3333333333",
+      email: "carol@example.com",
+      source: "Social Media",
+      status: "FOLLOWUP",
+      budget: 100000,
+      location: "Chicago",
+      remarks: "Waiting for budget approval",
+      assignedTo: user2.id,
+    },
+  });
+
+  // Create Lead Status History
+  await prisma.leadStatusHistory.create({
+    data: {
+      leadId: lead1.id,
+      oldStatus: "NEW",
+      newStatus: "NEW",
+      changedById: user2.id,
+    },
+  });
+
+  await prisma.leadStatusHistory.create({
+    data: {
+      leadId: lead2.id,
+      oldStatus: "NEW",
+      newStatus: "CONTACTED",
+      changedById: user2.id,
+    },
+  });
+
+  // Create Follow-ups
+  const followUp1 = await prisma.followUp.create({
+    data: {
+      leadId: lead2.id,
+      assignedToId: user2.id,
+      followupDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      status: "PENDING",
+      notes: "Call to discuss budget and timeline",
+    },
+  });
+
+  const followUp2 = await prisma.followUp.create({
+    data: {
+      leadId: lead3.id,
+      assignedToId: user2.id,
+      followupDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
+      status: "PENDING",
+      notes: "Visit showroom",
+    },
+  });
+
+  // Create Notes
+  await prisma.note.create({
+    data: {
+      leadId: lead1.id,
+      userId: user2.id,
+      content: "Client prefers minimalist design with neutral colors",
+    },
+  });
+
+  await prisma.note.create({
+    data: {
+      leadId: lead2.id,
+      userId: user2.id,
+      content: "Needs design for 2000 sq ft apartment",
+    },
+  });
+
+  // Create Activity Logs
+  await prisma.activityLog.create({
+    data: {
+      leadId: lead1.id,
+      userId: user2.id,
+      type: "NOTE",
+      description: "Added note about design preferences",
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      leadId: lead2.id,
+      userId: user2.id,
+      type: "STATUS_CHANGE",
+      description: "Changed status from NEW to CONTACTED",
+    },
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      leadId: lead2.id,
+      userId: user2.id,
+      type: "FOLLOWUP_SET",
+      description: "Scheduled follow-up for next week",
+    },
+  });
+
+  console.log("Seed data created successfully!");
 }
 
 main()
-  .catch((error) => {
-    console.error("Seed failed:", error);
-    process.exit(1);
-  })
-  .finally(async () => {
+  .then(() => prisma.$disconnect())
+  .catch(async (e) => {
+    console.error(e);
     await prisma.$disconnect();
+    process.exit(1);
   });
