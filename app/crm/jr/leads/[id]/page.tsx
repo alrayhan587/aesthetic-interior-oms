@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,74 +15,100 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Plus } from 'lucide-react'
 
-// Bangladesh sample leads (matches sampleLeads used on list page)
-const sampleLeads = [
-  {
-    id: 'lead_1',
-    name: 'Dhaka Interiors Ltd',
-    phone: '+8801712345678',
-    email: 'info@dhakainteriors.com.bd',
-    location: 'Dhaka',
-    project_type: 'Commercial Fitout',
-    project_size: '4,500 sqft',
-    status: 'NEW',
-    source: 'Website',
-    assigned_to: 'Sabbir Ahmed',
-    created_at: '2024-02-20',
-  },
-  {
-    id: 'lead_2',
-    name: 'Chittagong Constructions',
-    phone: '+8801812345679',
-    email: 'contact@chittagongcons.com.bd',
-    location: 'Chittagong',
-    project_type: 'Office Renovation',
-    project_size: '3,200 sqft',
-    status: 'CONTACTED',
-    source: 'Referral',
-    assigned_to: 'Nazmul Hossain',
-    created_at: '2024-02-18',
-  },
-  {
-    id: 'lead_3',
-    name: 'Sylhet Traders',
-    phone: '+8801912345680',
-    email: 'hello@sylhettraders.com.bd',
-    location: 'Sylhet',
-    project_type: 'Retail Fitout',
-    project_size: '1,500 sqft',
-    status: 'VISIT_SCHEDULED',
-    source: 'Cold Call',
-    assigned_to: 'Rumana Akter',
-    created_at: '2024-02-17',
-  },
-  // add more entries if needed...
-]
+const statusColors: Record<string, string> = {
+  NEW: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100',
+  CONTACTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
+  FOLLOWUP: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
+  VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
+  REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
+  CONVERTED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
+}
 
-const sampleNotes = [
-  { id: 1, author: 'Sabbir Ahmed', date: '2024-02-24', content: 'Client prefers minimalist design with local materials.' },
-  { id: 2, author: 'System', date: '2024-02-23', content: 'Lead created from website submission.' },
-]
+type LeadDetails = {
+  id: string
+  name: string
+  phone: string | null
+  email: string
+  source: string | null
+  status: string
+  budget: number | null
+  location: string | null
+  remarks: string | null
+  assignedTo: string | null
+  created_at: string
+  updated_at: string
+  assignee?: {
+    id: string
+    fullName: string
+    email: string
+  } | null
+}
 
-const sampleActivities = [
-  { id: 1, action: 'Status Changed', description: 'Moved to CONTACTED', user: 'Nazmul Hossain', date: '2024-02-24' },
-  { id: 2, action: 'Note Added', description: 'Added client preferences', user: 'Sabbir Ahmed', date: '2024-02-23' },
-  { id: 3, action: 'Lead Created', description: 'New lead added to system', user: 'System', date: '2024-02-20' },
-]
+type Note = {
+  id: string | number
+  author: string
+  date: string
+  content: string
+}
 
-const sampleFollowups = [
-  { id: 1, date: '2024-02-25', type: 'call', note: 'Confirm site availability', status: 'pending' },
-  { id: 2, date: '2024-02-27', type: 'meeting', note: 'Site visit with client', status: 'pending' },
-]
+type Activity = {
+  id: string | number
+  action: string
+  description: string
+  user: string
+  date: string
+}
+
+type Followup = {
+  id: string | number
+  date: string
+  type: string
+  note: string
+  status: string
+}
 
 export default function LeadDetailPage() {
   const params = useParams()
   const router = useRouter()
   const leadId = params.id as string
-  const lead = sampleLeads.find((l) => l.id === leadId)
 
-  const [status, setStatus] = useState(lead?.status || 'NEW')
+  const [lead, setLead] = useState<LeadDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState('NEW')
   const [newNote, setNewNote] = useState('')
+
+  // These will be replaced with real API data in the future
+  const [notes, setNotes] = useState<Note[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [followups, setFollowups] = useState<Followup[]>([])
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/lead/${leadId}`)
+      .then(res => res.json())
+      .then(data => {
+        setLead(data.data)
+        setStatus(data.data?.status || 'NEW')
+        // If your API returns notes, activities, followups, set them here
+        setNotes(data.data?.notes || [])
+        setActivities(data.data?.activities || [])
+        setFollowups(data.data?.followUps || [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [leadId])
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+        <p className="mt-4 text-muted-foreground">Loading lead details...</p>
+      </div>
+    )
+  }
 
   if (!lead) {
     return (
@@ -94,15 +120,6 @@ export default function LeadDetailPage() {
         <p className="mt-4 text-muted-foreground">Lead not found</p>
       </div>
     )
-  }
-
-  const statusColors: Record<string, string> = {
-    NEW: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100',
-    CONTACTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
-    FOLLOWUP: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
-    VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
-    REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200',
-    CONVERTED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
   }
 
   return (
@@ -124,7 +141,7 @@ export default function LeadDetailPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="text-2xl text-foreground">{lead.name}</CardTitle>
-                  <p className="mt-1 text-muted-foreground">{lead.location}</p>
+                  <p className="mt-1 text-muted-foreground">{lead.location || '—'}</p>
                 </div>
                 <span className={`px-4 py-2 rounded-full text-sm font-medium ${statusColors[status]}`}>
                   {status}
@@ -135,29 +152,40 @@ export default function LeadDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Phone</p>
-                  <p className="font-semibold text-foreground">{lead.phone}</p>
+                  <p className="font-semibold text-foreground">{lead.phone || '—'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
                   <p className="font-semibold text-foreground">{lead.email}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Project Type</p>
-                  <p className="font-semibold text-foreground">{lead.project_type}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Project Size</p>
-                  <p className="font-semibold text-foreground">{lead.project_size}</p>
-                </div>
-                <div>
                   <p className="text-sm text-muted-foreground">Source</p>
-                  <p className="font-semibold text-foreground capitalize">{lead.source}</p>
+                  <p className="font-semibold text-foreground capitalize">{lead.source || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Budget</p>
+                  <p className="font-semibold text-foreground">{lead.budget !== null ? lead.budget : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Assignee</p>
+                  <p className="font-semibold text-foreground">
+                    {lead.assignee ? lead.assignee.fullName : 'Unassigned'}
+                  </p>
+                  {lead.assignee && (
+                    <span className="text-xs text-muted-foreground">{lead.assignee.email}</span>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="font-semibold text-foreground">{lead.created_at}</p>
+                  <p className="font-semibold text-foreground">{new Date(lead.created_at).toLocaleString()}</p>
                 </div>
               </div>
+              {lead.remarks && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Remarks</p>
+                  <p className="font-semibold text-foreground">{lead.remarks}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -188,7 +216,10 @@ export default function LeadDetailPage() {
 
               {/* Notes List */}
               <div className="space-y-3">
-                {sampleNotes.map((note) => (
+                {notes.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No notes yet.</div>
+                )}
+                {notes.map((note) => (
                   <Card key={note.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between mb-2">
@@ -204,7 +235,10 @@ export default function LeadDetailPage() {
 
             <TabsContent value="activity" className="mt-6">
               <div className="space-y-3">
-                {sampleActivities.map((activity) => (
+                {activities.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No activity yet.</div>
+                )}
+                {activities.map((activity) => (
                   <Card key={activity.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-start gap-4">
@@ -226,7 +260,10 @@ export default function LeadDetailPage() {
 
             <TabsContent value="followups" className="mt-6">
               <div className="space-y-3">
-                {sampleFollowups.map((followup) => (
+                {followups.length === 0 && (
+                  <div className="text-muted-foreground text-sm">No followups yet.</div>
+                )}
+                {followups.map((followup) => (
                   <Card key={followup.id}>
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between">
@@ -253,7 +290,12 @@ export default function LeadDetailPage() {
               <CardTitle className="text-base">Assigned To</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="font-semibold text-foreground">{lead.assigned_to}</p>
+              <p className="font-semibold text-foreground">
+                {lead.assignee ? lead.assignee.fullName : 'Unassigned'}
+              </p>
+              {lead.assignee && (
+                <span className="text-xs text-muted-foreground">{lead.assignee.email}</span>
+              )}
             </CardContent>
           </Card>
 

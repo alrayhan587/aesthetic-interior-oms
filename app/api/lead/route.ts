@@ -1,34 +1,165 @@
 import prisma from '@/lib/prisma';
-import { NextResponse } from 'next/server';
+import { Prisma, LeadStatus } from '@/generated/prisma/client';
+import { NextRequest, NextResponse } from 'next/server';
 
-console.log('[DEBUG] DATABASE_URL exists:', !!process.env.DATABASE_URL);
-console.log('[DEBUG] DATABASE_URL value:', process.env.DATABASE_URL ? '***hidden***' : 'undefined');
+// Type definition for the request body when creating a lead
+type CreateLeadBody = {
+  name?: unknown;
+  phone?: unknown;
+  email?: unknown;
+  source?: unknown;
+  status?: unknown;
+  budget?: unknown;
+  location?: unknown;
+  remarks?: unknown;
+  assignedTo?: unknown;
+  userId?: unknown;
+};
 
+// Utility function to safely convert unknown values to optional strings
+// Returns null if value is not a string or is empty after trimming
+function toOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+// Utility function to safely convert unknown values to optional numbers (for budget)
+// Returns null if value is not a valid finite number
+function toBudget(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// Utility function to convert string to LeadStatus enum
+// Returns LeadStatus.NEW as default if value is invalid
+function toLeadStatus(value: unknown): LeadStatus {
+  if (typeof value !== 'string') return LeadStatus.NEW;
+  const normalized = value.trim().toUpperCase();
+  return Object.values(LeadStatus).includes(normalized as LeadStatus)
+    ? (normalized as LeadStatus)
+    : LeadStatus.NEW;
+}
+
+// GET endpoint - Retrieve all leads from the database
+// Returns leads ordered by creation date (newest first)
+// Includes assignee information (user who the lead is assigned to)
 export async function GET() {
-  console.log('[DEBUG] GET /api/lead called');
   try {
     const leads = await prisma.lead.findMany({
       orderBy: { created_at: 'desc' },
+      include: {
+        assignee: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
     });
-    console.log('[DEBUG] Found leads:', leads.length);
-    return NextResponse.json(leads);
+
+    return NextResponse.json({ success: true, data: leads });
   } catch (error) {
-    console.error('[DEBUG] GET error:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    console.error('Error fetching leads:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch leads' },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: Request) {
-  const { name, email, phone, status, assignedTo } = await req.json();
+// POST endpoint - Create a new lead
+// Validates required fields (name, email) and checks for duplicate emails
+// Uses database transaction to ensure atomicity when creating lead and activity log
+export async function POST(request: NextRequest) {
+  try {
+    // Parse incoming JSON request body
+    const body = (await request.json()) as CreateLeadBody;
 
-  if (!name || !email) {
-    return NextResponse.json({ error: 'name and email required' }, { status: 400 });
+    // Extract and validate required fields
+    const name = toOptionalString(body.name);
+    const email = toOptionalString(body.email)?.toLowerCase();
+
+    // Return 400 error if required fields are missing or invalid
+    if (!name || !email) {
+      return NextResponse.json(
+        { success: false, error: 'Name and email are required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if a lead with the same email already exists to prevent duplicates
+    const existingLead = await prisma.lead.findFirst({
+      where: { email },
+      select: { id: true },
+    });
+
+    // Return 409 Conflict if email already exists
+    if (existingLead) {
+      return NextResponse.json(
+        { success: false, error: 'A lead with this email already exists' },
+        { status: 409 }
+      );
+    }
+
+    // Create lead and activity log in a transaction
+    // Transaction ensures both operations succeed or both fail
+    const lead = await prisma.$transaction(async (tx) => {
+      // Create the new lead with validated data
+      const newLead = await tx.lead.create({
+        data: {
+          name,
+          phone: toOptionalString(body.phone),
+          email,
+          source: toOptionalString(body.source),
+          status: toLeadStatus(body.status),
+          budget: toBudget(body.budget),
+          location: toOptionalString(body.location),
+          remarks: toOptionalString(body.remarks),
+          assignedTo: toOptionalString(body.assignedTo),
+        },
+        // Include assignee details in the response
+        include: {
+          assignee: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      });
+
+      // Log the lead creation activity if userId is provided
+      const userId = toOptionalString(body.userId);
+      if (userId) {
+        await tx.activityLog.create({
+          data: {
+            leadId: newLead.id,
+            userId,
+            type: 'NOTE',
+            description: `Lead "${name}" was created`,
+          },
+        });
+      }
+
+      return newLead;
+    });
+
+    // Return 201 Created with the new lead data
+    return NextResponse.json(
+      { success: true, data: lead, message: 'Lead created successfully' },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Error creating lead:', error);
+
+    // Handle specific Prisma unique constraint violation (P2002 error code)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { success: false, error: 'A lead with this email already exists' },
+        { status: 409 }
+      );
+    }
+
+    // Return generic 500 error for other unexpected errors
+    return NextResponse.json(
+      { success: false, error: 'Failed to create lead' },
+      { status: 500 }
+    );
   }
-  console.log('[DEBUG] POST /api/lead called with:', { name, email, phone, status, assignedTo });
-
-  const lead = await prisma.lead.create({
-    data: { name, email, phone, status: status ?? 'new', assignedTo: assignedTo ?? null },
-  });
-
-  return NextResponse.json(lead, { status: 201 });
 }
