@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
-import { LeadStatus, Prisma } from '@/generated/prisma/client';
+import { LeadStage, LeadStatus, LeadSubStatus, Prisma } from '@/generated/prisma/client';
+import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { NextRequest, NextResponse } from 'next/server';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
@@ -10,6 +11,8 @@ type UpdateLeadBody = {
   email?: unknown;
   source?: unknown;
   status?: unknown;
+  stage?: unknown;
+  subStatus?: unknown;
   budget?: unknown;
   location?: unknown;
   remarks?: unknown;
@@ -52,6 +55,26 @@ function toLeadStatus(value: unknown): LeadStatus | undefined {
   return Object.values(LeadStatus).includes(normalized as LeadStatus)
     ? (normalized as LeadStatus)
     : LeadStatus.NEW;
+}
+
+function toLeadStage(value: unknown): LeadStage | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return LeadStage.NEW;
+  const normalized = value.trim().toUpperCase();
+  return Object.values(LeadStage).includes(normalized as LeadStage)
+    ? (normalized as LeadStage)
+    : LeadStage.NEW;
+}
+
+function toLeadSubStatus(value: unknown): LeadSubStatus | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toUpperCase();
+  return Object.values(LeadSubStatus).includes(normalized as LeadSubStatus)
+    ? (normalized as LeadSubStatus)
+    : null;
 }
 
 // GET /api/lead/[id] - fetch one lead with related CRM timeline details
@@ -164,6 +187,16 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     const status = toLeadStatus(body.status);
+    const stage = toLeadStage(body.stage) ?? existingLead.stage;
+    const subStatus = toLeadSubStatus(body.subStatus) ?? null;
+
+    if (!isSubStatusAllowedForStage(stage, subStatus)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid subStatus for selected stage' },
+        { status: 400 }
+      );
+    }
+
     const userId = toOptionalString(body.userId);
     const assignedTo = toOptionalString(body.assignedTo);
 
@@ -176,6 +209,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           email,
           source: toOptionalString(body.source),
           status: status ?? existingLead.status,
+          stage,
+          subStatus,
           budget: toBudget(body.budget) ?? null,
           location: toOptionalString(body.location),
           remarks: toOptionalString(body.remarks),
@@ -291,7 +326,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const status = toLeadStatus(body.status);
+    const stage = toLeadStage(body.stage);
+    const subStatus = toLeadSubStatus(body.subStatus) ?? null;
     const userId = toOptionalString(body.userId);
+
+    const nextStage = stage ?? existingLead.stage;
+    const nextSubStatus = body.subStatus !== undefined ? subStatus : existingLead.subStatus;
+
+    if (!isSubStatusAllowedForStage(nextStage, nextSubStatus)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid subStatus for selected stage' },
+        { status: 400 }
+      );
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const lead = await tx.lead.update({
@@ -302,6 +349,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ...(nextEmail !== undefined ? { email: nextEmail } : {}),
           ...(body.source !== undefined ? { source: toOptionalString(body.source) } : {}),
           ...(status !== undefined ? { status } : {}),
+          ...(stage !== undefined ? { stage } : {}),
+          ...(body.subStatus !== undefined ? { subStatus } : {}),
           ...(body.budget !== undefined ? { budget: toBudget(body.budget) ?? null } : {}),
           ...(body.location !== undefined ? { location: toOptionalString(body.location) } : {}),
           ...(body.remarks !== undefined ? { remarks: toOptionalString(body.remarks) } : {}),

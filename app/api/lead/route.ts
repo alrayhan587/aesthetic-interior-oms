@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
-import { Prisma, LeadStatus } from '@/generated/prisma/client';
+import { LeadStage, LeadSubStatus, Prisma, LeadStatus } from '@/generated/prisma/client';
+import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Type definition for the request body when creating a lead
@@ -9,6 +10,8 @@ type CreateLeadBody = {
   email?: unknown;
   source?: unknown;
   status?: unknown;
+  stage?: unknown;
+  subStatus?: unknown;
   budget?: unknown;
   location?: unknown;
   remarks?: unknown;
@@ -40,6 +43,24 @@ function toLeadStatus(value: unknown): LeadStatus {
   return Object.values(LeadStatus).includes(normalized as LeadStatus)
     ? (normalized as LeadStatus)
     : LeadStatus.NEW;
+}
+
+function toLeadStage(value: unknown): LeadStage {
+  if (typeof value !== 'string') return LeadStage.NEW;
+  const normalized = value.trim().toUpperCase();
+  return Object.values(LeadStage).includes(normalized as LeadStage)
+    ? (normalized as LeadStage)
+    : LeadStage.NEW;
+}
+
+function toLeadSubStatus(value: unknown): LeadSubStatus | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') return null;
+
+  const normalized = value.trim().toUpperCase();
+  return Object.values(LeadSubStatus).includes(normalized as LeadSubStatus)
+    ? (normalized as LeadSubStatus)
+    : null;
 }
 
 // GET endpoint - Retrieve all leads from the database
@@ -100,6 +121,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const stage = toLeadStage(body.stage);
+    const subStatus = toLeadSubStatus(body.subStatus);
+
+    if (!isSubStatusAllowedForStage(stage, subStatus)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid subStatus for selected stage' },
+        { status: 400 }
+      );
+    }
+
     // Create lead and activity log in a transaction
     // Transaction ensures both operations succeed or both fail
     const lead = await prisma.$transaction(async (tx) => {
@@ -111,6 +142,8 @@ export async function POST(request: NextRequest) {
           email,
           source: toOptionalString(body.source),
           status: toLeadStatus(body.status),
+          stage,
+          subStatus,
           budget: toBudget(body.budget),
           location: toOptionalString(body.location),
           remarks: toOptionalString(body.remarks),

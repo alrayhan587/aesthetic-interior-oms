@@ -20,6 +20,8 @@ model Lead {
   email         String
   source        String?
   status        LeadStatus @default(NEW)
+  stage         LeadStage  @default(NEW)
+  subStatus     LeadSubStatus?
   budget        Float?
   location      String?
   remarks       String?
@@ -156,6 +158,26 @@ enum LeadStatus {
   VISIT_SCHEDULED
   REJECTED
   QUALIFIED
+}
+
+enum LeadStage {
+  NEW
+  CONTACT_ATTEMPTED
+  NURTURING
+  VISIT_SCHEDULED
+  CLOSED
+}
+
+enum LeadSubStatus {
+  NUMBER_COLLECTED
+  NO_ANSWER
+  WARM_LEAD
+  FUTURE_CLIENT
+  SMALL_BUDGET
+  DEAD_LEAD
+  INVALID
+  NOT_INTERESTED
+  LOST
 }
 
 enum FollowUpStatus {
