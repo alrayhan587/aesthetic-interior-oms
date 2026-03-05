@@ -14,29 +14,46 @@ datasource db {
 }
 
 model Lead {
-  id            String     @id @default(cuid())
-  name          String
-  phone         String?
-  email         String
-  source        String?
-  status        LeadStatus @default(NEW)
-  stage         LeadStage  @default(NEW)
-  subStatus     LeadSubStatus?
-  budget        Float?
-  location      String?
-  remarks       String?
-  assignedTo    String?
-  created_at    DateTime   @default(now())
-  updated_at    DateTime   @updatedAt
+  id         String         @id @default(cuid())
+  name       String
+  phone      String?
+  email      String
+  source     String?
+  status     LeadStatus     @default(NEW)
+  stage      LeadStage      @default(NEW)
+  subStatus  LeadSubStatus?
+  budget     Float?
+  location   String?
+  remarks    String?
+  assignedTo String?
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
 
-  assignee          User?                @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
-  followUps         FollowUp[]
-  notes             Note[]
-  activities        ActivityLog[]
-  statusHistory     LeadStatusHistory[]
+  assignee      User?               @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
+  followUps     FollowUp[]
+  notes         Note[]
+  activities    ActivityLog[]
+  statusHistory LeadStatusHistory[]
+  assignments   LeadAssignment[]
 
   @@index([assignedTo])
   @@index([email])
+}
+
+model LeadAssignment {
+  id         String                   @id @default(cuid())
+  leadId     String
+  userId     String
+  department LeadAssignmentDepartment
+  createdAt  DateTime                 @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, department, userId])
+  @@index([leadId])
+  @@index([userId])
+  @@index([department])
 }
 
 model LeadStatusHistory {
@@ -68,15 +85,15 @@ model ActivityLog {
 }
 
 model FollowUp {
-  id           String           @id @default(cuid())
+  id           String         @id @default(cuid())
   leadId       String
-  lead         Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead         Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
   assignedToId String
-  assignedTo   User             @relation(fields: [assignedToId], references: [id], onDelete: Cascade)
+  assignedTo   User           @relation(fields: [assignedToId], references: [id], onDelete: Cascade)
   followupDate DateTime
-  status       FollowUpStatus   @default(PENDING)
+  status       FollowUpStatus @default(PENDING)
   notes        String?
-  createdAt    DateTime         @default(now())
+  createdAt    DateTime       @default(now())
 
   @@index([leadId])
   @@index([assignedToId])
@@ -96,21 +113,31 @@ model Note {
 }
 
 model User {
-  id              String           @id @default(cuid())
-  fullName        String
-  email           String           @unique
-  phone           String
-  clerkUserId     String?          @unique
-  created_at      DateTime         @default(now())
-  updated_at      DateTime         @updatedAt
+  id          String   @id @default(cuid())
+  fullName    String
+  email       String   @unique
+  phone       String
+  clerkUserId String?  @unique
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  leads                Lead[]           @relation("UserAssignedLeads")
-  followUps            FollowUp[]
-  notes                Note[]
-  activities           ActivityLog[]
-  statusChanges        LeadStatusHistory[]
-  userRoles            UserRole[]
-  userDepartments      UserDepartment[]
+  leads           Lead[]              @relation("UserAssignedLeads")
+  followUps       FollowUp[]
+  notes           Note[]
+  activities      ActivityLog[]
+  statusChanges   LeadStatusHistory[]
+  userRoles       UserRole[]
+  userDepartments UserDepartment[]
+  leadAssignments LeadAssignment[]
+}
+
+enum LeadAssignmentDepartment {
+  SR_CRM
+  JR_CRM
+  QUOTATION
+  VISIT_TEAM
+  JR_ARCHITECT
+  VISUALIZER_3D
 }
 
 model Role {
@@ -121,10 +148,10 @@ model Role {
 }
 
 model Department {
-  id                String           @id @default(cuid())
-  name              String           @unique
-  description       String?
-  userDepartments   UserDepartment[]
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String?
+  userDepartments UserDepartment[]
 }
 
 model UserRole {
@@ -132,8 +159,8 @@ model UserRole {
   roleId     String
   created_at DateTime @default(now())
 
-  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
   @@index([roleId])
@@ -179,7 +206,6 @@ enum LeadSubStatus {
   NOT_INTERESTED
   LOST
 }
-
 
 enum FollowUpStatus {
   PENDING

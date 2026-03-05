@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { LeadStage, LeadSubStatus, Prisma, LeadStatus } from '@/generated/prisma/client';
 import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { NextRequest, NextResponse } from 'next/server';
+import { logLeadCreated } from '@/lib/activity-log-service';
 
 // Type definition for the request body when creating a lead
 type CreateLeadBody = {
@@ -160,14 +161,11 @@ export async function POST(request: NextRequest) {
       // Log the lead creation activity if userId is provided
       const userId = toOptionalString(body.userId);
       if (userId) {
-        await tx.activityLog.create({
-          data: {
-            leadId: newLead.id,
-            userId,
-            type: 'NOTE',
-            description: `Lead "${name}" was created`,
-          },
-        });
+        await logLeadCreated(tx, {
+        leadId: newLead.id,
+        userId,
+        leadName: name,
+      });
       }
 
       return newLead;

@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { LeadStage, LeadStatus, LeadSubStatus, Prisma } from '@/generated/prisma/client';
 import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { NextRequest, NextResponse } from 'next/server';
+import { logLeadAssignmentChanged, logLeadStatusChanged } from '@/lib/activity-log-service';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -233,26 +234,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           },
         });
 
-        await tx.activityLog.create({
-          data: {
-            leadId: id,
-            userId,
-            type: 'STATUS_CHANGE',
-            description: `Status changed from ${existingLead.status} to ${status}`,
-          },
+             await logLeadStatusChanged(tx, {
+          leadId: id,
+          userId,
+          from: existingLead.status,
+          to: status,
         });
       }
 
       if (assignedTo !== existingLead.assignedTo && userId) {
-        await tx.activityLog.create({
-          data: {
-            leadId: id,
-            userId,
-            type: 'NOTE',
-            description: assignedTo
-              ? `Lead assigned to user ${assignedTo}`
-              : 'Lead assignment was cleared',
-          },
+          await logLeadAssignmentChanged(tx, {
+          leadId: id,
+          userId,
+          assignedTo,
         });
       }
 
@@ -372,13 +366,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           },
         });
 
-        await tx.activityLog.create({
-          data: {
-            leadId: id,
-            userId,
-            type: 'STATUS_CHANGE',
-            description: `Status changed from ${existingLead.status} to ${status}`,
-          },
+         await logLeadStatusChanged(tx, {
+          leadId: id,
+          userId,
+          from: existingLead.status,
+          to: status,
         });
       }
 
