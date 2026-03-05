@@ -107,37 +107,7 @@ export default function LeadsPage() {
         <LeadCreateModal onCreated={refreshLeads} />
         {/* <DialogDemo/> */}
 
-           <Dialog>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Add Lead
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Lead</DialogTitle>
-              <DialogDescription>Enter a user name and email to create a lead.</DialogDescription>
-            </DialogHeader>
-            <form className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="lead-name" className="text-sm font-medium">
-                  User Name
-                </label>
-                <Input id="lead-name" name="name" placeholder="John Doe" />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="lead-email" className="text-sm font-medium">
-                  Email
-                </label>
-                <Input id="lead-email" name="email" type="email" placeholder="john@example.com" />
-              </div>
-              <DialogFooter>
-                <Button type="button">Save</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+           
       </div>
 
       {/* Status Overview */}

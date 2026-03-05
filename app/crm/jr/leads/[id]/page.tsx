@@ -45,10 +45,19 @@ type LeadDetails = {
 }
 
 type Note = {
-  id: string | number
-  author: string
-  date: string
+  id: string
   content: string
+  createdAt: string
+  user: {
+    id: string
+    fullName: string
+    email: string
+  }
+  lead: {
+    id: string
+    name: string
+    email: string
+  }
 }
 
 type Activity = {
@@ -74,29 +83,131 @@ export default function LeadDetailPage() {
 
   const [lead, setLead] = useState<LeadDetails | null>(null)
   const [loading, setLoading] = useState(true)
+  const [notesLoading, setNotesLoading] = useState(false)
   const [status, setStatus] = useState('NEW')
   const [newNote, setNewNote] = useState('')
+  const [submittingNote, setSubmittingNote] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // These will be replaced with real API data in the future
   const [notes, setNotes] = useState<Note[]>([])
   const [activities, setActivities] = useState<Activity[]>([])
   const [followups, setFollowups] = useState<Followup[]>([])
 
+  // Fetch current user
   useEffect(() => {
+    console.log('[LeadDetail] phase=fetch_user_start timestamp=', new Date().toISOString());
+    fetch('/api/me')
+      .then(res => {
+        console.log('[LeadDetail] phase=fetch_user_response status=', res.status);
+        return res.json()
+      })
+      .then(data => {
+        console.log('[LeadDetail] phase=fetch_user_parsed data.id=', data.id, 'data.error=', data.error);
+        if (data.id) {
+          console.log('[LeadDetail] phase=set_current_user_id userId=', data.id);
+          setCurrentUserId(data.id)
+        } else {
+          console.log('[LeadDetail] phase=user_data_missing_id data=', JSON.stringify(data).substring(0, 200));
+        }
+      })
+      .catch((error) => {
+        console.error('[LeadDetail] phase=fetch_user_error error=', error.message, 'stack=', error.stack)
+      })
+  }, [])
+
+  // Fetch lead details
+  useEffect(() => {
+    console.log('[LeadDetail] phase=fetch_lead_start leadId=', leadId, 'timestamp=', new Date().toISOString());
     setLoading(true)
     fetch(`/api/lead/${leadId}`)
-      .then(res => res.json())
+      .then(res => {
+        console.log('[LeadDetail] phase=fetch_lead_response leadId=', leadId, 'status=', res.status);
+        return res.json()
+      })
       .then(data => {
+        console.log('[LeadDetail] phase=fetch_lead_parsed leadId=', leadId, 'success=', data.success, 'hasData=', Boolean(data.data));
         setLead(data.data)
         setStatus(data.data?.status || 'NEW')
-        // If your API returns notes, activities, followups, set them here
-        setNotes(data.data?.notes || [])
         setActivities(data.data?.activities || [])
         setFollowups(data.data?.followUps || [])
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch((error) => {
+        console.error('[LeadDetail] phase=fetch_lead_error leadId=', leadId, 'error=', error.message, 'stack=', error.stack);
+        setLoading(false)
+      })
   }, [leadId])
+
+  // Fetch notes for the lead
+  useEffect(() => {
+    console.log('[LeadDetail] phase=fetch_notes_start leadId=', leadId, 'timestamp=', new Date().toISOString());
+    setNotesLoading(true)
+    fetch(`/api/note/${leadId}`)
+      .then(res => {
+        console.log('[LeadDetail] phase=fetch_notes_response leadId=', leadId, 'status=', res.status);
+        return res.json()
+      })
+      .then(data => {
+        console.log('[LeadDetail] phase=fetch_notes_parsed leadId=', leadId, 'success=', data.success, 'count=', data.data?.length || 0, 'error=', data.error);
+        if (data.success) {
+          console.log('[LeadDetail] phase=set_notes leadId=', leadId, 'notesCount=', data.data.length);
+          setNotes(data.data)
+        } else {
+          console.log('[LeadDetail] phase=fetch_notes_failed leadId=', leadId, 'error=', data.error);
+        }
+        setNotesLoading(false)
+      })
+      .catch((error) => {
+        console.error('[LeadDetail] phase=fetch_notes_error leadId=', leadId, 'error=', error.message, 'stack=', error.stack);
+        setNotesLoading(false)
+      })
+  }, [leadId])
+
+  // Handle adding a new note
+  const handleAddNote = async () => {
+    console.log('[LeadDetail] phase=handle_add_note_start leadId=', leadId, 'currentUserId=', currentUserId, 'noteLength=', newNote.trim().length);
+    
+    if (!newNote.trim() || !currentUserId) {
+      console.warn('[LeadDetail] phase=handle_add_note_validation_failed newNote.trim()=', Boolean(newNote.trim()), 'currentUserId=', Boolean(currentUserId));
+      return
+    }
+
+    console.log('[LeadDetail] phase=add_note_submitting leadId=', leadId, 'userId=', currentUserId);
+    setSubmittingNote(true)
+    try {
+      const payload = {
+        content: newNote,
+        userId: currentUserId,
+      };
+      console.log('[LeadDetail] phase=add_note_fetch_start url=/api/note/', leadId, 'payload=', JSON.stringify(payload));
+
+      const response = await fetch(`/api/note/${leadId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      console.log('[LeadDetail] phase=add_note_response status=', response.status, 'ok=', response.ok);
+
+      const data = await response.json()
+      console.log('[LeadDetail] phase=add_note_parsed success=', data.success, 'hasData=', Boolean(data.data), 'error=', data.error);
+
+      if (data.success) {
+        console.log('[LeadDetail] phase=add_note_success noteId=', data.data?.id);
+        setNotes([data.data, ...notes])
+        setNewNote('')
+      } else {
+        console.error('[LeadDetail] phase=add_note_failed error=', data.error);
+      }
+    } catch (error) {
+      console.error('[LeadDetail] phase=add_note_error leadId=', leadId, 'error=', error instanceof Error ? error.message : String(error), 'stack=', error instanceof Error ? error.stack : undefined);
+    } finally {
+      setSubmittingNote(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -210,23 +321,51 @@ export default function LeadDetailPage() {
                     onChange={(e) => setNewNote(e.target.value)}
                     rows={3}
                   />
-                  <Button className="w-full">Add Note</Button>
+                  <Button 
+                    onClick={handleAddNote} 
+                    className="w-full"
+                    disabled={!newNote.trim() || submittingNote}
+                  >
+                    {submittingNote ? 'Adding...' : 'Add Note'}
+                  </Button>
                 </CardContent>
               </Card>
 
               {/* Notes List */}
               <div className="space-y-3">
-                {notes.length === 0 && (
-                  <div className="text-muted-foreground text-sm">No notes yet.</div>
+                {notesLoading && (
+                  <div className="text-muted-foreground text-sm">Loading notes...</div>
                 )}
-                {notes.map((note) => (
-                  <Card key={note.id}>
+                {!notesLoading && notes.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    <p>No notes yet. Add your first note!</p>
+                  </div>
+                )}
+                {!notesLoading && notes.map((note) => (
+                  <Card key={note.id} className="hover:shadow-md transition-shadow duration-200">
                     <CardContent className="pt-6">
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-semibold text-foreground">{note.author}</p>
-                        <p className="text-xs text-muted-foreground">{note.date}</p>
+                      <div className="flex items-start gap-4">
+                        {/* User Avatar */}
+                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 dark:from-blue-500 dark:to-blue-700 flex items-center justify-center text-white text-sm font-medium">
+                          {note.user.fullName.charAt(0).toUpperCase()}
+                        </div>
+                        
+                        {/* Note Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div>
+                              <p className="font-semibold text-foreground">{note.user.fullName}</p>
+                              <p className="text-xs text-muted-foreground">{note.user.email}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
+                              {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
+                            {note.content}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-muted-foreground">{note.content}</p>
                     </CardContent>
                   </Card>
                 ))}

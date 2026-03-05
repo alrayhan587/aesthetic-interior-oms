@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 // Import Prisma database client for ORM operations
 import prisma from '@/lib/prisma'
 
+//here get all notes for a lead, create a note for a lead. The leadId is used to filter notes by lead and to associate new notes with the correct lead when creating them.
+
 // Define route context type that handles both sync and async params (Next.js 15+ uses Promise-based params)
 type RouteContext = { params: { leadId: string } | Promise<{ leadId: string }> }
 

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+//Here get the note by id, update the note by id and delete the note by id. The leadId is not used in this route but is part of the route structure for consistency with other note-related routes.
+
+
 // Route context for accessing dynamic route parameters [leadId] and [id]
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
 

@@ -80,7 +80,7 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-blue-600 hover:bg-blue-700">
+        <Button className="gap-2 bg-foreground hover:bg-foreground/70 text-background">
           <Plus className="w-4 h-4" />
           Add Lead
         </Button>
