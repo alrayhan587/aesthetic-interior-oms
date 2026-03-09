@@ -81,6 +81,34 @@ export async function logLeadStatusChanged(
   });
 }
 
+export async function logLeadStageChanged(
+  writer: ActivityLogWriter,
+  input: BaseLogInput & { from: string; to: string; reason?: string | null }
+): Promise<void> {
+  const reasonPart = input.reason ? ` (Reason: ${input.reason})` : '';
+  await logActivity(writer, {
+    leadId: input.leadId,
+    userId: input.userId,
+    type: ActivityType.STATUS_CHANGE,
+    description: `Stage changed from ${input.from} to ${input.to}${reasonPart}`,
+  });
+}
+
+export async function logLeadSubStatusChanged(
+  writer: ActivityLogWriter,
+  input: BaseLogInput & { from: string | null; to: string | null; reason?: string | null }
+): Promise<void> {
+  const fromValue = input.from ?? 'NONE';
+  const toValue = input.to ?? 'NONE';
+  const reasonPart = input.reason ? ` (Reason: ${input.reason})` : '';
+  await logActivity(writer, {
+    leadId: input.leadId,
+    userId: input.userId,
+    type: ActivityType.STATUS_CHANGE,
+    description: `SubStatus changed from ${fromValue} to ${toValue}${reasonPart}`,
+  });
+}
+
 export async function logLeadAssignmentChanged(
   writer: ActivityLogWriter,
   input: BaseLogInput & { assignedTo: string | null }

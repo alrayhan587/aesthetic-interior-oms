@@ -1,3 +1,240 @@
+/*
+  POSTMAN TESTING DATA
+  =====================
+  
+  BASE URL: http://localhost:3000/api/lead/{leadId}
+  
+  VALID LEAD STATUSES: NEW, INTERESTED, NEGOTIATION, WON, LOST, INACTIVE
+  VALID LEAD STAGES: NEW, DESIGN_CONSULTATION, QUOTATION_PREPARED, NEGOTIATION, FINALIZED, WON, LOST
+  
+  =====================
+  GET - Fetch a specific lead with all related data
+  =====================
+  URL: http://localhost:3000/api/lead/{leadId}
+  Method: GET
+  Headers: 
+    - Authorization: Bearer {token}
+  
+  Example URL:
+  http://localhost:3000/api/lead/cmmhfdt160000vzwb5ai4ej2g
+  
+  Example curl:
+  curl -X GET http://localhost:3000/api/lead/cmmhfdt160000vzwb5ai4ej2g \
+    -H "Authorization: Bearer {token}"
+  
+  Expected Success Response (200):
+  {
+    "success": true,
+    "data": {
+      "id": "cmmhfdt160000vzwb5ai4ej2g",
+      "name": "Moinul Islam",
+      "phone": "+8801234567890",
+      "email": "moinul@example.com",
+      "source": "Website",
+      "location": "Dhaka",
+      "status": "NEW",
+      "stage": "NEW",
+      "subStatus": null,
+      "budget": 500000,
+      "remarks": "Interested in interior design",
+      "assignedTo": "user-456",
+      "created_at": "2026-03-09T08:03:54.636Z",
+      "updated_at": "2026-03-09T08:03:54.636Z",
+      "assignee": {
+        "id": "user-456",
+        "fullName": "Sarah Smith",
+        "email": "sarah@example.com"
+      },
+      "followUps": [],
+      "notes": [],
+      "activities": [],
+      "statusHistory": []
+    }
+  }
+  
+  Expected Error: Lead not found (404):
+  {"success": false, "error": "Lead not found"}
+  
+  =====================
+  PUT - Full update of a lead (name and phone required)
+  =====================
+  URL: http://localhost:3000/api/lead/{leadId}
+  Method: PUT
+  Headers: 
+    - Content-Type: application/json
+    - Authorization: Bearer {token}
+  
+  REQUIRED FIELDS: name, phone
+  OPTIONAL FIELDS: email, source, status, stage, subStatus, budget, location, remarks, assignedTo, userId
+  
+  Request Body (Full Update):
+  {
+    "name": "John Doe Updated",
+    "phone": "+1234567890",
+    "email": "john.updated@example.com",
+    "source": "Referral",
+    "status": "INTERESTED",
+    "stage": "DESIGN_CONSULTATION",
+    "subStatus": "AWAITING_QUOTE",
+    "budget": 750000,
+    "location": "New York",
+    "remarks": "Updated remarks",
+    "assignedTo": "user-789",
+    "userId": "user-123"
+  }
+  
+  Example curl (Full Update):
+  curl -X PUT http://localhost:3000/api/lead/cmmhfdt160000vzwb5ai4ej2g \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "John Doe Updated",
+      "phone": "+1234567890",
+      "email": "john.updated@example.com",
+      "status": "INTERESTED",
+      "stage": "DESIGN_CONSULTATION",
+      "userId": "user-123"
+    }'
+  
+  Expected Success Response (200):
+  {
+    "success": true,
+    "data": { ... updated lead data ... },
+    "message": "Lead updated successfully"
+  }
+  
+  Expected Error Responses:
+  - Missing required fields (400):
+    {"success": false, "error": "Name and phone are required"}
+  
+  - Lead not found (404):
+    {"success": false, "error": "Lead not found"}
+  
+  - Duplicate email (409):
+    {"success": false, "error": "A lead with this email already exists"}
+  
+  =====================
+  PATCH - Partial update of a lead (only supplied fields)
+  =====================
+  URL: http://localhost:3000/api/lead/{leadId}
+  Method: PATCH
+  Headers: 
+    - Content-Type: application/json
+    - Authorization: Bearer {token}
+  
+  ALL FIELDS OPTIONAL - only send fields you want to update
+  
+  Request Body Examples:
+  
+  Example 1 - Update status only:
+  {
+    "status": "NEGOTIATION",
+    "userId": "user-123"
+  }
+  
+  Example 2 - Update stage and remarks:
+  {
+    "stage": "QUOTATION_PREPARED",
+    "remarks": "Quote sent to client",
+    "userId": "user-123"
+  }
+  
+  Example 3 - Update budget and assigned user:
+  {
+    "budget": 1000000,
+    "assignedTo": "user-789"
+  }
+  
+  Example curl (Update status):
+  curl -X PATCH http://localhost:3000/api/lead/cmmhfdt160000vzwb5ai4ej2g \
+    -H "Content-Type: application/json" \
+    -d '{
+      "status": "NEGOTIATION",
+      "userId": "user-123"
+    }'
+  
+  Expected Success Response (200):
+  {
+    "success": true,
+    "data": { ... patched lead data ... },
+    "message": "Lead updated successfully"
+  }
+  
+  Expected Error Responses:
+  - Lead not found (404):
+    {"success": false, "error": "Lead not found"}
+  
+  - Duplicate email (409):
+    {"success": false, "error": "A lead with this email already exists"}
+  
+  - Invalid subStatus for stage (400):
+    {"success": false, "error": "Invalid subStatus for selected stage"}
+  
+  =====================
+  DELETE - Remove a lead permanently
+  =====================
+  URL: http://localhost:3000/api/lead/{leadId}
+  Method: DELETE
+  Headers: 
+    - Authorization: Bearer {token}
+  
+  No request body needed
+  
+  Example curl:
+  curl -X DELETE http://localhost:3000/api/lead/cmmhfdt160000vzwb5ai4ej2g \
+    -H "Authorization: Bearer {token}"
+  
+  Expected Success Response (200):
+  {
+    "success": true,
+    "message": "Lead deleted successfully"
+  }
+  
+  Expected Error: Lead not found (404):
+  {"success": false, "error": "Lead not found"}
+  
+  =====================
+  POSTMAN COLLECTION SETUP
+  =====================
+  
+  1. Create a new Collection: "Lead Management - Individual"
+  2. Create four requests:
+  
+  Request 1: Get Lead
+  - Name: GET - Fetch Lead
+  - Method: GET
+  - URL: {{baseUrl}}/api/lead/{{leadId}}
+  - Headers: Authorization: Bearer {{token}}
+  
+  Request 2: Update Lead (Full)
+  - Name: PUT - Full Update Lead
+  - Method: PUT
+  - URL: {{baseUrl}}/api/lead/{{leadId}}
+  - Body (raw JSON): {"name": "{{leadName}}", "phone": "{{leadPhone}}", "email": "{{leadEmail}}", "status": "INTERESTED", "userId": "{{userId}}"}
+  - Headers: Content-Type: application/json, Authorization: Bearer {{token}}
+  
+  Request 3: Update Lead (Partial)
+  - Name: PATCH - Partial Update Lead
+  - Method: PATCH
+  - URL: {{baseUrl}}/api/lead/{{leadId}}
+  - Body (raw JSON): {"status": "NEGOTIATION", "userId": "{{userId}}"}
+  - Headers: Content-Type: application/json, Authorization: Bearer {{token}}
+  
+  Request 4: Delete Lead
+  - Name: DELETE - Remove Lead
+  - Method: DELETE
+  - URL: {{baseUrl}}/api/lead/{{leadId}}
+  - Headers: Authorization: Bearer {{token}}
+  
+  3. Set collection variables:
+  - baseUrl: http://localhost:3000
+  - leadId: cmmhfdt160000vzwb5ai4ej2g
+  - leadName: John Doe
+  - leadPhone: +1234567890
+  - leadEmail: john@example.com
+  - userId: cmmhf6aef0003pku3125gleqh
+  - token: your_auth_token
+*/
+
 import prisma from '@/lib/prisma';
 import { LeadStage, LeadStatus, LeadSubStatus, Prisma } from '@/generated/prisma/client';
 import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
@@ -157,12 +394,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const body = (await request.json()) as UpdateLeadBody;
     const name = toRequiredString(body.name);
-    const email = toRequiredString(body.email)?.toLowerCase();
+    const phone = toRequiredString(body.phone);
+    const email = toOptionalString(body.email)?.toLowerCase();
 
     // For PUT we enforce required primary fields to avoid partial/ambiguous payloads.
-    if (!name || !email) {
+    if (!name || !phone) {
       return NextResponse.json(
-        { success: false, error: 'Name and email are required' },
+        { success: false, error: 'Name and phone are required' },
         { status: 400 }
       );
     }
@@ -173,18 +411,20 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
-    // Prevent duplicate email across different leads.
-    const duplicate = await prisma.lead.findFirst({
-      where: { email, NOT: { id } },
-      select: { id: true },
-    });
+    // Prevent duplicate email across different leads (only if email is provided).
+    if (email) {
+      const duplicate = await prisma.lead.findFirst({
+        where: { email, NOT: { id } },
+        select: { id: true },
+      });
 
-    if (duplicate) {
-      console.log('[DEBUG][lead/:id][PUT] Duplicate email detected:', email);
-      return NextResponse.json(
-        { success: false, error: 'A lead with this email already exists' },
-        { status: 409 }
-      );
+      if (duplicate) {
+        console.log('[DEBUG][lead/:id][PUT] Duplicate email detected:', email);
+        return NextResponse.json(
+          { success: false, error: 'A lead with this email already exists' },
+          { status: 409 }
+        );
+      }
     }
 
     const status = toLeadStatus(body.status);
@@ -205,8 +445,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         where: { id },
         data: {
           name,
-          phone: toOptionalString(body.phone),
-          email,
+          phone,
+          email: email ?? existingLead.email,
           source: toOptionalString(body.source),
           status: status ?? existingLead.status,
              stage,

@@ -5,7 +5,15 @@ import prisma from "@/lib/prisma";
 type RoleCheckSuccess = {
   ok: true;
   actorUserId: string;
+  clerkUserId: string;
   actorRoles: string[];
+  actor: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    clerkUserId: string | null;
+  };
 };
 
 type RoleCheckFailure = {
@@ -32,6 +40,10 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
     where: { clerkUserId: userId },
     select: {
       id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      clerkUserId: true,
       userRoles: {
         select: {
           role: {
@@ -77,6 +89,14 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
   return {
     ok: true,
     actorUserId: actor.id,
+    clerkUserId: userId,
     actorRoles,
+    actor: {
+      id: actor.id,
+      fullName: actor.fullName,
+      email: actor.email,
+      phone: actor.phone,
+      clerkUserId: actor.clerkUserId,
+    },
   };
 }

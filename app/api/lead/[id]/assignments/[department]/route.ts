@@ -1,7 +1,7 @@
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
-import { logLeadCreated } from '@/lib/activity-log-service';
+import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
 
 /*
   POSTMAN TESTING DATA
@@ -218,6 +218,11 @@ export async function PUT(
       );
     }
 
+     const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, fullName: true, email: true },
+    });
+
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
@@ -251,9 +256,9 @@ export async function PUT(
       });
 
       // Log the update activity
-      await logLeadCreated(tx, {
+      await logUserAssigned(tx, {
         leadId,
-        userId: authResult.actorUserId,
+        userId: userId,
         leadName: `Assignment updated: ${user.fullName} assigned to ${department} department`,
       });
 
@@ -363,9 +368,9 @@ export async function DELETE(
       });
 
       // Log the deletion activity
-      await logLeadCreated(tx, {
+      await logUserAssigned(tx, {
         leadId,
-        userId: authResult.actorUserId,
+        userId: authResult.actorId,
         leadName: `${assignment.user.fullName} unassigned from ${department} department`,
       });
 
