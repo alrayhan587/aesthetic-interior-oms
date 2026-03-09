@@ -1,31 +1,33 @@
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+const VALID_DEPARTMENTS = [
+  'SR_CRM',
+  'JR_CRM',
+  'QUOTATION',
+  'VISIT_TEAM',
+  'JR_ARCHITECT',
+  'VISUALIZER_3D',
+] as const;
+
 // GET - Fetch available users for a specific department (by name)
 // Returns users who are members of the given department
 // Used for assignment modal to show available users to assign
 export async function GET(
+    _request: NextRequest,
   request: NextRequest,
   { params }: { params: { name: string } }
 ) {
   try {
     const departmentName = params.name.toUpperCase();
 
-    // Validate department name against enum values
-    const validDepartments = [
-      'SR_CRM',
-      'JR_CRM',
-      'QUOTATION',
-      'VISIT_TEAM',
-      'JR_ARCHITECT',
-      'VISUALIZER_3D',
-    ];
+   
 
-    if (!validDepartments.includes(departmentName)) {
+   if (!VALID_DEPARTMENTS.includes(departmentName as (typeof VALID_DEPARTMENTS)[number])) {
       return NextResponse.json(
         {
           success: false,
-          error: `Invalid department. Must be one of: ${validDepartments.join(', ')}`,
+         error: `Invalid department. Must be one of: ${VALID_DEPARTMENTS.join(', ')}`,
         },
         { status: 400 }
       );

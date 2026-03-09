@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
+import { Prisma } from '@/generated/prisma/client';
 
-type AddUserBody = {
+type MembershipBody = {
   userId?: unknown;
 };
 
@@ -12,18 +13,36 @@ function toOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function parseJsonBody(request: NextRequest): Promise<MembershipBody | null> {
+  try {
+    return (await request.json()) as MembershipBody;
+  } catch {
+    return null;
+  }
+}
+
+
 // POST - Add a user to a department
 // Associates a user with a department
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     // Verify user authentication
-    const authResult = await requireDatabaseRoles([]);
+      const authResult = await requireDatabaseRoles(['admin']);
     if (!authResult.ok) {
       return authResult.response;
     }
 
+    const body = await parseJsonBody(request);
+    if (!body) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 }
+      );
+    }
+
     const departmentId = params.id;
-    const body = (await request.json()) as AddUserBody;
+
+   
 
     const userId = toOptionalString(body.userId);
 
@@ -34,11 +53,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       );
     }
 
-    // Verify department exists
-    const department = await prisma.department.findUnique({
-      where: { id: departmentId },
-      select: { id: true, name: true },
-    });
+    
+    const [department, user] = await Promise.all([
+      prisma.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true } }),
+    ]);
 
     if (!department) {
       return NextResponse.json(
@@ -47,11 +66,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       );
     }
 
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, fullName: true, email: true },
-    });
 
     if (!user) {
       return NextResponse.json(
@@ -112,19 +126,23 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
 // DELETE - Remove a user from a department
 // Disassociates a user from a department
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     // Verify user authentication
-    const authResult = await requireDatabaseRoles([]);
+     const authResult = await requireDatabaseRoles(['admin']);
     if (!authResult.ok) {
       return authResult.response;
     }
 
+      const body = await parseJsonBody(request);
+    if (!body) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 }
+      );
+    }
+
     const departmentId = params.id;
-    const body = (await request.json()) as AddUserBody;
 
     const userId = toOptionalString(body.userId);
 
@@ -136,10 +154,10 @@ export async function DELETE(
     }
 
     // Verify department exists
-    const department = await prisma.department.findUnique({
-      where: { id: departmentId },
-      select: { id: true, name: true },
-    });
+      const [department, user] = await Promise.all([
+      prisma.department.findUnique({ where: { id: departmentId }, select: { id: true, name: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true } }),
+    ]);
 
     if (!department) {
       return NextResponse.json(
@@ -148,11 +166,6 @@ export async function DELETE(
       );
     }
 
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, fullName: true, email: true },
-    });
 
     if (!user) {
       return NextResponse.json(
@@ -181,7 +194,8 @@ export async function DELETE(
     );
   } catch (error) {
     console.error('Error removing user from department:', error);
-    if (error instanceof Error && error.message.includes('An operation failed')) {
+   
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return NextResponse.json(
         { success: false, error: 'User is not in this department' },
         { status: 404 }

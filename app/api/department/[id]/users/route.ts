@@ -1,10 +1,16 @@
+import { requireDatabaseRoles } from '@/lib/authz';
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET - Fetch all users in a specific department
 // Returns users who are members of the given department
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   try {
+
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
     const departmentId = params.id;
 
     // Verify department exists
