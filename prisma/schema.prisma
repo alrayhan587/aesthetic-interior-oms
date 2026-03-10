@@ -35,6 +35,7 @@ model Lead {
   activities    ActivityLog[]
   statusHistory LeadStatusHistory[]
   assignments   LeadAssignment[]
+  visits        Visit[]
 
   @@index([assignedTo])
   @@index([email])
@@ -130,6 +131,56 @@ model User {
   userRoles       UserRole[]
   userDepartments UserDepartment[]
   leadAssignments LeadAssignment[]
+  visitsAssigned  Visit[]             @relation("VisitAssignee")
+  visitsCreated   Visit[]             @relation("VisitCreator")
+}
+
+model Visit {
+  id           String      @id @default(cuid())
+  leadId        String
+  assignedToId  String?
+  scheduledAt   DateTime
+  status        VisitStatus @default(SCHEDULED)
+  location      String
+  notes         String?
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  lead       Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedTo User?        @relation("VisitAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy  User         @relation("VisitCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  result     VisitResult?
+
+  @@index([leadId])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([scheduledAt])
+}
+
+model VisitResult {
+  id           String       @id @default(cuid())
+  visitId       String       @unique
+  summary      String
+  measurements Json?
+  clientMood   String?
+  completedAt  DateTime     @default(now())
+
+  visit Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  files Attachment[]
+}
+
+model Attachment {
+  id            String      @id @default(cuid())
+  url           String
+  fileName      String
+  fileType      String
+  visitResultId String
+  createdAt     DateTime    @default(now())
+
+  visitResult VisitResult @relation(fields: [visitResultId], references: [id], onDelete: Cascade)
+
+  @@index([visitResultId])
 }
 
 enum LeadAssignmentDepartment {
@@ -224,4 +275,11 @@ enum ActivityType {
   VISIT_SCHEDULED
   LEAD_CREATED
   USER_ASSIGNED
+}
+
+enum VisitStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
 }

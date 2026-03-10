@@ -16,6 +16,9 @@ type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
 type ScheduleVisitBody = {
   visitTeamUserId?: unknown;
+  scheduledAt?: unknown;
+  location?: unknown;
+  notes?: unknown;
   reason?: unknown;
 };
 
@@ -51,11 +54,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = (await request.json()) as ScheduleVisitBody;
     const visitTeamUserId = toOptionalString(body.visitTeamUserId);
+    const location = toOptionalString(body.location);
+    const notes = toOptionalString(body.notes);
     const reason = toOptionalString(body.reason);
+    const scheduledAtRaw = toOptionalString(body.scheduledAt);
+    const parsedScheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
 
-    if (!visitTeamUserId) {
+    if (!visitTeamUserId || !location || !scheduledAtRaw || !parsedScheduledAt || Number.isNaN(parsedScheduledAt.getTime())) {
       return NextResponse.json(
-        { success: false, error: 'visitTeamUserId is required' },
+        {
+          success: false,
+          error: 'visitTeamUserId, location, and a valid ISO scheduledAt are required',
+        },
         { status: 400 }
       );
     }
@@ -114,6 +124,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       });
 
+      const visit = await tx.visit.create({
+        data: {
+          leadId,
+          assignedToId: visitTeamUserId,
+          createdById: actorUserId,
+          scheduledAt: parsedScheduledAt,
+          location,
+          notes,
+        },
+      });
+
       const existingVisitTeamAssignment = await tx.leadAssignment.findFirst({
         where: {
           leadId,
@@ -152,7 +173,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         leadId,
         userId: actorUserId,
         type: ActivityType.VISIT_SCHEDULED,
-        description: `Visit scheduled and assigned to ${visitTeamUser.fullName}`,
+        description: `Visit ${visit.id} scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUser.fullName}`,
       });
 
       await logUserAssigned(tx, {
@@ -161,7 +182,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         leadName: `${visitTeamUser.fullName} assigned to VISIT_TEAM department`,
       });
 
-      return leadAfterStageUpdate;
+      return {
+        lead: leadAfterStageUpdate,
+        visit,
+      };
     });
 
     return NextResponse.json({
