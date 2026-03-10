@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma';
-import { LeadStage, LeadSubStatus } from '@/generated/prisma/client';
+import { FollowUpStatus, LeadStage, LeadSubStatus } from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { logLeadStageChanged, logLeadSubStatusChanged } from '@/lib/activity-log-service';
@@ -46,6 +46,12 @@ function toLeadSubStatus(value: unknown): LeadSubStatus | null | undefined {
   return Object.values(LeadSubStatus).includes(normalized as LeadSubStatus)
     ? (normalized as LeadSubStatus)
     : null;
+}
+
+function addDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
@@ -98,6 +104,66 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { success: false, error: 'Invalid subStatus for selected stage' },
         { status: 400 }
       );
+    }
+
+    const isSubStatusChanging = existingLead.subStatus !== nextSubStatus;
+    if (
+      isSubStatusChanging &&
+      (nextSubStatus === LeadSubStatus.WARM_LEAD ||
+        nextSubStatus === LeadSubStatus.FUTURE_CLIENT)
+    ) {
+      const now = new Date();
+
+      if (nextSubStatus === LeadSubStatus.WARM_LEAD) {
+        const upcoming = await prisma.followUp.findFirst({
+          where: {
+            leadId,
+            status: FollowUpStatus.PENDING,
+            followupDate: { gte: now },
+          },
+          select: { id: true },
+        });
+
+        if (!upcoming) {
+          return NextResponse.json(
+            { success: false, error: 'Warm lead requires a scheduled follow-up' },
+            { status: 400 }
+          );
+        }
+      }
+
+      if (nextSubStatus === LeadSubStatus.FUTURE_CLIENT) {
+        const minDate = addDays(now, 30);
+        const earliestPending = await prisma.followUp.findFirst({
+          where: {
+            leadId,
+            status: FollowUpStatus.PENDING,
+            followupDate: { gte: now },
+          },
+          orderBy: { followupDate: 'asc' },
+          select: { followupDate: true },
+        });
+
+        if (!earliestPending) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Future client requires a follow-up at least 30 days from today',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (earliestPending.followupDate < minDate) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Future client follow-up must be scheduled at least 30 days from today',
+            },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     const updatedLead = await prisma.$transaction(async (tx) => {

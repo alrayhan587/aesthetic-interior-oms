@@ -211,6 +211,7 @@ enum LeadSubStatus {
 enum FollowUpStatus {
   PENDING
   DONE
+  LATELY_DONE
   MISSED
 }
 
