@@ -14,6 +14,7 @@ import {
   X,
   Home,
   ListTodo,
+  Settings,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -32,6 +33,9 @@ const navigationItems = {
     { icon: Users, label: 'Leads', href: '/crm/jr/leads' },
     { icon: CheckSquare, label: 'Followups', href: '/crm/jr/followups' },
     { icon: Calendar, label: 'Visits', href: '/crm/jr/visits' },
+  ],
+  'Admin': [
+    { icon: Settings, label: 'Settings', href: '/crm/admin/settings' },
   ],
 }
 
