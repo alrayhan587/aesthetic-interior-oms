@@ -77,6 +77,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       orderBy: { followupDate: 'desc' },
     });
 
+    // Debug: log the follow-up history fetched for this lead
+    console.log(`DEBUG followup history for leadId=${leadId} count=${followUps.length}`, followUps);
+
     return NextResponse.json({
       success: true,
       data: followUps,
@@ -197,6 +200,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       orderBy: { createdAt: 'desc' },
       select: { status: true },
     });
+
+    // Debug: log whether any pending follow-ups remain for this lead
+    const pendingCount = await prisma.followUp.count({
+      where: { leadId, status: FollowUpStatus.PENDING },
+    });
+    console.log(
+      `DEBUG followup check: leadId=${leadId} lastFollowUp=${
+        lastFollowUp?.status ?? 'none'
+      } pendingCount=${pendingCount}`
+    );
 
     if (lastFollowUp && lastFollowUp.status === FollowUpStatus.PENDING) {
       return NextResponse.json(
