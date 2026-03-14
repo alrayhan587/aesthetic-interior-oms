@@ -39,6 +39,106 @@ function toOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function validateVisitTeamUser(userId: string) {
+  const visitTeamUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      fullName: true,
+      userDepartments: {
+        select: {
+          department: {
+            select: { name: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!visitTeamUser) {
+    return { ok: false as const, response: NextResponse.json({ success: false, error: 'Visit team user not found' }, { status: 404 }) };
+  }
+
+  const isInVisitDepartment = visitTeamUser.userDepartments.some(
+    ({ department }) => department.name === 'VISIT_TEAM'
+  );
+
+  if (!isInVisitDepartment) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { success: false, error: 'User is not mapped to VISIT_TEAM department' },
+        { status: 400 }
+      ),
+    };
+  }
+
+  return { ok: true as const, visitTeamUser };
+}
+
+export async function GET(_request: NextRequest, context: RouteContext) {
+  try {
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+
+    const leadId = await resolveLeadId(context);
+    if (!leadId) {
+      return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
+    }
+
+    const [lead, visitTeamDepartment] = await Promise.all([
+      prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { id: true, name: true, location: true, stage: true },
+      }),
+      prisma.department.findUnique({
+        where: { name: 'VISIT_TEAM' },
+        select: {
+          id: true,
+          name: true,
+          userDepartments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+            orderBy: {
+              user: {
+                fullName: 'asc',
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!lead) {
+      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    }
+
+    const members = (visitTeamDepartment?.userDepartments ?? []).map((row) => row.user);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        lead,
+        defaultLocation: lead.location,
+        visitTeamMembers: members,
+      },
+    });
+  } catch (error) {
+    console.error('[lead/:id/visit-schedule][GET] Error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to fetch visit schedule metadata' }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const authResult = await requireDatabaseRoles([]);
@@ -54,63 +154,44 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = (await request.json()) as ScheduleVisitBody;
     const visitTeamUserId = toOptionalString(body.visitTeamUserId);
-    const location = toOptionalString(body.location);
     const notes = toOptionalString(body.notes);
     const reason = toOptionalString(body.reason);
     const scheduledAtRaw = toOptionalString(body.scheduledAt);
     const parsedScheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
+    const explicitLocation = toOptionalString(body.location);
 
-    if (!visitTeamUserId || !location || !scheduledAtRaw || !parsedScheduledAt || Number.isNaN(parsedScheduledAt.getTime())) {
+    if (!visitTeamUserId || !scheduledAtRaw || !parsedScheduledAt || Number.isNaN(parsedScheduledAt.getTime())) {
       return NextResponse.json(
         {
           success: false,
-          error: 'visitTeamUserId, location, and a valid ISO scheduledAt are required',
+          error: 'visitTeamUserId and a valid ISO scheduledAt are required',
         },
         { status: 400 }
       );
     }
 
-    const [lead, visitTeamUser] = await Promise.all([
+    const [lead, visitTeamUserResult] = await Promise.all([
       prisma.lead.findUnique({
         where: { id: leadId },
-        select: { id: true, name: true, stage: true },
+        select: { id: true, name: true, stage: true, location: true },
       }),
-      prisma.user.findUnique({
-        where: { id: visitTeamUserId },
-        select: {
-          id: true,
-          fullName: true,
-          userDepartments: {
-            select: {
-              department: {
-                select: { name: true },
-              },
-            },
-          },
-        },
-      }),
+      validateVisitTeamUser(visitTeamUserId),
     ]);
 
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
-    if (!visitTeamUser) {
-      return NextResponse.json(
-        { success: false, error: 'Visit team user not found' },
-        { status: 404 }
-      );
+    if (!visitTeamUserResult.ok) {
+      return visitTeamUserResult.response;
     }
 
-    const isInVisitDepartment = visitTeamUser.userDepartments.some(
-      ({ department }) => department.name === 'VISIT_TEAM'
-    );
-
-    if (!isInVisitDepartment) {
+    const locationToUse = explicitLocation ?? lead.location;
+    if (!locationToUse) {
       return NextResponse.json(
         {
           success: false,
-          error: 'User is not mapped to VISIT_TEAM department',
+          error: 'Location is required. Provide location in request or set lead location.',
         },
         { status: 400 }
       );
@@ -130,7 +211,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           assignedToId: visitTeamUserId,
           createdById: actorUserId,
           scheduledAt: parsedScheduledAt,
-          location,
+          location: locationToUse,
           notes,
         },
       });
@@ -159,6 +240,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
       }
 
+      if (notes) {
+        await tx.note.create({
+          data: {
+            leadId,
+            userId: actorUserId,
+            content: notes,
+          },
+        });
+      }
+
       if (lead.stage !== LeadStage.VISIT_SCHEDULED) {
         await logLeadStageChanged(tx, {
           leadId,
@@ -169,17 +260,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
       }
 
+      const reasonPart = reason ? ` Reason: ${reason}` : '';
       await logActivity(tx, {
         leadId,
         userId: actorUserId,
         type: ActivityType.VISIT_SCHEDULED,
-        description: `Visit ${visit.id} scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUser.fullName}`,
+        description: `Visit ${visit.id} scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUserResult.visitTeamUser.fullName}.${reasonPart}`,
       });
 
       await logUserAssigned(tx, {
         leadId,
         userId: actorUserId,
-        leadName: `${visitTeamUser.fullName} assigned to VISIT_TEAM department`,
+        leadName: `${visitTeamUserResult.visitTeamUser.fullName} assigned to VISIT_TEAM department`,
       });
 
       return {
@@ -191,7 +283,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({
       success: true,
       data: updatedLead,
-      message: 'Visit scheduled, stage moved, and visit team assigned successfully',
+      message: 'Visit scheduled, stage moved, visit team assigned, note and activity created successfully',
     });
   } catch (error) {
     console.error('[lead/:id/visit-schedule][POST] Error:', error);
@@ -206,7 +298,7 @@ export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      Allow: 'POST, OPTIONS',
+      Allow: 'GET, POST, OPTIONS',
     },
   });
 }
