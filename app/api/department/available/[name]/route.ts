@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
 const VALID_DEPARTMENTS = [
+  'ADMIN',
   'SR_CRM',
   'JR_CRM',
   'QUOTATION',

@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 
 const DEFAULT_REDIRECT = "/";
 const DEPARTMENT_ROUTES: Record<string, string> = {
+  ADMIN: "/crm/admin/dashboard",
   JR_CRM: "/crm/jr/dashboard",
   VISIT_TEAM: "/visit-team/visit-dashboard",
 };

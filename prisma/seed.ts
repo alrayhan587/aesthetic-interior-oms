@@ -65,6 +65,13 @@ async function main() {
     },
   });
 
+  const adminDept = await prisma.department.create({
+    data: {
+      name: "ADMIN",
+      description: "Administrative department",
+    },
+  });
+
   // Create Users
   const user1 = await prisma.user.create({
     data: {
@@ -120,6 +127,13 @@ async function main() {
     data: {
       userId: user1.id,
       departmentId: salesDept.id,
+    },
+  });
+
+  await prisma.userDepartment.create({
+    data: {
+      userId: user1.id,
+      departmentId: adminDept.id,
     },
   });
 

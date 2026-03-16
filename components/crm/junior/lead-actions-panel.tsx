@@ -117,6 +117,7 @@ export function LeadActionsPanel({
   const canUpdateStage = (!requiresSubStatus || Boolean(subStatus)) && hasStageChanged
 
   const validDepartments = [
+    'ADMIN',
     'SR_CRM',
     'JR_CRM',
     'QUOTATION',

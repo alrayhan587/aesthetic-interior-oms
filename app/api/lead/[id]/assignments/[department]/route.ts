@@ -9,7 +9,7 @@ import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
   
   BASE URL: http://localhost:3000/api/lead/{leadId}/assignments/{department}
   
-  VALID DEPARTMENTS: SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D
+  VALID DEPARTMENTS: ADMIN, SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D
   
   =====================
   PUT - Update assignment for a specific department
@@ -57,7 +57,7 @@ import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
     {"success": false, "error": "userId is required"}
   
   - Invalid department (400):
-    {"success": false, "error": "Invalid department. Must be one of: SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D"}
+    {"success": false, "error": "Invalid department. Must be one of: ADMIN, SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D"}
   
   - Lead not found (404):
     {"success": false, "error": "Lead not found"}
@@ -101,7 +101,7 @@ import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
   
   Expected Error Responses:
   - Invalid department (400):
-    {"success": false, "error": "Invalid department. Must be one of: SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D"}
+    {"success": false, "error": "Invalid department. Must be one of: ADMIN, SR_CRM, JR_CRM, QUOTATION, VISIT_TEAM, JR_ARCHITECT, VISUALIZER_3D"}
   
   - Lead not found (404):
     {"success": false, "error": "Lead not found"}
@@ -191,6 +191,7 @@ export async function PUT(
 
     // Validate department enum
     const validDepartments = [
+      'ADMIN',
       'SR_CRM',
       'JR_CRM',
       'QUOTATION',
@@ -313,6 +314,7 @@ export async function DELETE(
 
     // Validate department enum
     const validDepartments = [
+      'ADMIN',
       'SR_CRM',
       'JR_CRM',
       'QUOTATION',

@@ -119,6 +119,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Validate department enum
     const validDepartments = [
+      'ADMIN',
       'SR_CRM',
       'JR_CRM',
       'QUOTATION',

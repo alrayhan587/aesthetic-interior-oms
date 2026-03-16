@@ -183,6 +183,7 @@ model Attachment {
 }
 
 enum LeadAssignmentDepartment {
+  ADMIN
   SR_CRM
   JR_CRM
   QUOTATION

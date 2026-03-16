@@ -62,10 +62,12 @@ const allPermissions: Permission[] = [
 ]
 
 const permissionCategories = ['Lead Management', 'Followup Management', 'Visit Management', 'User Management', 'System Management']
+const allPermissionIds = allPermissions.map((permission) => permission.id)
 
 // Map departments to permissions and colors
 const getDepartmentPermissionMap = (department: Department): RolePermissionMap => {
   const departmentColorMap: Record<string, string> = {
+    'ADMIN': 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
     'JR_CRM': 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200',
     'SR_CRM': 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200',
     'JR_ARCHITECT': 'bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200',
@@ -75,6 +77,7 @@ const getDepartmentPermissionMap = (department: Department): RolePermissionMap =
   }
 
   const departmentPermissionsMap: Record<string, string[]> = {
+    'ADMIN': allPermissionIds,
     'JR_CRM': [
       'view_leads', 'create_leads', 'edit_leads', 'update_lead_status',
       'view_followups', 'create_followups', 'edit_followups', 'mark_followup_done',

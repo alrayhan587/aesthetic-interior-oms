@@ -169,20 +169,23 @@ export async function GET() {
       (actor?.userDepartments ?? []).map((row) => row.department.name),
     );
     const isJuniorCrm = departmentNames.has('JR_CRM');
+    const isAdmin = departmentNames.has('ADMIN');
 
-    const where: Prisma.LeadWhereInput = isJuniorCrm
-      ? {
-          assignments: {
-            some: {
-              userId: authResult.actorUserId,
-              department: LeadAssignmentDepartment.JR_CRM,
+    const where: Prisma.LeadWhereInput = isAdmin
+      ? {}
+      : isJuniorCrm
+        ? {
+            assignments: {
+              some: {
+                userId: authResult.actorUserId,
+                department: LeadAssignmentDepartment.JR_CRM,
+              },
             },
-          },
-        }
-      : {};
+          }
+        : {};
 
     console.log('🔎 [GET /api/lead] - Fetching leads', {
-      scope: isJuniorCrm ? 'assigned_jr_crm' : 'all',
+      scope: isAdmin ? 'all_admin' : isJuniorCrm ? 'assigned_jr_crm' : 'all',
       actorUserId: authResult.actorUserId,
     });
 

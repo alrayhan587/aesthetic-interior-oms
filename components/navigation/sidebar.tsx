@@ -15,6 +15,7 @@ import {
   Home,
   ListTodo,
   Settings,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
@@ -27,15 +28,47 @@ interface SidebarProps {
   role: string
 }
 
-const navigationItems = {
+type NavItem = { icon: typeof LayoutDashboard; label: string; href: string }
+type NavGroup = { id: string; label: string; items: NavItem[]; defaultOpen?: boolean }
+
+const navigationGroups: Record<string, NavGroup[]> = {
   'JR CRM': [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/crm/jr/dashboard' },
-    { icon: Users, label: 'Leads', href: '/crm/jr/leads' },
-    { icon: CheckSquare, label: 'Followups', href: '/crm/jr/followups' },
-    { icon: Calendar, label: 'Visits', href: '/crm/jr/visits' },
+    {
+      id: 'jr-overview',
+      label: 'Overview',
+      defaultOpen: true,
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/jr/dashboard' }],
+    },
+    {
+      id: 'jr-crm',
+      label: 'CRM',
+      defaultOpen: true,
+      items: [
+        { icon: Users, label: 'Leads', href: '/crm/jr/leads' },
+        { icon: CheckSquare, label: 'Followups', href: '/crm/jr/followups' },
+        { icon: Calendar, label: 'Visits', href: '/crm/jr/visits' },
+      ],
+    },
   ],
   'Admin': [
-    { icon: Settings, label: 'Settings', href: '/crm/admin/settings' },
+    {
+      id: 'admin-overview',
+      label: 'Overview',
+      defaultOpen: true,
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/admin/dashboard' }],
+    },
+    {
+      id: 'admin-crm',
+      label: 'CRM',
+      defaultOpen: true,
+      items: [{ icon: Users, label: 'Leads', href: '/crm/admin/leads' }],
+    },
+    {
+      id: 'admin-settings',
+      label: 'Settings',
+      defaultOpen: false,
+      items: [{ icon: Settings, label: 'Settings', href: '/crm/admin/settings' }],
+    },
   ],
 }
 
@@ -51,6 +84,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const { theme, toggleTheme } = useTheme()
 
   const [mounted, setMounted] = useState(false)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setMounted(true)
@@ -59,10 +93,22 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   // true for any route that lives under /visits
   const isVisits = pathname.startsWith('/visit-team')
 
-  // choose the appropriate set of items
-  const items = isVisits
-    ? visitsNavItems
-    : navigationItems[role as keyof typeof navigationItems] || []
+  const groups = isVisits
+    ? []
+    : navigationGroups[role as keyof typeof navigationGroups] || []
+
+  useEffect(() => {
+    if (isVisits) return
+    setOpenGroups((prev) => {
+      const next = { ...prev }
+      groups.forEach((group) => {
+        if (typeof next[group.id] === 'undefined') {
+          next[group.id] = group.defaultOpen ?? true
+        }
+      })
+      return next
+    })
+  }, [groups, isVisits])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -102,26 +148,81 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
         </div>
 
         <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
-          {items.map((item) => {
-            const Icon = item.icon
-            const isActive =
-              pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link key={item.href} href={item.href}>
-                <Button
-                  variant={isActive ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'w-full justify-start gap-3',
-                    isActive &&
-                    'bg-primary text-primary-foreground hover:bg-primary/90'
+          {isVisits ? (
+            visitsNavItems.map((item) => {
+              const Icon = item.icon
+              const isActive =
+                pathname === item.href || pathname.startsWith(item.href + '/')
+              return (
+                <Link key={item.href} href={item.href}>
+                  <Button
+                    variant={isActive ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'w-full justify-start gap-3',
+                      isActive &&
+                      'bg-primary text-primary-foreground hover:bg-primary/90'
+                    )}
+                  >
+                    <Icon className="w-5 h-5" />
+                    {item.label}
+                  </Button>
+                </Link>
+              )
+            })
+          ) : (
+            groups.map((group) => {
+              const isOpen = openGroups[group.id]
+              return (
+                <div key={group.id} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenGroups((prev) => ({
+                        ...prev,
+                        [group.id]: !prev[group.id],
+                      }))
+                    }
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-md px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-sidebar-accent'
+                    )}
+                  >
+                    <span>{group.label}</span>
+                    <ChevronDown
+                      className={cn(
+                        'h-4 w-4 transition-transform',
+                        isOpen ? 'rotate-0' : '-rotate-90'
+                      )}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-1 pl-1">
+                      {group.items.map((item) => {
+                        const Icon = item.icon
+                        const isActive =
+                          pathname === item.href ||
+                          pathname.startsWith(item.href + '/')
+                        return (
+                          <Link key={item.href} href={item.href}>
+                            <Button
+                              variant={isActive ? 'secondary' : 'ghost'}
+                              className={cn(
+                                'w-full justify-start gap-3',
+                                isActive &&
+                                'bg-primary text-primary-foreground hover:bg-primary/90'
+                              )}
+                            >
+                              <Icon className="w-5 h-5" />
+                              {item.label}
+                            </Button>
+                          </Link>
+                        )
+                      })}
+                    </div>
                   )}
-                >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
-                </Button>
-              </Link>
-            )
-          })}
+                </div>
+              )
+            })
+          )}
         </nav>
 
         {/* Footer – theme toggle + logout; no “back to CRM” in visits mode */}
