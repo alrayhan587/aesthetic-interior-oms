@@ -42,6 +42,14 @@ type ApiResponse = {
   error?: string
 }
 
+type VisitsCacheEntry = {
+  savedAt: number
+  data: VisitRecord[]
+}
+
+const VISITS_CACHE_TTL_MS = 60_000
+let visitsCache: VisitsCacheEntry | null = null
+let visitsRequestPromise: Promise<VisitRecord[]> | null = null
 
 const statusColors: Record<string, string> = {
   scheduled: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
@@ -76,18 +84,42 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
   }
 
   useEffect(() => {
+    setSelectedDate(formatLocalDateKey(new Date()))
+  }, [])
+
+  useEffect(() => {
     const loadVisits = async () => {
       try {
-        const response = await fetch('/api/visit-schedule')
-        const payload = (await response.json()) as ApiResponse
-        if (!response.ok || !payload.success) {
-          const message =
-            payload?.error
-              ? String(payload.error)
-              : `Failed to load visits (status ${response.status})`
-          throw new Error(message)
+        const cached = visitsCache
+        const cacheIsFresh =
+          cached && Date.now() - cached.savedAt < VISITS_CACHE_TTL_MS
+        if (cacheIsFresh) {
+          setVisits(cached.data)
+          setError(null)
+          return
         }
-        setVisits(payload.data ?? [])
+
+        if (!visitsRequestPromise) {
+          visitsRequestPromise = (async () => {
+            const response = await fetch('/api/visit-schedule')
+            const payload = (await response.json()) as ApiResponse
+            if (!response.ok || !payload.success) {
+              const message =
+                payload?.error
+                  ? String(payload.error)
+                  : `Failed to load visits (status ${response.status})`
+              throw new Error(message)
+            }
+            return payload.data ?? []
+          })()
+            .finally(() => {
+              visitsRequestPromise = null
+            })
+        }
+
+        const nextVisits = await visitsRequestPromise
+        visitsCache = { data: nextVisits, savedAt: Date.now() }
+        setVisits(nextVisits)
         setError(null)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to load visits'
@@ -313,38 +345,42 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
                         {day}
                       </div>
                     ))}
-                    {calendarDays.map((day, idx) => {
-                      const visitsForDay = day ? getVisitsForDay(day) : []
-                      const dateStr = day ? getDateString(day) : null
-                      const isSelected = selectedDate === dateStr
-                      
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() => day && setSelectedDate(dateStr)}
-                          className={`aspect-square p-2 border rounded-lg text-center cursor-pointer transition-colors ${
-                            !day
-                              ? 'bg-muted'
-                              : isSelected
-                                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                                : visitsForDay.length > 0
-                                  ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-400'
-                                  : 'hover:border-gray-400'
-                          }`}
-                        >
-                          {day && (
-                            <div className="flex flex-col items-center justify-center h-full">
-                              <span className="font-semibold text-sm">{day}</span>
-                              {visitsForDay.length > 0 && (
-                                <span className="inline-flex items-center justify-center w-5 h-5 mt-1 text-xs font-bold text-white bg-blue-500 rounded-full">
-                                  {visitsForDay.length}
-                                </span>
+                    {loading
+                      ? Array.from({ length: 35 }).map((_, idx) => (
+                          <div key={idx} className="aspect-square rounded-lg border bg-muted/60 animate-pulse" />
+                        ))
+                      : calendarDays.map((day, idx) => {
+                          const visitsForDay = day ? getVisitsForDay(day) : []
+                          const dateStr = day ? getDateString(day) : null
+                          const isSelected = selectedDate === dateStr
+
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => day && setSelectedDate(dateStr)}
+                              className={`aspect-square p-2 border rounded-lg text-center cursor-pointer transition-colors ${
+                                !day
+                                  ? 'bg-muted'
+                                  : isSelected
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                    : visitsForDay.length > 0
+                                      ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-400'
+                                      : 'hover:border-gray-400'
+                              }`}
+                            >
+                              {day && (
+                                <div className="flex flex-col items-center justify-center h-full">
+                                  <span className="font-semibold text-sm">{day}</span>
+                                  {visitsForDay.length > 0 && (
+                                    <span className="inline-flex items-center justify-center w-5 h-5 mt-1 text-xs font-bold text-white bg-blue-500 rounded-full">
+                                      {visitsForDay.length}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                          )
+                        })}
                   </div>
                 </CardContent>
               </Card>
@@ -365,7 +401,17 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {selectedDate && visitsByDate[selectedDate] ? (
+                  {loading ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <div key={idx} className="rounded-lg border p-3 space-y-2 animate-pulse">
+                          <div className="h-4 w-36 rounded bg-muted" />
+                          <div className="h-3 w-24 rounded bg-muted" />
+                          <div className="h-3 w-full rounded bg-muted" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : selectedDate && visitsByDate[selectedDate] ? (
                     <div className="space-y-3">
                       {visitsByDate[selectedDate].map((visit) => {
                         const isVisible = canViewVisit(visit)
@@ -436,7 +482,15 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
             <div className="space-y-6">
               <div>
                 <h3 className="mb-3 font-semibold text-foreground">Scheduled ({scheduledVisits.length})</h3>
-                {scheduledVisits.length > 0 ? (
+                {loading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <Card key={idx} className="border-border animate-pulse">
+                        <CardContent className="h-44" />
+                      </Card>
+                    ))}
+                  </div>
+                ) : scheduledVisits.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {scheduledVisits.map((visit) => (
                       <VisitCard key={visit.id} visit={visit} />
@@ -448,7 +502,15 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
               </div>
               <div>
                 <h3 className="mb-3 font-semibold text-foreground">Completed ({completedVisits.length})</h3>
-                {completedVisits.length > 0 ? (
+                {loading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <Card key={idx} className="border-border animate-pulse">
+                        <CardContent className="h-44" />
+                      </Card>
+                    ))}
+                  </div>
+                ) : completedVisits.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {completedVisits.map((visit) => (
                       <VisitCard key={visit.id} visit={visit} />

@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const leadId = searchParams.get('leadId')
     const assignedToId = searchParams.get('assignedToId')
     const status = searchParams.get('status') as FollowUpStatus | null
+    const statusesParam = searchParams.get('statuses')
     const upcoming = searchParams.get('upcoming') === 'true'
     const from = searchParams.get('from')
     const to = searchParams.get('to')
@@ -25,7 +26,18 @@ export async function GET(request: NextRequest) {
 
     if (leadId) where.leadId = leadId
     if (assignedToId) where.assignedToId = assignedToId
-    if (status && Object.values(FollowUpStatus).includes(status)) where.status = status
+    const parsedStatuses = statusesParam
+      ?.split(',')
+      .map((value) => value.trim().toUpperCase())
+      .filter((value): value is FollowUpStatus =>
+        Object.values(FollowUpStatus).includes(value as FollowUpStatus),
+      ) ?? []
+
+    if (parsedStatuses.length > 0) {
+      where.status = { in: parsedStatuses }
+    } else if (status && Object.values(FollowUpStatus).includes(status)) {
+      where.status = status
+    }
     if (upcoming) {
       where.followupDate = { gte: new Date() }
       where.status = FollowUpStatus.PENDING

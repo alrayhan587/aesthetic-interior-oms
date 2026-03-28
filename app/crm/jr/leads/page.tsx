@@ -68,6 +68,32 @@ type LeadsResponse = {
   }
 }
 
+function mergeUniqueLeads(existing: LeadSummary[], incoming: LeadSummary[]): LeadSummary[] {
+  const seen = new Set(existing.map((lead) => lead.id))
+  const merged = [...existing]
+  for (const lead of incoming) {
+    if (!seen.has(lead.id)) {
+      seen.add(lead.id)
+      merged.push(lead)
+    }
+  }
+  return merged
+}
+
+type LeadsCacheEntry = {
+  key: string
+  savedAt: number
+  leads: LeadSummary[]
+  totalCount: number
+  nextOffset: number | null
+  hasMore: boolean
+  stageCounts: Record<string, number>
+}
+
+const LEADS_CACHE_TTL_MS = 60_000
+let leadsCache: LeadsCacheEntry | null = null
+const leadsRequestMap = new Map<string, Promise<LeadsResponse>>()
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loadingInitial, setLoadingInitial] = useState(true)
@@ -82,6 +108,7 @@ export default function LeadsPage() {
   const [hasMore, setHasMore] = useState(true)
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const inFlightKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 1024px)')
@@ -98,6 +125,30 @@ export default function LeadsPage() {
 
   const fetchLeads = useCallback(async (offset: number, replace: boolean) => {
     try {
+      const filterKey = `${search}|${stageFilter}`
+      const requestKey = `${filterKey}|${offset}|${replace ? 'replace' : 'append'}`
+
+      if (inFlightKeyRef.current === requestKey) {
+        return
+      }
+      inFlightKeyRef.current = requestKey
+
+      if (replace && offset === 0) {
+        const cached = leadsCache
+        const cacheIsFresh =
+          cached &&
+          cached.key === filterKey &&
+          Date.now() - cached.savedAt < LEADS_CACHE_TTL_MS
+        if (cacheIsFresh) {
+          setLeads(cached.leads)
+          setNextOffset(cached.nextOffset)
+          setHasMore(cached.hasMore)
+          setTotalCount(cached.totalCount)
+          setStageCounts(cached.stageCounts)
+          return
+        }
+      }
+
       if (replace) {
         setLoadingInitial(true)
       } else {
@@ -117,17 +168,42 @@ export default function LeadsPage() {
         params.set('stage', stageFilter)
       }
 
-      const res = await fetch(`/api/lead?${params.toString()}`)
-      const payload = (await res.json()) as LeadsResponse
-
-      if (!res.ok || !payload.success) {
-        throw new Error('Failed to load leads')
+      let payloadPromise = leadsRequestMap.get(requestKey)
+      if (!payloadPromise) {
+        payloadPromise = fetch(`/api/lead?${params.toString()}`)
+          .then(async (res) => {
+            const payload = (await res.json()) as LeadsResponse
+            if (!res.ok || !payload.success) {
+              throw new Error('Failed to load leads')
+            }
+            return payload
+          })
+          .finally(() => {
+            leadsRequestMap.delete(requestKey)
+          })
+        leadsRequestMap.set(requestKey, payloadPromise)
       }
+
+      const payload = await payloadPromise
 
       const pageData = payload.data ?? []
       const meta = payload.meta
 
-      setLeads((prev) => (replace ? pageData : [...prev, ...pageData]))
+      setLeads((prev) => {
+        const nextLeads = replace ? pageData : mergeUniqueLeads(prev, pageData)
+        if (replace && offset === 0) {
+          leadsCache = {
+            key: filterKey,
+            savedAt: Date.now(),
+            leads: nextLeads,
+            totalCount: meta?.total ?? 0,
+            nextOffset: meta?.nextOffset ?? null,
+            hasMore: Boolean(meta?.hasMore),
+            stageCounts: meta?.stageCounts ?? {},
+          }
+        }
+        return nextLeads
+      })
       setNextOffset(meta?.nextOffset ?? null)
       setHasMore(Boolean(meta?.hasMore))
       setTotalCount(meta?.total ?? 0)
@@ -141,6 +217,7 @@ export default function LeadsPage() {
         setTotalCount(0)
       }
     } finally {
+      inFlightKeyRef.current = null
       setLoadingInitial(false)
       setLoadingMore(false)
     }
