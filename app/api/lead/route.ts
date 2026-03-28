@@ -4,6 +4,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logLeadCreated } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { formatServerTiming, timeAsync } from '@/lib/server-timing';
+import { isFacebookConfigured, syncRecentFacebookConversationsToLeads } from '@/lib/facebook';
+
+export const runtime = 'nodejs';
+export const preferredRegion = 'sin1';
 
 /*
   POSTMAN TESTING DATA
@@ -206,6 +210,31 @@ export async function GET(request: NextRequest) {
         : {}),
     };
 
+    let facebookTimingMetric = '';
+    const syncFacebookFlag = request.nextUrl.searchParams.get('syncFacebook') === '1';
+    const shouldSyncFacebook =
+      syncFacebookFlag &&
+      offset === 0 &&
+      !searchParam &&
+      !stageParam &&
+      isFacebookConfigured();
+
+    if (shouldSyncFacebook) {
+      try {
+        const timedFacebookSync = await timeAsync(async () =>
+          syncRecentFacebookConversationsToLeads({ limit: 20 }),
+        );
+        const syncResult = timedFacebookSync.value;
+        facebookTimingMetric = formatServerTiming(
+          'fb_sync',
+          timedFacebookSync.durationMs,
+          `created=${syncResult.createdLeads},fetched=${syncResult.fetchedConversations}`,
+        );
+      } catch (syncError) {
+        console.error('[GET /api/lead] Facebook sync failed:', syncError);
+      }
+    }
+
     const timedDb = await timeAsync(async () => {
       const [total, leads, groupedStageCounts] = await Promise.all([
         prisma.lead.count({ where }),
@@ -265,6 +294,7 @@ export async function GET(request: NextRequest) {
       [
         formatServerTiming('auth', timedAuth.durationMs, 'requireDatabaseRoles'),
         formatServerTiming('db', timedDb.durationMs, 'lead queries'),
+        ...(facebookTimingMetric ? [facebookTimingMetric] : []),
         formatServerTiming('total', totalDurationMs, 'request total'),
       ].join(', '),
     );

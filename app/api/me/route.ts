@@ -4,6 +4,9 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { formatServerTiming, timeAsync } from "@/lib/server-timing";
 
+export const runtime = "nodejs";
+export const preferredRegion = "sin1";
+
 type UpdateMeBody = {
   departmentId?: unknown;
 };
@@ -41,59 +44,55 @@ async function parseJsonBody(request: Request): Promise<UpdateMeBody | null> {
 export async function GET() {
   const requestStart = performance.now();
   try {
-    debugLog(`[GET /me] ========== REQUEST START ==========`);
-    debugLog(`[GET /me] phase=start timestamp=${new Date().toISOString()}`);
-
     const timedAuth = await timeAsync(async () => auth());
     const { userId } = timedAuth.value;
-    debugLog(`[GET /me] phase=auth_complete userId=${userId || "null"}`);
-    debugLog(`[GET /me] userId type: ${typeof userId}`);
 
     // If the user is not logged in, return an unauthorized response
     if (!userId) {
-      debugLog(`[GET /me] phase=auth_failed reason=no_user_id`);
-      debugLog(`[GET /me] Returning 401 Unauthorized`);
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    debugLog(`[GET /me] phase=db_query_start userId=${userId}`);
-    debugLog(`[GET /me] Querying user with clerkUserId: ${userId}`);
 
     // Find user in DB
     const timedDb = await timeAsync(async () => prisma.user.findUnique({
       where: { clerkUserId: userId },
-      include: {
-        userRoles: { include: { role: true } },
-        userDepartments: { include: { department: true } },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        clerkUserId: true,
+        created_at: true,
+        updated_at: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        userDepartments: {
+          select: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     }));
     const user = timedDb.value;
 
-    debugLog(`[GET /me] phase=db_query_complete`);
-    debugLog(`[GET /me] userFound=${Boolean(user)}`);
-    if (user) {
-      debugLog(`[GET /me] User data:`, JSON.stringify({ 
-        id: user.id, 
-        email: user.email, 
-        fullName: user.fullName,
-        rolesCount: user.userRoles?.length || 0,
-        departmentsCount: user.userDepartments?.length || 0
-      }));
-    }
-
     // If we can't find the user in the database, return a not found response
     if (!user) {
-      debugLog(`[GET /me] phase=user_not_found userId=${userId} clerkUserId=${userId}`);
-      debugLog(`[GET /me] Creating new user for clerkUserId: ${userId}`);
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const needsOnboarding = user.userDepartments.length === 0;
-    debugLog(`[GET /me] needsOnboarding=${needsOnboarding} (departments: ${user.userDepartments.length})`);
-    debugLog(
-      `[GET /me] phase=success userId=${userId} userName=${user.fullName} userEmail=${user.email} needsOnboarding=${needsOnboarding}`,
-    );
-    debugLog(`[GET /me] ========== REQUEST SUCCESS ==========`);
     const response = NextResponse.json({ ...user, needsOnboarding });
     const totalDurationMs = performance.now() - requestStart;
     response.headers.set(
@@ -108,10 +107,7 @@ export async function GET() {
     return response;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
     console.error(`[GET /me] phase=error error_message=${errorMessage} error_type=${error?.constructor?.name || "unknown"}`);
-    console.error(`[GET /me] phase=error_detail stack=${errorStack}`);
-    console.error(`[GET /me] ========== REQUEST ERROR ==========`);
     return NextResponse.json({ error: "Internal Server Error", details: errorMessage }, { status: 500 });
   }
 }

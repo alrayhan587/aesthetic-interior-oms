@@ -243,6 +243,9 @@ import { logLeadAssignmentChanged, logLeadStatusChanged } from '@/lib/activity-l
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 
+export const runtime = 'nodejs';
+export const preferredRegion = 'sin1';
+
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
 type UpdateLeadBody = {

@@ -4,6 +4,9 @@ import { requireDatabaseRoles } from '@/lib/authz';
 import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 
+export const runtime = 'nodejs';
+export const preferredRegion = 'sin1';
+
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
     // console.log(...args);

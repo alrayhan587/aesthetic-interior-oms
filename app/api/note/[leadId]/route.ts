@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 // Import Prisma database client for ORM operations
 import prisma from '@/lib/prisma'
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
+import { formatServerTiming, timeAsync } from '@/lib/server-timing'
+
+export const runtime = 'nodejs'
+export const preferredRegion = 'sin1'
 
 //here get all notes for a lead, create a note for a lead. The leadId is used to filter notes by lead and to associate new notes with the correct lead when creating them.
 
@@ -40,6 +44,7 @@ function toPositiveInt(value: string | null, fallback: number): number {
 
 // GET endpoint to retrieve all notes for a specific lead with pagination support
 export async function GET(request: NextRequest, context: RouteContext) {
+  const requestStart = performance.now()
   // Safely extract and validate leadId from route parameters
   const leadId = await resolveLeadId(context)
 
@@ -61,37 +66,43 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const skip = (page - 1) * limit
 
     // Verify that the lead exists in the database before retrieving its notes
-    const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } })
+    const timedLeadCheck = await timeAsync(async () =>
+      prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } }),
+    )
+    const lead = timedLeadCheck.value
     // Return 404 error if lead doesn't exist
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 })
     }
 
     // Execute two database queries in parallel for efficiency
-    const [notes, total] = await Promise.all([
-      // Query 1: Fetch paginated notes for this lead
-      prisma.note.findMany({
-        where: { leadId }, // Filter notes by leadId
-        include: {
-          // Include related lead data
-          lead: {
-            select: { id: true, name: true, email: true },
+    const timedNotesDb = await timeAsync(async () =>
+      Promise.all([
+        // Query 1: Fetch paginated notes for this lead
+        prisma.note.findMany({
+          where: { leadId }, // Filter notes by leadId
+          include: {
+            // Include related lead data
+            lead: {
+              select: { id: true, name: true, email: true },
+            },
+            // Include related user (author) data
+            user: {
+              select: { id: true, fullName: true, email: true },
+            },
           },
-          // Include related user (author) data
-          user: {
-            select: { id: true, fullName: true, email: true },
-          },
-        },
-        orderBy: { createdAt: 'desc' }, // Sort notes by newest first
-        skip, // Skip records for pagination
-        take: limit, // Limit results per page
-      }),
-      // Query 2: Count total notes for this lead (used for pagination info)
-      prisma.note.count({ where: { leadId } }),
-    ])
+          orderBy: { createdAt: 'desc' }, // Sort notes by newest first
+          skip, // Skip records for pagination
+          take: limit, // Limit results per page
+        }),
+        // Query 2: Count total notes for this lead (used for pagination info)
+        prisma.note.count({ where: { leadId } }),
+      ]),
+    )
+    const [notes, total] = timedNotesDb.value
 
     // Return successful response with notes and pagination info
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true, // Indicate successful operation
       data: notes, // Array of notes for the lead
       pagination: {
@@ -101,6 +112,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
         totalPages: Math.ceil(total / limit), // Calculate total pages needed
       },
     })
+    const totalDurationMs = performance.now() - requestStart
+    response.headers.set(
+      'Server-Timing',
+      [
+        formatServerTiming('lead_check', timedLeadCheck.durationMs, 'lead existence check'),
+        formatServerTiming('db', timedNotesDb.durationMs, 'notes list/count'),
+        formatServerTiming('total', totalDurationMs, 'request total'),
+      ].join(', '),
+    )
+    response.headers.set('Cache-Control', 'private, max-age=15, stale-while-revalidate=45')
+    return response
   } catch (error: unknown) {
     // Log error to console for debugging
     console.error('Error fetching lead notes:', error)
