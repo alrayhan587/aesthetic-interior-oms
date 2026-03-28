@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Plus, Mail, Phone, MapPin, DollarSign } from 'lucide-react'
@@ -141,11 +141,13 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
           Add Lead
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader className="pb-4">
-          <DialogTitle className="text-2xl font-bold">Create New Lead</DialogTitle>
-          <p className="text-sm text-muted-foreground mt-2">Add a new lead to your pipeline</p>
-        </DialogHeader>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="pb-4">
+            <DialogTitle className="text-2xl font-bold">Create New Lead</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground mt-2">
+              Add a new lead to your pipeline.
+            </DialogDescription>
+          </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Full Name */}
@@ -156,7 +158,7 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
               name="name" 
               value={form.name} 
               onChange={handleChange} 
-              placeholder="John Doe"
+              placeholder="Md. Tanvir Hasan"
               className="border-gray-200"
               required 
             />
@@ -172,7 +174,7 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
               name="email" 
               value={form.email} 
               onChange={handleChange} 
-              placeholder="john@example.com"
+              placeholder="tanvir.hasan@gmail.com"
               type="email"
               className="border-gray-200"
             />
@@ -188,7 +190,7 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
               name="phone" 
               value={form.phone} 
               onChange={handleChange} 
-              placeholder="+1 (555) 000-0000"
+              placeholder="+8801712345678"
               className="border-gray-200"
             />
           </div>
@@ -203,7 +205,7 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
               name="location" 
               value={form.location} 
               onChange={handleChange} 
-              placeholder="City, Country"
+              placeholder="Dhaka, Bangladesh"
               className="border-gray-200"
             />
           </div>
@@ -222,11 +224,13 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
               <option value="">Select a source</option>
               <option value="Website">Website</option>
               <option value="Referral">Referral</option>
-              <option value="Social Media">Social Media</option>
+              <option value="Facebook">Facebook</option>
+              <option value="Instagram">Instagram</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="TikTok">TikTok</option>
+              <option value="LinkedIn">LinkedIn</option>
               <option value="Direct Call">Direct Call</option>
-              <option value="Showroom Visit">Showroom Visit</option>
-              <option value="Advertisement">Advertisement</option>
-              <option value="Walk-in">Walk-in</option>
+              <option value="Office Visit">Office Visit</option>
               <option value="Other">Other</option>
             </select>
           </div>

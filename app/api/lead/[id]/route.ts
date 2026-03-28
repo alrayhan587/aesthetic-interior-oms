@@ -287,6 +287,14 @@ function toBudget(value: unknown): number | null | undefined {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseIncludeFlag(value: string | null, defaultValue = true): boolean {
+  if (value === null) return defaultValue;
+  const normalized = value.trim().toLowerCase();
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  return defaultValue;
+}
+
 
 
 function toLeadStage(value: unknown): LeadStage | undefined {
@@ -314,68 +322,95 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const id = await resolveLeadId(context);
 
   if (!id) {
-    console.log('[DEBUG][lead/:id][GET] Invalid or missing id in route params');
+    // console.log('[DEBUG][lead/:id][GET] Invalid or missing id in route params');
     return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
   }
-  console.log('[DEBUG][lead/:id][GET] Request received for id:', id);
+  // console.log('[DEBUG][lead/:id][GET] Request received for id:', id);
 
-  const fetchLead = (includeAttachments: boolean) =>
+  const includeFollowUps = parseIncludeFlag(_request.nextUrl.searchParams.get('includeFollowUps'), true);
+  const includeAttachments = parseIncludeFlag(_request.nextUrl.searchParams.get('includeAttachments'), true);
+  const includeNotes = parseIncludeFlag(_request.nextUrl.searchParams.get('includeNotes'), true);
+  const includeActivities = parseIncludeFlag(_request.nextUrl.searchParams.get('includeActivities'), true);
+  const includeStatusHistory = parseIncludeFlag(_request.nextUrl.searchParams.get('includeStatusHistory'), true);
+  const includeVisits = parseIncludeFlag(_request.nextUrl.searchParams.get('includeVisits'), true);
+
+  const fetchLead = (loadAttachments: boolean) =>
     prisma.lead.findFirst({
       where: { id },
       include: {
         assignee: {
           select: { id: true, fullName: true, email: true },
         },
-        followUps: {
-          include: {
-            assignedTo: {
-              select: { id: true, fullName: true, email: true },
-            },
-          },
-          orderBy: { followupDate: 'desc' },
-        },
-        ...(includeAttachments
+        ...(includeFollowUps
+          ? {
+              followUps: {
+                include: {
+                  assignedTo: {
+                    select: { id: true, fullName: true, email: true },
+                  },
+                },
+                orderBy: { followupDate: 'desc' },
+              },
+            }
+          : {}),
+        ...(loadAttachments && includeAttachments
           ? {
               attachments: {
                 orderBy: { createdAt: 'desc' as const },
               },
             }
           : {}),
-        notes: {
-          include: {
-            user: {
-              select: { id: true, fullName: true, email: true },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-        activities: {
-          include: {
-            user: {
-              select: { id: true, fullName: true, email: true },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-        },
-        visits: {
-          select: {
-            id: true,
-            scheduledAt: true,
-            projectSqft: true,
-            projectStatus: true,
-          },
-          orderBy: { scheduledAt: 'desc' },
-          take: 1,
-        },
-        statusHistory: {
-          include: {
-            changedBy: {
-              select: { id: true, fullName: true, email: true },
-            },
-          },
-          orderBy: { changedAt: 'desc' },
-        },
+        ...(includeNotes
+          ? {
+              notes: {
+                include: {
+                  user: {
+                    select: { id: true, fullName: true, email: true },
+                  },
+                },
+                orderBy: { createdAt: 'desc' },
+              },
+            }
+          : {}),
+        ...(includeActivities
+          ? {
+              activities: {
+                include: {
+                  user: {
+                    select: { id: true, fullName: true, email: true },
+                  },
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 20,
+              },
+            }
+          : {}),
+        ...(includeVisits
+          ? {
+              visits: {
+                select: {
+                  id: true,
+                  scheduledAt: true,
+                  projectSqft: true,
+                  projectStatus: true,
+                },
+                orderBy: { scheduledAt: 'desc' },
+                take: 1,
+              },
+            }
+          : {}),
+        ...(includeStatusHistory
+          ? {
+              statusHistory: {
+                include: {
+                  changedBy: {
+                    select: { id: true, fullName: true, email: true },
+                  },
+                },
+                orderBy: { changedAt: 'desc' },
+              },
+            }
+          : {}),
       },
     });
 
@@ -383,11 +418,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const lead = await fetchLead(true);
 
     if (!lead) {
-      console.log('[DEBUG][lead/:id][GET] Lead not found:', id);
+      // console.log('[DEBUG][lead/:id][GET] Lead not found:', id);
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
-    console.log('[DEBUG][lead/:id][GET] Lead fetched successfully:', id);
+    // console.log('[DEBUG][lead/:id][GET] Lead fetched successfully:', id);
     return NextResponse.json({ success: true, data: lead });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
@@ -421,10 +456,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const id = await resolveLeadId(context);
 
   if (!id) {
-    console.log('[DEBUG][lead/:id][PUT] Invalid or missing id in route params');
+    // console.log('[DEBUG][lead/:id][PUT] Invalid or missing id in route params');
     return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
   }
-  console.log('[DEBUG][lead/:id][PUT] Request received for id:', id);
+  // console.log('[DEBUG][lead/:id][PUT] Request received for id:', id);
 
   try {
     const body = (await request.json()) as UpdateLeadBody;
@@ -442,7 +477,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     const existingLead = await prisma.lead.findFirst({ where: { id } });
     if (!existingLead) {
-      console.log('[DEBUG][lead/:id][PUT] Lead not found:', id);
+      // console.log('[DEBUG][lead/:id][PUT] Lead not found:', id);
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
@@ -454,7 +489,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       });
 
       if (duplicate) {
-        console.log('[DEBUG][lead/:id][PUT] Duplicate email detected:', email);
+        // console.log('[DEBUG][lead/:id][PUT] Duplicate email detected:', email);
         return NextResponse.json(
           { success: false, error: 'A lead with this email already exists' },
           { status: 409 }
@@ -534,7 +569,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return updatedLead;
     });
 
-    console.log('[DEBUG][lead/:id][PUT] Lead updated successfully:', id);
+    // console.log('[DEBUG][lead/:id][PUT] Lead updated successfully:', id);
     return NextResponse.json({ success: true, data: updated, message: 'Lead updated successfully' });
   } catch (error) {
     console.error('[DEBUG][lead/:id][PUT] Error:', error);
@@ -563,10 +598,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const id = await resolveLeadId(context);
 
   if (!id) {
-    console.log('[DEBUG][lead/:id][PATCH] Invalid or missing id in route params');
+    // console.log('[DEBUG][lead/:id][PATCH] Invalid or missing id in route params');
     return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
   }
-  console.log('[DEBUG][lead/:id][PATCH] Request received for id:', id);
+  // console.log('[DEBUG][lead/:id][PATCH] Request received for id:', id);
 
   try {
     const body = (await request.json()) as UpdateLeadBody;
@@ -663,7 +698,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return lead;
     });
 
-    console.log('[DEBUG][lead/:id][PATCH] Lead patched successfully:', id);
+    // console.log('[DEBUG][lead/:id][PATCH] Lead patched successfully:', id);
     return NextResponse.json({ success: true, data: updated, message: 'Lead updated successfully' });
   } catch (error) {
     console.error('[DEBUG][lead/:id][PATCH] Error:', error);
@@ -676,10 +711,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   const id = await resolveLeadId(context);
 
   if (!id) {
-    console.log('[DEBUG][lead/:id][DELETE] Invalid or missing id in route params');
+    // console.log('[DEBUG][lead/:id][DELETE] Invalid or missing id in route params');
     return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
   }
-  console.log('[DEBUG][lead/:id][DELETE] Request received for id:', id);
+  // console.log('[DEBUG][lead/:id][DELETE] Request received for id:', id);
 
   try {
     const existingLead = await prisma.lead.findFirst({ where: { id }, select: { id: true } });
@@ -688,7 +723,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     }
 
     await prisma.lead.delete({ where: { id } });
-    console.log('[DEBUG][lead/:id][DELETE] Lead deleted successfully:', id);
+    // console.log('[DEBUG][lead/:id][DELETE] Lead deleted successfully:', id);
     return NextResponse.json({ success: true, message: 'Lead deleted successfully' });
   } catch (error) {
     console.error('[DEBUG][lead/:id][DELETE] Error:', error);

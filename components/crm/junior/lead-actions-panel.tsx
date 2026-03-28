@@ -752,10 +752,10 @@ export function LeadActionsPanel({
     try {
       const response = await fetch(`/api/department/available/${value}`)
       const data = await response.json()
-      console.log('[LEAD-ACTIONS] Department API response:', data);
+      // console.log('[LEAD-ACTIONS] Department API response:', data);
       if (data.success && Array.isArray(data.users)) {
         setDepartmentUsers(data.users)
-        console.log('[LEAD-ACTIONS] Set users:', data.users);
+        // console.log('[LEAD-ACTIONS] Set users:', data.users);
       } else {
         throw new Error(data.error || 'Failed to load users for department.')
       }

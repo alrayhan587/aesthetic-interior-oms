@@ -18,19 +18,19 @@ export async function GET(
   context?: { params: { name: string } | Promise<{ name: string }> }
 ) {
   try {
-    console.log('[DEPT-API] Context:', context);
+    // console.log('[DEPT-API] Context:', context);
     let nameParam: string | undefined;
 
     // Handle both sync and async params (different Next.js versions)
     if (context?.params) {
-      console.log('[DEPT-API] Params type:', typeof context.params);
+      // console.log('[DEPT-API] Params type:', typeof context.params);
       if (context.params instanceof Promise) {
         const resolvedParams = await context.params;
         nameParam = resolvedParams.name;
-        console.log('[DEPT-API] Resolved async params:', resolvedParams);
+        // console.log('[DEPT-API] Resolved async params:', resolvedParams);
       } else {
         nameParam = context.params.name;
-        console.log('[DEPT-API] Sync params:', context.params);
+        // console.log('[DEPT-API] Sync params:', context.params);
       }
     }
 
@@ -38,10 +38,10 @@ export async function GET(
     if (!nameParam) {
       const pathSegments = request.nextUrl.pathname.split('/');
       nameParam = pathSegments[pathSegments.length - 1];
-      console.log('[DEPT-API] Extracted from URL:', nameParam, 'Path:', request.nextUrl.pathname);
+      // console.log('[DEPT-API] Extracted from URL:', nameParam, 'Path:', request.nextUrl.pathname);
     }
 
-    console.log('[DEPT-API] nameParam:', nameParam);
+    // console.log('[DEPT-API] nameParam:', nameParam);
 
     if (!nameParam) {
       return NextResponse.json(
@@ -51,7 +51,7 @@ export async function GET(
     }
 
     const departmentName = nameParam.toUpperCase();
-    console.log('[DEPT-API] departmentName:', departmentName);
+    // console.log('[DEPT-API] departmentName:', departmentName);
 
    
 
@@ -71,7 +71,7 @@ export async function GET(
       select: { id: true, name: true },
     });
 
-    console.log('[DEPT-API] Department found:', department);
+    // console.log('[DEPT-API] Department found:', department);
 
     if (!department) {
       return NextResponse.json(
@@ -100,8 +100,8 @@ export async function GET(
       },
     });
 
-    console.log('[DEPT-API] UserDepartments count:', userDepartments.length);
-    console.log('[DEPT-API] UserDepartments data:', JSON.stringify(userDepartments, null, 2));
+    // console.log('[DEPT-API] UserDepartments count:', userDepartments.length);
+    // console.log('[DEPT-API] UserDepartments data:', JSON.stringify(userDepartments, null, 2));
 
     const users = userDepartments.map((ud) => ({
       id: ud.user.id,
@@ -110,7 +110,7 @@ export async function GET(
       phone: ud.user.phone,
     }));
 
-    console.log('[DEPT-API] Final users array:', JSON.stringify(users, null, 2));
+    // console.log('[DEPT-API] Final users array:', JSON.stringify(users, null, 2));
 
     return NextResponse.json({
       success: true,

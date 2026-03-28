@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aesthetic Interior",
+  title: "Aesthetic  Interior",
   description: "Aesthetic Interior Design Operations Management System",
 };
 

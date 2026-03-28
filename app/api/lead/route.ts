@@ -142,12 +142,24 @@ function toBudget(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-// GET endpoint - Retrieve all leads from the database
-// Returns leads ordered by creation date (newest first)
-// Includes assignee information (user who the lead is assigned to)
-export async function GET() {
+function toLeadStageParam(value: string | null): LeadStage | null {
+  const normalized = toOptionalString(value);
+  if (!normalized || normalized === 'ALL') return null;
+  const upper = normalized.toUpperCase();
+  return Object.values(LeadStage).includes(upper as LeadStage) ? (upper as LeadStage) : null;
+}
+
+function toPositiveInt(value: string | null, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+// GET endpoint - Retrieve leads from the database (paginated)
+export async function GET(request: NextRequest) {
   try {
-    console.log('🔵 [GET /api/lead] - Request received');
+    // console.log('🔵 [GET /api/lead] - Request received');
 
     const authResult = await requireDatabaseRoles([]);
     if (!authResult.ok) {
@@ -172,7 +184,7 @@ export async function GET() {
     const isJuniorCrm = departmentNames.has('JR_CRM');
     const isAdmin = departmentNames.has('ADMIN');
 
-    const where: Prisma.LeadWhereInput = isAdmin
+    const baseWhere: Prisma.LeadWhereInput = isAdmin
       ? {}
       : isJuniorCrm
         ? {
@@ -185,30 +197,79 @@ export async function GET() {
           }
         : {};
 
-    console.log('🔎 [GET /api/lead] - Fetching leads', {
-      scope: isAdmin ? 'all_admin' : isJuniorCrm ? 'assigned_jr_crm' : 'all',
-      actorUserId: authResult.actorUserId,
-    });
+    const searchParams = request.nextUrl.searchParams;
+    const limit = Math.min(toPositiveInt(searchParams.get('limit'), 20), 100);
+    const offset = toPositiveInt(searchParams.get('offset'), 0);
+    const stageParam = toLeadStageParam(searchParams.get('stage'));
+    const searchParam = toOptionalString(searchParams.get('search'));
 
-    const leads = await prisma.lead.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
-      include: {
-        assignee: {
-          select: { id: true, fullName: true, email: true },
-        },
-        assignments: {
-          where: { department: LeadAssignmentDepartment.JR_CRM },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            user: { select: { id: true, fullName: true, email: true } },
+    const where: Prisma.LeadWhereInput = {
+      ...baseWhere,
+      ...(stageParam ? { stage: stageParam } : {}),
+      ...(searchParam
+        ? {
+            OR: [
+              { name: { contains: searchParam, mode: 'insensitive' } },
+              { email: { contains: searchParam, mode: 'insensitive' } },
+              { phone: { contains: searchParam, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, leads] = await prisma.$transaction([
+      prisma.lead.count({ where }),
+      prisma.lead.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        include: {
+          assignee: {
+            select: { id: true, fullName: true, email: true },
+          },
+          assignments: {
+            where: { department: LeadAssignmentDepartment.JR_CRM },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              user: { select: { id: true, fullName: true, email: true } },
+            },
           },
         },
+        skip: offset,
+        take: limit,
+      }),
+    ]);
+
+    const stageCountEntries = await Promise.all(
+      Object.values(LeadStage).map(async (stage) => {
+        const count = await prisma.lead.count({
+          where: { ...baseWhere, stage },
+        });
+        return [stage, count] as const;
+      }),
+    );
+
+    const stageCounts = stageCountEntries.reduce<Record<string, number>>((acc, [stage, count]) => {
+      acc[stage] = count;
+      return acc;
+    }, {});
+
+    const nextOffset = offset + leads.length;
+    const hasMore = nextOffset < total;
+
+    // console.log('📊 [GET /api/lead] - Found', leads.length, 'leads in page');
+
+    return NextResponse.json({
+      success: true,
+      data: leads,
+      meta: {
+        total,
+        limit,
+        offset,
+        nextOffset: hasMore ? nextOffset : null,
+        hasMore,
+        stageCounts,
       },
     });
-    console.log('📊 [GET /api/lead] - Found', leads.length, 'leads');
-
-    return NextResponse.json({ success: true, data: leads });
   } catch (error) {
     console.error('❌ [GET /api/lead] - Error:', error);
     return NextResponse.json(
@@ -225,18 +286,18 @@ export async function GET() {
 // Uses database transaction to ensure atomicity when creating lead and activity log
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔵 [POST /api/lead] - Request received');
+    // console.log('🔵 [POST /api/lead] - Request received');
     
     // Verify user authentication and get user ID
     const authResult = await requireDatabaseRoles([]);
-    console.log('✅ [POST /api/lead] - Auth passed');
+    // console.log('✅ [POST /api/lead] - Auth passed');
     if (!authResult.ok) {
       return authResult.response;
     }
-    console.log('🔐 [POST /api/lead] - Auth verified for user:', authResult.actorUserId);
+    // console.log('🔐 [POST /api/lead] - Auth verified for user:', authResult.actorUserId);
 
     // Parse incoming JSON request body
-    console.log('📝 [POST /api/lead] - Parsing request body');
+    // console.log('📝 [POST /api/lead] - Parsing request body');
     const body = (await request.json()) as CreateLeadBody;
 
     // Extract and validate required fields
@@ -245,7 +306,7 @@ export async function POST(request: NextRequest) {
     const email = toOptionalString(body.email)?.toLowerCase();
     const source = toOptionalString(body.source);
     const requestedAssigneeId = toOptionalString(body.assignedToId);
-    console.log('📋 [POST /api/lead] - Extracted fields. Name:', name, 'Phone:', phone, 'Email:', email);
+    // console.log('📋 [POST /api/lead] - Extracted fields. Name:', name, 'Phone:', phone, 'Email:', email);
 
     // Return 400 error if required fields are missing or invalid
     if (!name || !source) {
@@ -276,12 +337,12 @@ export async function POST(request: NextRequest) {
 
     if (phone) {
       // Check if a lead with the same phone already exists to prevent duplicates
-      console.log('🔄 [POST /api/lead] - Checking for duplicate phone');
+      // console.log('🔄 [POST /api/lead] - Checking for duplicate phone');
       const existingLead = await prisma.lead.findFirst({
         where: { phone },
         select: { id: true },
       });
-      console.log('📊 [POST /api/lead] - Duplicate check result:', existingLead);
+      // console.log('📊 [POST /api/lead] - Duplicate check result:', existingLead);
 
       // Return 409 Conflict if phone already exists
       if (existingLead) {
@@ -315,7 +376,7 @@ export async function POST(request: NextRequest) {
 
     // Create lead and activity log in a transaction
     // Transaction ensures both operations succeed or both fail
-    console.log('💾 [POST /api/lead] - Creating lead and activity log in transaction');
+    // console.log('💾 [POST /api/lead] - Creating lead and activity log in transaction');
     const lead = await prisma.$transaction(async (tx) => {
       const stage = phone ? LeadStage.NUMBER_COLLECTED : LeadStage.NEW
 
@@ -338,7 +399,7 @@ export async function POST(request: NextRequest) {
           },
         },
       });
-      console.log('✨ [POST /api/lead] - Lead created:', newLead.id);
+      // console.log('✨ [POST /api/lead] - Lead created:', newLead.id);
 
       if (jrCrmAssigneeId) {
         await tx.leadAssignment.create({
@@ -351,7 +412,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Log the lead creation activity with the authenticated user
-      console.log('📋 [POST /api/lead] - Logging lead creation activity');
+      // console.log('📋 [POST /api/lead] - Logging lead creation activity');
       await logLeadCreated(tx, {
         leadId: newLead.id,
         userId: authResult.actorUserId,
@@ -360,7 +421,7 @@ export async function POST(request: NextRequest) {
 
       return newLead;
     });
-    console.log('✨ [POST /api/lead] - Lead and activity log created successfully');
+    // console.log('✨ [POST /api/lead] - Lead and activity log created successfully');
 
     // Return 201 Created with the new lead data
     return NextResponse.json(

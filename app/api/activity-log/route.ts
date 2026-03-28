@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
-    console.log(...args)
+    // console.log(...args)
   }
 }
 

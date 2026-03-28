@@ -8,7 +8,7 @@ import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 type RouteContext = { params: { leadId: string } | Promise<{ leadId: string }> };
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
-    console.log(...args);
+    // console.log(...args);
   }
 };
 

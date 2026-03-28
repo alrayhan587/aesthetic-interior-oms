@@ -115,6 +115,16 @@ type LeadAttachment = {
   createdAt: string
 }
 
+function toIsoFromLocalDateTime(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Invalid follow-up date and time.')
+  }
+  return parsed.toISOString()
+}
+
+type LeadTabValue = 'notes' | 'activity' | 'followups' | 'attachments'
+
 export default function LeadDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -134,6 +144,13 @@ export default function LeadDetailPage() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [followups, setFollowups] = useState<Followup[]>([])
   const [attachments, setAttachments] = useState<LeadAttachment[]>([])
+  const [activeTab, setActiveTab] = useState<LeadTabValue>('notes')
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [followupsLoading, setFollowupsLoading] = useState(false)
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
+  const [hasLoadedActivity, setHasLoadedActivity] = useState(false)
+  const [hasLoadedFollowups, setHasLoadedFollowups] = useState(false)
+  const [hasLoadedAttachments, setHasLoadedAttachments] = useState(false)
   const [addFollowupOpen, setAddFollowupOpen] = useState(false)
   const [followupDate, setFollowupDate] = useState('')
   const [followupNotes, setFollowupNotes] = useState('')
@@ -166,18 +183,16 @@ export default function LeadDetailPage() {
       .catch((error) => console.error('Error fetching user:', error))
   }, [])
 
-  // Fetch lead details
-  useEffect(() => {
+  const refreshLeadDetails = useCallback(() => {
     setLoading(true)
-    fetch(`/api/lead/${leadId}`)
+    fetch(
+      `/api/lead/${leadId}?includeFollowUps=false&includeAttachments=false&includeNotes=false&includeActivities=false&includeStatusHistory=false`,
+    )
       .then(res => res.json())
       .then(data => {
         setLead(data.data)
         setStage(data.data?.stage || 'NEW')
         setSubStatus(data.data?.subStatus ?? null)
-        setActivities(data.data?.activities || [])
-        setFollowups(data.data?.followUps || [])
-        setAttachments(data.data?.attachments || [])
         setLoading(false)
       })
       .catch((error) => {
@@ -186,39 +201,67 @@ export default function LeadDetailPage() {
       })
   }, [leadId])
 
+  // Fetch lead details
+  useEffect(() => {
+    refreshLeadDetails()
+  }, [refreshLeadDetails])
+
+  useEffect(() => {
+    setHasLoadedActivity(false)
+    setHasLoadedFollowups(false)
+    setHasLoadedAttachments(false)
+  }, [leadId])
+
   const refreshFollowups = useCallback(() => {
+    setFollowupsLoading(true)
     fetch(`/api/followup/${leadId}`)
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.data)) {
           setFollowups(data.data)
         }
+        setHasLoadedFollowups(true)
+        setFollowupsLoading(false)
       })
       .catch((error) => {
         console.error('Error fetching followups:', error)
+        setFollowupsLoading(false)
       })
   }, [leadId])
 
   const refreshAttachments = useCallback(() => {
+    setAttachmentsLoading(true)
     fetch(`/api/lead/${leadId}/attachments`)
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.data)) {
           setAttachments(data.data)
         }
+        setHasLoadedAttachments(true)
+        setAttachmentsLoading(false)
       })
       .catch((error) => {
         console.error('Error fetching attachments:', error)
+        setAttachmentsLoading(false)
       })
   }, [leadId])
 
-  useEffect(() => {
-    refreshFollowups()
-  }, [refreshFollowups])
-
-  useEffect(() => {
-    refreshAttachments()
-  }, [refreshAttachments])
+  const refreshActivities = useCallback(() => {
+    setActivityLoading(true)
+    fetch(`/api/activity-log/${leadId}?limit=30`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setActivities(data.data)
+        }
+        setHasLoadedActivity(true)
+        setActivityLoading(false)
+      })
+      .catch((error) => {
+        console.error('Error fetching activities:', error)
+        setActivityLoading(false)
+      })
+  }, [leadId])
 
   const refreshAssignments = useCallback(() => {
     setAssignmentsLoading(true)
@@ -255,6 +298,26 @@ export default function LeadDetailPage() {
         setNotesLoading(false)
       })
   }, [leadId])
+
+  useEffect(() => {
+    if (activeTab === 'activity' && !hasLoadedActivity) {
+      refreshActivities()
+    }
+    if (activeTab === 'followups' && !hasLoadedFollowups) {
+      refreshFollowups()
+    }
+    if (activeTab === 'attachments' && !hasLoadedAttachments) {
+      refreshAttachments()
+    }
+  }, [
+    activeTab,
+    hasLoadedActivity,
+    hasLoadedFollowups,
+    hasLoadedAttachments,
+    refreshActivities,
+    refreshFollowups,
+    refreshAttachments,
+  ])
 
   const hasPendingFollowup = useMemo(
     () => followups.some((followup) => followup.status === 'PENDING'),
@@ -347,7 +410,7 @@ export default function LeadDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         assignedToId: currentUserId,
-        followupDate: payload.followupDate,
+        followupDate: toIsoFromLocalDateTime(payload.followupDate),
         notes: payload.notes,
         userId: currentUserId,
       }),
@@ -430,7 +493,11 @@ export default function LeadDetailPage() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
-        <p className="mt-4 text-muted-foreground">Loading lead details...</p>
+        <div className="mt-6 space-y-4 animate-pulse">
+          <div className="h-28 rounded-xl bg-muted" />
+          <div className="h-12 rounded-xl bg-muted" />
+          <div className="h-60 rounded-xl bg-muted" />
+        </div>
       </div>
     )
   }
@@ -464,7 +531,7 @@ export default function LeadDetailPage() {
           <LeadInfoCard lead={lead} stage={stage} hasPendingFollowup={hasPendingFollowup} />
 
           {/* Tabs Section */}
-          <Tabs defaultValue="notes" className="w-full">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LeadTabValue)} className="w-full">
             {/* Tab List - Fixed Row Layout */}
             <TabsList className="inline-flex h-12 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground lg:w-max lg:mx-auto">
               <TabsTrigger value="notes" className="flex items-center justify-center gap-2">
@@ -498,20 +565,43 @@ export default function LeadDetailPage() {
             </TabsContent>
 
             <TabsContent value="activity" className="mt-6">
-              <LeadActivityTab activities={activities} />
+              {activityLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={idx} className="h-24 rounded-lg border border-border bg-muted/40" />
+                  ))}
+                </div>
+              ) : (
+                <LeadActivityTab activities={activities} />
+              )}
             </TabsContent>
 
             <TabsContent value="followups" className="mt-6">
-              <LeadFollowupsTab
-                followups={followups}
-                leadId={leadId}
-                currentUserId={currentUserId}
-                onRefreshFollowups={refreshFollowups}
-                onAddFollowup={handleAddFollowup}
-              />
+              {followupsLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <div key={idx} className="h-24 rounded-lg border border-border bg-muted/40" />
+                  ))}
+                </div>
+              ) : (
+                <LeadFollowupsTab
+                  followups={followups}
+                  leadId={leadId}
+                  currentUserId={currentUserId}
+                  onRefreshFollowups={refreshFollowups}
+                  onAddFollowup={handleAddFollowup}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="attachments" className="mt-6">
+              {attachmentsLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={idx} className="h-16 rounded-lg border border-border bg-muted/40" />
+                  ))}
+                </div>
+              ) : (
               <div className="space-y-6 rounded-xl border border-border bg-card p-4">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">Media</h3>
@@ -567,6 +657,7 @@ export default function LeadDetailPage() {
                   )}
                 </div>
               </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>

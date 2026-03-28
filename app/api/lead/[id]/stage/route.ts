@@ -10,7 +10,7 @@ type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
-    console.log(...args);
+    // console.log(...args);
   }
 };
 

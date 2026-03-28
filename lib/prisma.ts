@@ -6,7 +6,7 @@ const globalForPrisma = global as unknown as {
     prisma: PrismaClient
 }
 
-console.log('[DEBUG lib/prisma.ts] Loading DATABASE_URL:', process.env.DATABASE_URL ? '***' : 'undefined');
+// console.log('[DEBUG lib/prisma.ts] Loading DATABASE_URL:', process.env.DATABASE_URL ? '***' : 'undefined');
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,

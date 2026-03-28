@@ -29,6 +29,8 @@ function getCategory(fileType: string): 'MEDIA' | 'FILE' {
   return 'FILE'
 }
 
+const INLINE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   const leadId = await resolveLeadId(context)
 
@@ -104,13 +106,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const arrayBuffer = await fileEntry.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
-    await writeFile(fullPath, buffer)
-
     const fileType = fileEntry.type || 'application/octet-stream'
+    let attachmentUrl = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
+
+    try {
+      await writeFile(fullPath, buffer)
+    } catch (fileWriteError) {
+      const nodeError = fileWriteError as NodeJS.ErrnoException
+      const isReadOnlyFs =
+        nodeError?.code === 'EROFS' ||
+        nodeError?.code === 'EPERM' ||
+        nodeError?.code === 'EACCES'
+
+      if (!isReadOnlyFs) {
+        throw fileWriteError
+      }
+
+      if (fileEntry.size > INLINE_ATTACHMENT_MAX_BYTES) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'File upload is not available in this deployment for large files yet. Configure external blob storage or upload files smaller than 5MB.',
+          },
+          { status: 400 },
+        )
+      }
+
+      // Fallback for read-only production filesystems (e.g., serverless deployments).
+      attachmentUrl = `data:${fileType};base64,${buffer.toString('base64')}`
+    }
+
     const attachment = await prisma.leadAttachment.create({
       data: {
         leadId,
-        url: `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/'),
+        url: attachmentUrl,
         fileName: fileEntry.name || safeName,
         fileType,
         category: getCategory(fileType),

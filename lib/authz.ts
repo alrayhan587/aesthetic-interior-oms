@@ -25,11 +25,11 @@ export type RoleCheckResult = RoleCheckSuccess | RoleCheckFailure;
 
 export async function requireDatabaseRoles(allowedRoles: string[]): Promise<RoleCheckResult> {
   const { userId } = await auth();
-  console.log('[authz] requireDatabaseRoles called with allowedRoles:', allowedRoles);
-  console.log('[authz] clerkUserId:', userId);
+  // console.log('[authz] requireDatabaseRoles called with allowedRoles:', allowedRoles);
+  // console.log('[authz] clerkUserId:', userId);
 
   if (!userId) {
-    console.log('[authz] No userId from Clerk - returning 401');
+    // console.log('[authz] No userId from Clerk - returning 401');
     return {
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
@@ -53,10 +53,10 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
       },
     },
   });
-  console.log('[authz] actor from database:', actor);
+  // console.log('[authz] actor from database:', actor);
 
   if (!actor) {
-    console.log('[authz] No actor found in database - returning 403');
+    // console.log('[authz] No actor found in database - returning 403');
     return {
       ok: false,
       response: NextResponse.json(
@@ -67,25 +67,25 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
   }
 
   const actorRoles = actor.userRoles.map((item) => item.role.name);
-  console.log('[authz] actorRoles extracted:', actorRoles);
+  // console.log('[authz] actorRoles extracted:', actorRoles);
   
   // If allowedRoles is specified (not empty), check if user has one of those roles
   if (allowedRoles.length > 0) {
     const hasAllowedRole = allowedRoles.some((role) => actorRoles.includes(role));
-    console.log('[authz] hasAllowedRole check:', { allowedRoles, actorRoles, hasAllowedRole });
+    // console.log('[authz] hasAllowedRole check:', { allowedRoles, actorRoles, hasAllowedRole });
 
     if (!hasAllowedRole) {
-      console.log('[authz] User does not have allowed role - returning 403');
+      // console.log('[authz] User does not have allowed role - returning 403');
       return {
         ok: false,
         response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
       };
     }
   } else {
-    console.log('[authz] No role restrictions - allowedRoles is empty, allowing authenticated user');
+    // console.log('[authz] No role restrictions - allowedRoles is empty, allowing authenticated user');
   }
 
-  console.log('[authz] Authorization successful for user:', actor.id);
+  // console.log('[authz] Authorization successful for user:', actor.id);
   return {
     ok: true,
     actorUserId: actor.id,
