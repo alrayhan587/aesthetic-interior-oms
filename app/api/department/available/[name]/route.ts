@@ -65,24 +65,13 @@ export async function GET(
       );
     }
 
-    // Find department by name
-    const department = await prisma.department.findUnique({
-      where: { name: departmentName },
-      select: { id: true, name: true },
-    });
-
-    // console.log('[DEPT-API] Department found:', department);
-
-    if (!department) {
-      return NextResponse.json(
-        { success: false, error: `Department "${departmentName}" not found` },
-        { status: 404 }
-      );
-    }
-
     // Fetch all users in this department
     const userDepartments = await prisma.userDepartment.findMany({
-      where: { departmentId: department.id },
+      where: {
+        department: {
+          name: departmentName,
+        },
+      },
       include: {
         user: {
           select: {
@@ -112,10 +101,12 @@ export async function GET(
 
     // console.log('[DEPT-API] Final users array:', JSON.stringify(users, null, 2));
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       users,
     });
+    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=90');
+    return response;
   } catch (error) {
     console.error('[DEPT-API] Error fetching department users:', error);
     console.error('[DEPT-API] Error details:', {

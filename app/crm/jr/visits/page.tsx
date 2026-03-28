@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Plus, MapPin, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
+import { fetchMeCached } from '@/lib/client-me'
 
 type VisitRecord = {
   id: string
@@ -137,8 +138,7 @@ export function VisitsPageView({ forceAssignedOnly = false }: VisitsPageProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    fetch('/api/me')
-      .then((res) => res.json())
+    fetchMeCached()
       .then((data) => {
         if (data?.id) {
           setCurrentUserId(String(data.id))

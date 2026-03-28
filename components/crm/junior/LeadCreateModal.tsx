@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Plus, Mail, Phone, MapPin, DollarSign } from 'lucide-react'
+import { fetchMeCached } from '@/lib/client-me'
 
 type LeadCreateModalProps = {
   onCreated?: () => void
@@ -16,6 +17,17 @@ type JrCrmUser = {
   email: string
   phone: string
 }
+
+type ModalBootstrapCache = {
+  savedAt: number
+  currentUserId: string | null
+  isAdmin: boolean
+  isJuniorCrm: boolean
+  jrCrmUsers: JrCrmUser[]
+}
+
+const MODAL_BOOTSTRAP_CACHE_TTL_MS = 60_000
+let modalBootstrapCache: ModalBootstrapCache | null = null
 
 export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
   const [open, setOpen] = useState(false)
@@ -44,13 +56,28 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
     if (!open) return
 
     let active = true
+    const cacheIsFresh =
+      modalBootstrapCache &&
+      Date.now() - modalBootstrapCache.savedAt < MODAL_BOOTSTRAP_CACHE_TTL_MS
+
+    if (cacheIsFresh) {
+      const cached = modalBootstrapCache
+      if (cached) {
+        setCurrentUserId(cached.currentUserId)
+        setIsAdmin(cached.isAdmin)
+        setIsJuniorCrm(cached.isJuniorCrm)
+        setJrCrmUsers(cached.jrCrmUsers)
+        if (cached.isJuniorCrm && !cached.isAdmin && cached.currentUserId) {
+          setForm((prev) => ({ ...prev, jrCrmUserId: cached.currentUserId ?? '' }))
+        }
+      }
+      return
+    }
+
     setJrCrmLoading(true)
 
-    Promise.all([fetch('/api/me'), fetch('/api/department/available/JR_CRM')])
-      .then(async ([meRes, jrRes]) => {
-        const meData = await meRes.json()
-        const jrData = await jrRes.json()
-
+    Promise.all([fetchMeCached(), fetch('/api/department/available/JR_CRM').then((res) => res.json())])
+      .then(async ([meData, jrData]) => {
         if (!active) return
 
         const departments = Array.isArray(meData?.userDepartments)
@@ -70,7 +97,15 @@ export default function LeadCreateModal({ onCreated }: LeadCreateModalProps) {
         }
 
         if (isJrUser && !isAdminUser && meData?.id) {
-          setForm((prev) => ({ ...prev, jrCrmUserId: meData.id }))
+          setForm((prev) => ({ ...prev, jrCrmUserId: String(meData.id) }))
+        }
+
+        modalBootstrapCache = {
+          savedAt: Date.now(),
+          currentUserId: meData?.id ?? null,
+          isAdmin: isAdminUser,
+          isJuniorCrm: isJrUser,
+          jrCrmUsers: jrData?.success && Array.isArray(jrData?.users) ? jrData.users : [],
         }
       })
       .catch((err) => {

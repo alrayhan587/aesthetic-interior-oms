@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Calendar, Clock, Phone } from 'lucide-react'
+import { fetchMeCached } from '@/lib/client-me'
 
 type TodayFollowup = {
   id: string
@@ -30,8 +31,7 @@ export function TodaysTasks() {
     const run = async () => {
       setLoading(true)
       try {
-        const meRes = await fetch('/api/me')
-        const meData = await meRes.json()
+        const meData = await fetchMeCached()
         const userId = meData?.id as string | undefined
         if (!userId) {
           throw new Error('Failed to determine current user.')

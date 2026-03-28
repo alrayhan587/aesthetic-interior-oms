@@ -241,6 +241,7 @@ import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { NextRequest, NextResponse } from 'next/server';
 import { logLeadAssignmentChanged, logLeadStatusChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -319,6 +320,7 @@ function toLeadSubStatus(value: unknown): LeadSubStatus | null | undefined {
 
 // GET /api/lead/[id] - fetch one lead with related CRM timeline details
 export async function GET(_request: NextRequest, context: RouteContext) {
+  const requestStart = performance.now();
   const id = await resolveLeadId(context);
 
   if (!id) {
@@ -415,7 +417,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     });
 
   try {
-    const lead = await fetchLead(true);
+    const timedDb = await timeAsync(async () => fetchLead(true));
+    const lead = timedDb.value;
 
     if (!lead) {
       // console.log('[DEBUG][lead/:id][GET] Lead not found:', id);
@@ -423,23 +426,44 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     // console.log('[DEBUG][lead/:id][GET] Lead fetched successfully:', id);
-    return NextResponse.json({ success: true, data: lead });
+    const response = NextResponse.json({ success: true, data: lead });
+    const totalDurationMs = performance.now() - requestStart;
+    response.headers.set(
+      'Server-Timing',
+      [
+        formatServerTiming('db', timedDb.durationMs, 'lead detail query'),
+        formatServerTiming('total', totalDurationMs, 'request total'),
+      ].join(', '),
+    );
+    response.headers.set('Cache-Control', 'private, max-age=15, stale-while-revalidate=45');
+    return response;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
       console.warn('[DEBUG][lead/:id][GET] Attachments table missing, retrying without attachments');
       try {
-        const lead = await fetchLead(false);
+        const timedFallbackDb = await timeAsync(async () => fetchLead(false));
+        const lead = timedFallbackDb.value;
         if (!lead) {
           return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
         }
 
-        return NextResponse.json({
+        const response = NextResponse.json({
           success: true,
           data: {
             ...lead,
             attachments: [],
           },
         });
+        const totalDurationMs = performance.now() - requestStart;
+        response.headers.set(
+          'Server-Timing',
+          [
+            formatServerTiming('db', timedFallbackDb.durationMs, 'fallback detail query'),
+            formatServerTiming('total', totalDurationMs, 'request total'),
+          ].join(', '),
+        );
+        response.headers.set('Cache-Control', 'private, max-age=15, stale-while-revalidate=45');
+        return response;
       } catch (fallbackError) {
         console.error('[DEBUG][lead/:id][GET] Fallback error:', fallbackError);
         return NextResponse.json({ success: false, error: 'Failed to fetch lead' }, { status: 500 });

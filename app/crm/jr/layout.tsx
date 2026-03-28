@@ -17,7 +17,16 @@ export default async function CRMLayout({
 
   const user = await prisma.user.findUnique({
     where: { clerkUserId: userId },
-    include: { userDepartments: { include: { department: true } } },
+    select: {
+      id: true,
+      userDepartments: {
+        select: {
+          department: {
+            select: { name: true },
+          },
+        },
+      },
+    },
   });
 
   if (!user || user.userDepartments.length === 0) {

@@ -21,6 +21,7 @@ import { LeadNotesTab } from '@/components/crm/junior/lead-notes-tab'
 import { LeadActivityTab } from '@/components/crm/junior/lead-activity-tab'
 import { LeadFollowupsTab } from '@/components/crm/junior/lead-followups-tab'
 import { LeadActionsPanel } from '@/components/crm/junior/lead-actions-panel'
+import { fetchMeCached } from '@/lib/client-me'
 
 type LeadDetails = {
   id: string
@@ -170,18 +171,24 @@ export default function LeadDetailPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    fetch('/api/me')
-      .then(res => res.json())
+    const applyUserPayload = (data: { id: string | null; userDepartments: Array<{ department?: { name?: string | null } | null }> }) => {
+      if (data.id) setCurrentUserId(data.id)
+      const departments = Array.isArray(data?.userDepartments) ? data.userDepartments : []
+      const departmentNames = departments
+        .map((entry) => entry?.department?.name)
+        .filter((name: string | null | undefined): name is string => Boolean(name))
+      setCanManageAssignments(departmentNames.includes('ADMIN'))
+      setCanManageVisitRequests(
+        departmentNames.includes('JR_CRM') || departmentNames.includes('ADMIN'),
+      )
+    }
+
+    fetchMeCached()
       .then(data => {
-        if (data.id) setCurrentUserId(data.id)
-        const departments = Array.isArray(data?.userDepartments) ? data.userDepartments : []
-        const departmentNames = departments
-          .map((entry: unknown) => (entry as { department?: { name?: string } })?.department?.name)
-          .filter((name: string | undefined): name is string => Boolean(name))
-        setCanManageAssignments(departmentNames.includes('ADMIN'))
-        setCanManageVisitRequests(
-          departmentNames.includes('JR_CRM') || departmentNames.includes('ADMIN'),
-        )
+        applyUserPayload({
+          id: data?.id ?? null,
+          userDepartments: Array.isArray(data?.userDepartments) ? data.userDepartments : [],
+        })
       })
       .catch((error) => console.error('Error fetching user:', error))
   }, [])

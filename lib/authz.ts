@@ -13,6 +13,7 @@ type RoleCheckSuccess = {
     email: string;
     phone: string;
     clerkUserId: string | null;
+    userDepartments: string[];
   };
 };
 
@@ -47,6 +48,13 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
       userRoles: {
         select: {
           role: {
+            select: { name: true },
+          },
+        },
+      },
+      userDepartments: {
+        select: {
+          department: {
             select: { name: true },
           },
         },
@@ -97,6 +105,7 @@ export async function requireDatabaseRoles(allowedRoles: string[]): Promise<Role
       email: actor.email,
       phone: actor.phone,
       clerkUserId: actor.clerkUserId,
+      userDepartments: (actor.userDepartments ?? []).map((item) => item.department.name),
     },
   };
 }

@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { formatServerTiming, timeAsync } from "@/lib/server-timing";
 
 type UpdateMeBody = {
   departmentId?: unknown;
@@ -38,11 +39,13 @@ async function parseJsonBody(request: Request): Promise<UpdateMeBody | null> {
 }
 
 export async function GET() {
+  const requestStart = performance.now();
   try {
     debugLog(`[GET /me] ========== REQUEST START ==========`);
     debugLog(`[GET /me] phase=start timestamp=${new Date().toISOString()}`);
 
-    const { userId } = await auth();
+    const timedAuth = await timeAsync(async () => auth());
+    const { userId } = timedAuth.value;
     debugLog(`[GET /me] phase=auth_complete userId=${userId || "null"}`);
     debugLog(`[GET /me] userId type: ${typeof userId}`);
 
@@ -57,13 +60,14 @@ export async function GET() {
     debugLog(`[GET /me] Querying user with clerkUserId: ${userId}`);
 
     // Find user in DB
-    const user = await prisma.user.findUnique({
+    const timedDb = await timeAsync(async () => prisma.user.findUnique({
       where: { clerkUserId: userId },
       include: {
         userRoles: { include: { role: true } },
         userDepartments: { include: { department: true } },
       },
-    });
+    }));
+    const user = timedDb.value;
 
     debugLog(`[GET /me] phase=db_query_complete`);
     debugLog(`[GET /me] userFound=${Boolean(user)}`);
@@ -90,7 +94,18 @@ export async function GET() {
       `[GET /me] phase=success userId=${userId} userName=${user.fullName} userEmail=${user.email} needsOnboarding=${needsOnboarding}`,
     );
     debugLog(`[GET /me] ========== REQUEST SUCCESS ==========`);
-    return NextResponse.json({ ...user, needsOnboarding });
+    const response = NextResponse.json({ ...user, needsOnboarding });
+    const totalDurationMs = performance.now() - requestStart;
+    response.headers.set(
+      "Server-Timing",
+      [
+        formatServerTiming("auth", timedAuth.durationMs, "clerk auth"),
+        formatServerTiming("db", timedDb.durationMs, "user lookup"),
+        formatServerTiming("total", totalDurationMs, "request total"),
+      ].join(", "),
+    );
+    response.headers.set("Cache-Control", "private, max-age=15, stale-while-revalidate=45");
+    return response;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;

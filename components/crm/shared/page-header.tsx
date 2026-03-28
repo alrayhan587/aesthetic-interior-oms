@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { UserCircle2 } from 'lucide-react'
+import { fetchMeCached } from '@/lib/client-me'
 
 type CrmPageHeaderProps = {
   title: string
@@ -13,8 +14,7 @@ export function CrmPageHeader({ title, subtitle }: CrmPageHeaderProps) {
 
   useEffect(() => {
     let active = true
-    fetch('/api/me')
-      .then((res) => res.json())
+    fetchMeCached()
       .then((data) => {
         if (!active) return
         const fullName = typeof data?.fullName === 'string' ? data.fullName.trim() : ''

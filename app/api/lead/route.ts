@@ -3,6 +3,7 @@ import { LeadAssignmentDepartment, LeadStage, Prisma } from '@/generated/prisma/
 import { NextRequest, NextResponse } from 'next/server';
 import { logLeadCreated } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
+import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 
 /*
   POSTMAN TESTING DATA
@@ -158,29 +159,17 @@ function toPositiveInt(value: string | null, fallback: number): number {
 
 // GET endpoint - Retrieve leads from the database (paginated)
 export async function GET(request: NextRequest) {
+  const requestStart = performance.now();
   try {
     // console.log('🔵 [GET /api/lead] - Request received');
 
-    const authResult = await requireDatabaseRoles([]);
+    const timedAuth = await timeAsync(async () => requireDatabaseRoles([]));
+    const authResult = timedAuth.value;
     if (!authResult.ok) {
       return authResult.response;
     }
 
-    const actor = await prisma.user.findUnique({
-      where: { id: authResult.actorUserId },
-      select: {
-        id: true,
-        userDepartments: {
-          select: {
-            department: { select: { name: true } },
-          },
-        },
-      },
-    });
-
-    const departmentNames = new Set(
-      (actor?.userDepartments ?? []).map((row) => row.department.name),
-    );
+    const departmentNames = new Set(authResult.actor.userDepartments ?? []);
     const isJuniorCrm = departmentNames.has('JR_CRM');
     const isAdmin = departmentNames.has('ADMIN');
 
@@ -217,39 +206,39 @@ export async function GET(request: NextRequest) {
         : {}),
     };
 
-    const [total, leads] = await prisma.$transaction([
-      prisma.lead.count({ where }),
-      prisma.lead.findMany({
-        where,
-        orderBy: { created_at: 'desc' },
-        include: {
-          assignee: {
-            select: { id: true, fullName: true, email: true },
-          },
-          assignments: {
-            where: { department: LeadAssignmentDepartment.JR_CRM },
-            orderBy: { createdAt: 'desc' },
-            include: {
-              user: { select: { id: true, fullName: true, email: true } },
+    const timedDb = await timeAsync(async () => {
+      const [total, leads, groupedStageCounts] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          include: {
+            assignments: {
+              where: { department: LeadAssignmentDepartment.JR_CRM },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              include: {
+                user: { select: { id: true, fullName: true, email: true } },
+              },
             },
           },
-        },
-        skip: offset,
-        take: limit,
-      }),
-    ]);
+          skip: offset,
+          take: limit,
+        }),
+        prisma.lead.groupBy({
+          by: ['stage'],
+          where: baseWhere,
+          _count: { stage: true },
+        }),
+      ]);
+      return { total, leads, groupedStageCounts };
+    });
 
-    const stageCountEntries = await Promise.all(
-      Object.values(LeadStage).map(async (stage) => {
-        const count = await prisma.lead.count({
-          where: { ...baseWhere, stage },
-        });
-        return [stage, count] as const;
-      }),
-    );
+    const { total, leads, groupedStageCounts } = timedDb.value;
 
-    const stageCounts = stageCountEntries.reduce<Record<string, number>>((acc, [stage, count]) => {
-      acc[stage] = count;
+    const stageCounts = Object.values(LeadStage).reduce<Record<string, number>>((acc, stage) => {
+      const grouped = groupedStageCounts.find((entry) => entry.stage === stage);
+      acc[stage] = grouped?._count.stage ?? 0;
       return acc;
     }, {});
 
@@ -258,7 +247,7 @@ export async function GET(request: NextRequest) {
 
     // console.log('📊 [GET /api/lead] - Found', leads.length, 'leads in page');
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: leads,
       meta: {
@@ -270,6 +259,17 @@ export async function GET(request: NextRequest) {
         stageCounts,
       },
     });
+    const totalDurationMs = performance.now() - requestStart;
+    response.headers.set(
+      'Server-Timing',
+      [
+        formatServerTiming('auth', timedAuth.durationMs, 'requireDatabaseRoles'),
+        formatServerTiming('db', timedDb.durationMs, 'lead queries'),
+        formatServerTiming('total', totalDurationMs, 'request total'),
+      ].join(', '),
+    );
+    response.headers.set('Cache-Control', 'private, max-age=15, stale-while-revalidate=45');
+    return response;
   } catch (error) {
     console.error('❌ [GET /api/lead] - Error:', error);
     return NextResponse.json(

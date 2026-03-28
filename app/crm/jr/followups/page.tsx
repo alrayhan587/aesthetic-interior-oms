@@ -28,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
+import { fetchMeCached } from '@/lib/client-me'
 
 type FollowUpStatus = 'PENDING' | 'DONE' | 'LATELY_DONE' | 'MISSED'
 type TabKey = 'pending' | 'today' | 'overdue' | 'completed' | 'missed'
@@ -232,8 +233,7 @@ export default function FollowupsPage() {
   )
 
   useEffect(() => {
-    fetch('/api/me')
-      .then((res) => res.json())
+    fetchMeCached()
       .then((data) => setCurrentUserId(data.id ?? null))
       .catch((error) => console.error('Error fetching current user:', error))
   }, [])

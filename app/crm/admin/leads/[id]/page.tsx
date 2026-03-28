@@ -21,6 +21,7 @@ import { LeadNotesTab } from '@/components/crm/junior/lead-notes-tab'
 import { LeadActivityTab } from '@/components/crm/junior/lead-activity-tab'
 import { LeadFollowupsTab } from '@/components/crm/junior/lead-followups-tab'
 import { LeadActionsPanel } from '@/components/crm/junior/lead-actions-panel'
+import { fetchMeCached } from '@/lib/client-me'
 
 type LeadDetails = {
   id: string
@@ -167,8 +168,7 @@ export default function LeadDetailPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    fetch('/api/me')
-      .then(res => res.json())
+    fetchMeCached()
       .then(data => {
         if (data.id) setCurrentUserId(data.id)
         const departments = Array.isArray(data?.userDepartments) ? data.userDepartments : []
