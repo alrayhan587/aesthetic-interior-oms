@@ -28,7 +28,7 @@ function normalizeToken(value: string | null | undefined) {
 }
 
 function getVerifyToken() {
-  return normalizeToken(process.env.FB_WEBHOOK_VERIFY_TOKEN ?? process.env.FB_VERIFY_TOKEN ?? '')
+  return normalizeToken(process.env.FB_WEBHOOK_VERIFY_TOKEN ?? '')
 }
 
 // Webhook verification endpoint required by Meta:

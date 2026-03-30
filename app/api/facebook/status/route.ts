@@ -60,9 +60,7 @@ export async function GET(request: NextRequest) {
         pageIdConfigured: config.pageIdConfigured,
         graphVersion: config.graphVersion,
         pageId: config.pageId,
-        verifyTokenConfigured: Boolean(
-          process.env.FB_WEBHOOK_VERIFY_TOKEN || process.env.FB_VERIFY_TOKEN,
-        ),
+        verifyTokenConfigured: Boolean(process.env.FB_WEBHOOK_VERIFY_TOKEN),
       },
       graphConnection,
       syncResult,
