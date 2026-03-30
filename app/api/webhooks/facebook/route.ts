@@ -26,6 +26,25 @@ function maskValue(value: string) {
   return `${value.slice(0, 3)}***${value.slice(-3)}`
 }
 
+function getSearchParam(request: NextRequest, keys: string[]): string {
+  for (const key of keys) {
+    const value = request.nextUrl.searchParams.get(key)
+    if (value && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function getConfiguredVerifyTokens(): string[] {
+  const candidates = [
+    process.env.FB_WEBHOOK_VERIFY_TOKEN,
+    process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN,
+  ]
+
+  return candidates
+    .map((value) => (value ?? '').trim())
+    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+}
+
 // Webhook verification endpoint required by Meta:
 // GET /api/webhooks/facebook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
 export async function GET(request: NextRequest) {
@@ -35,10 +54,11 @@ export async function GET(request: NextRequest) {
   const userAgent = request.headers.get('user-agent') ?? 'unknown'
   const forwardedFor = request.headers.get('x-forwarded-for') ?? 'unknown'
 
-  const mode = request.nextUrl.searchParams.get('hub.mode') ?? ''
-  const token = (request.nextUrl.searchParams.get('hub.verify_token') ?? '').trim()
-  const challenge = request.nextUrl.searchParams.get('hub.challenge') ?? ''
-  const verifyToken = (process.env.FB_WEBHOOK_VERIFY_TOKEN ?? '').trim()
+  const mode = getSearchParam(request, ['hub.mode', 'hub_mode'])
+  const token = getSearchParam(request, ['hub.verify_token', 'hub_verify_token'])
+  const challenge = getSearchParam(request, ['hub.challenge', 'hub_challenge'])
+  const verifyTokens = getConfiguredVerifyTokens()
+  const tokenMatches = Boolean(token) && verifyTokens.includes(token)
 
   console.log('[GET /api/webhooks/facebook] incoming request')
   console.log({
@@ -59,12 +79,13 @@ export async function GET(request: NextRequest) {
     },
     compare: {
       incomingTokenLength: token.length,
-      envTokenLength: verifyToken.length,
-      tokenMatches: Boolean(token) && token === verifyToken,
+      envTokenLengths: verifyTokens.map((value) => value.length),
+      configuredTokenCount: verifyTokens.length,
+      tokenMatches,
     },
   })
 
-  if (mode === 'subscribe' && token && challenge && token === verifyToken) {
+  if (mode === 'subscribe' && token && challenge && tokenMatches) {
     return new NextResponse(challenge, {
       status: 200,
       headers: { 'content-type': 'text/plain; charset=utf-8' },
