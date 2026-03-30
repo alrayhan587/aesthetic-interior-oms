@@ -29,6 +29,8 @@ function maskValue(value: string) {
 // Webhook verification endpoint required by Meta:
 // GET /api/webhooks/facebook?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
 export async function GET(request: NextRequest) {
+  const search = request.nextUrl.search
+  const allParams = Object.fromEntries(request.nextUrl.searchParams.entries())
   const queryKeys = Array.from(request.nextUrl.searchParams.keys())
   const userAgent = request.headers.get('user-agent') ?? 'unknown'
   const forwardedFor = request.headers.get('x-forwarded-for') ?? 'unknown'
@@ -42,6 +44,8 @@ export async function GET(request: NextRequest) {
   console.log({
     method: request.method,
     url: request.nextUrl.toString(),
+    search,
+    allParams,
     queryKeys,
     query: {
       'hub.mode': mode || null,
