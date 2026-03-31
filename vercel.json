@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/facebook/sync/fallback",
-      "schedule": "*/10 * * * *"
-    }
-  ]
-}

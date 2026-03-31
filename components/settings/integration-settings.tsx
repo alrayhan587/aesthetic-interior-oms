@@ -231,7 +231,7 @@ export function IntegrationSettings() {
             <div>
               <CardTitle>Facebook Lead Sync Control</CardTitle>
               <CardDescription>
-                Manage real-time sync behavior and a safe scheduled fallback from this panel.
+                Manage real-time sync behavior and a safe traffic-triggered fallback from this panel.
               </CardDescription>
             </div>
             <Badge className={config.configured ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}>
@@ -256,7 +256,7 @@ export function IntegrationSettings() {
             </div>
 
             <div className="rounded-lg border border-border p-4">
-              <p className="text-xs text-muted-foreground">Next Fallback Attempt</p>
+              <p className="text-xs text-muted-foreground">Next Fallback Window</p>
               <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.nextScheduledAt)}</p>
               <p className="mt-2 text-xs text-muted-foreground">
                 Graph API: {config.graphVersion} | Page ID configured: {config.pageIdConfigured ? 'Yes' : 'No'}
@@ -287,9 +287,9 @@ export function IntegrationSettings() {
 
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-foreground">Enable safe fallback scheduler</p>
+                <p className="text-sm font-medium text-foreground">Enable safe fallback sync</p>
                 <p className="text-xs text-muted-foreground">
-                  Runs on a secure server schedule and imports missed conversations if webhook-based flow misses anything.
+                  Runs when app traffic hits lead APIs and imports missed conversations if webhook flow misses anything.
                 </p>
               </div>
               <Switch checked={fallbackEnabled} onCheckedChange={setFallbackEnabled} disabled={!enabled} />
@@ -367,10 +367,10 @@ export function IntegrationSettings() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-blue-900">
           <p>1. Facebook sends webhook events instantly when conversations happen.</p>
-          <p>2. If anything is missed, fallback scheduler checks periodically and imports recent conversations safely.</p>
+          <p>2. If anything is missed, fallback sync runs on app traffic and imports recent conversations safely.</p>
           <p>3. Duplicate protection is enabled, so the same conversation is not imported twice.</p>
           <p>4. Batch size controls how many recent conversations are checked in one run.</p>
-          <p>5. Fallback interval controls how often scheduled checks are allowed to run.</p>
+          <p>5. Fallback interval controls how often traffic-triggered checks are allowed to run.</p>
         </CardContent>
       </Card>
     </div>
