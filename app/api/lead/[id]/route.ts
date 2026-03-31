@@ -641,13 +641,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const nextEmail =
       body.email !== undefined ? toOptionalString(body.email)?.toLowerCase() ?? null : undefined;
 
-    if (nextEmail === null) {
-      return NextResponse.json(
-        { success: false, error: 'Email cannot be empty' },
-        { status: 400 }
-      );
-    }
-
     if (nextEmail && nextEmail !== existingLead.email) {
       const duplicate = await prisma.lead.findFirst({
         where: { email: nextEmail, NOT: { id } },

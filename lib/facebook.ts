@@ -1,7 +1,7 @@
 import 'server-only'
 
 import prisma from '@/lib/prisma'
-import { LeadAssignmentDepartment, LeadStage } from '@/generated/prisma/client'
+import { ActivityType, LeadAssignmentDepartment, LeadStage } from '@/generated/prisma/client'
 
 type FacebookConversation = {
   id: string
@@ -423,29 +423,29 @@ async function importConversationToLead(
   let assignee: JrCrmAgent | null = detectedAgent
   let usedRoundRobin = false
 
+  if (!detectedPhone) {
+    return { created: false, usedRoundRobin: false }
+  }
+
   if (!assignee && options.jrCrmAgents.length > 0) {
     const index = options.jrCrmRoundRobinOffset % options.jrCrmAgents.length
     assignee = options.jrCrmAgents[index]
     usedRoundRobin = true
   }
 
-  let leadPhone: string | null = null
-  let stage: LeadStage = LeadStage.NEW
-
-  if (detectedPhone) {
-    const existingByPhone = await prisma.lead.findFirst({
-      where: { phone: detectedPhone },
-      select: { id: true },
-    })
-
-    if (!existingByPhone) {
-      leadPhone = detectedPhone
-      stage = LeadStage.NUMBER_COLLECTED
-    }
+  const existingByPhone = await prisma.lead.findFirst({
+    where: { phone: detectedPhone },
+    select: { id: true },
+  })
+  if (existingByPhone) {
+    return { created: false, usedRoundRobin: false }
   }
 
+  const leadPhone: string = detectedPhone
+  const stage: LeadStage = LeadStage.NUMBER_COLLECTED
+
   const assignmentFromMessage = detectedAgent ? `\nAssigned by Meta message to: ${detectedAgent.fullName}` : ''
-  const phoneMarker = leadPhone ? `\nDetected phone: ${leadPhone}` : ''
+  const phoneMarker = `\nDetected phone: ${leadPhone}`
 
   await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
@@ -468,6 +468,15 @@ async function importConversationToLead(
           leadId: lead.id,
           userId: assignee.id,
           department: LeadAssignmentDepartment.JR_CRM,
+        },
+      })
+
+      await tx.activityLog.create({
+        data: {
+          leadId: lead.id,
+          userId: assignee.id,
+          type: ActivityType.LEAD_CREATED,
+          description: `Lead "${customerName}" was created from Facebook chat.`,
         },
       })
     }

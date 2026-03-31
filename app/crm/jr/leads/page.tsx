@@ -43,6 +43,7 @@ import { CrmPageHeader } from '@/components/crm/shared/page-header'
 
 const PAGE_SIZE = 20
 const stages = ['NEW', 'NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_COMPLETED', 'CLOSED']
+const stageGridStages = ['NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_COMPLETED', 'CLOSED']
 
 type ViewMode = 'list' | 'card'
 
@@ -529,8 +530,8 @@ export default function LeadsPage() {
             <LeadCreateModal onCreated={refreshLeads} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-            {stages.map((stage) => {
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {stageGridStages.map((stage) => {
               const config = stageStatConfig[stage]
               const Icon = config.icon
               const isActive = stageFilter === stage

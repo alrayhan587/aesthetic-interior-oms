@@ -87,6 +87,18 @@ async function ensureFollowupDueNotifications(userId: string) {
   })
 }
 
+async function clearOrphanFollowupNotifications(userId: string) {
+  await prisma.notification.deleteMany({
+    where: {
+      userId,
+      type: {
+        in: [NotificationType.FOLLOWUP_DUE, NotificationType.FOLLOWUP_REMINDER_15M],
+      },
+      OR: [{ leadId: null }, { followUpId: null }],
+    },
+  })
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireDatabaseRoles([])
@@ -95,6 +107,7 @@ export async function GET(request: NextRequest) {
     const userId = authResult.actorUserId
     const limit = toPositiveInt(request.nextUrl.searchParams.get('limit'), 20, 100)
 
+    await clearOrphanFollowupNotifications(userId)
     await ensureFollowupDueNotifications(userId)
 
     const [items, unreadCount] = await Promise.all([

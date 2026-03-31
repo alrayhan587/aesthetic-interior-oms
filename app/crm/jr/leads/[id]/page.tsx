@@ -162,6 +162,16 @@ export default function LeadDetailPage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [addAttachmentError, setAddAttachmentError] = useState<string | null>(null)
   const [addingAttachment, setAddingAttachment] = useState(false)
+  const [addLeadDetailsOpen, setAddLeadDetailsOpen] = useState(false)
+  const [leadDetailsName, setLeadDetailsName] = useState('')
+  const [leadDetailsEmail, setLeadDetailsEmail] = useState('')
+  const [leadDetailsPhone, setLeadDetailsPhone] = useState('')
+  const [leadDetailsLocation, setLeadDetailsLocation] = useState('')
+  const [leadDetailsSource, setLeadDetailsSource] = useState('')
+  const [leadDetailsBudget, setLeadDetailsBudget] = useState('')
+  const [leadDetailsRemarks, setLeadDetailsRemarks] = useState('')
+  const [leadDetailsError, setLeadDetailsError] = useState<string | null>(null)
+  const [savingLeadDetails, setSavingLeadDetails] = useState(false)
   const [canManageAssignments, setCanManageAssignments] = useState(false)
   const [canManageVisitRequests, setCanManageVisitRequests] = useState(false)
   const isVisitTeamView = pathname?.startsWith('/visit-team/') ?? false
@@ -356,6 +366,26 @@ export default function LeadDetailPage() {
     }
   }
 
+  const handleAddLeadDetailsOpenChange = (open: boolean) => {
+    setAddLeadDetailsOpen(open)
+    if (!open) {
+      setLeadDetailsError(null)
+    }
+  }
+
+  const handleAddLeadDetails = () => {
+    if (!lead) return
+    setLeadDetailsName(lead.name ?? '')
+    setLeadDetailsEmail(lead.email ?? '')
+    setLeadDetailsPhone(lead.phone ?? '')
+    setLeadDetailsLocation(lead.location ?? '')
+    setLeadDetailsSource(lead.source ?? '')
+    setLeadDetailsBudget(lead.budget !== null && lead.budget !== undefined ? String(lead.budget) : '')
+    setLeadDetailsRemarks(lead.remarks ?? '')
+    setLeadDetailsError(null)
+    setAddLeadDetailsOpen(true)
+  }
+
   // Handle adding a new note
   const handleAddNote = async () => {
     if (!newNote.trim() || !currentUserId) return
@@ -484,6 +514,44 @@ export default function LeadDetailPage() {
       setAddAttachmentError(message)
     } finally {
       setAddingAttachment(false)
+    }
+  }
+
+  const handleSaveLeadDetails = async () => {
+    setSavingLeadDetails(true)
+    setLeadDetailsError(null)
+
+    try {
+      const normalizedBudget = leadDetailsBudget.trim()
+      const budgetValue =
+        normalizedBudget === '' ? null : Number.isFinite(Number(normalizedBudget)) ? Number(normalizedBudget) : null
+
+      const response = await fetch(`/api/lead/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: leadDetailsName.trim() || lead?.name || '',
+          email: leadDetailsEmail.trim() === '' ? null : leadDetailsEmail.trim().toLowerCase(),
+          phone: leadDetailsPhone.trim() === '' ? null : leadDetailsPhone.trim(),
+          location: leadDetailsLocation.trim() === '' ? null : leadDetailsLocation.trim(),
+          source: leadDetailsSource.trim() === '' ? null : leadDetailsSource.trim(),
+          budget: budgetValue,
+          remarks: leadDetailsRemarks.trim() === '' ? null : leadDetailsRemarks.trim(),
+          userId: currentUserId ?? undefined,
+        }),
+      })
+
+      const payload = (await response.json()) as { success?: boolean; data?: LeadDetails; error?: string }
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error ?? 'Failed to save lead details')
+      }
+
+      setLead(payload.data)
+      setAddLeadDetailsOpen(false)
+    } catch (error) {
+      setLeadDetailsError(error instanceof Error ? error.message : 'Failed to save lead details')
+    } finally {
+      setSavingLeadDetails(false)
     }
   }
 
@@ -707,11 +775,75 @@ export default function LeadDetailPage() {
             onFollowupRefresh={refreshFollowups}
             onAttachmentRefresh={refreshAttachments}
             onAddFollowup={handleAddFollowup}
+            onAddLeadDetails={handleAddLeadDetails}
             onAddAttachment={() => setAddAttachmentOpen(true)}
             onLeadRefresh={refreshLeadDetails}
           />
         </div>
       </div>
+
+      <Dialog open={addLeadDetailsOpen} onOpenChange={handleAddLeadDetailsOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Lead Details</DialogTitle>
+            <DialogDescription>
+              Update lead basic details anytime. All fields are optional.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input value={leadDetailsName} onChange={(event) => setLeadDetailsName(event.target.value)} />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={leadDetailsEmail}
+                  onChange={(event) => setLeadDetailsEmail(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input value={leadDetailsPhone} onChange={(event) => setLeadDetailsPhone(event.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Input value={leadDetailsLocation} onChange={(event) => setLeadDetailsLocation(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Source</Label>
+                <Input value={leadDetailsSource} onChange={(event) => setLeadDetailsSource(event.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Budget</Label>
+              <Input
+                type="number"
+                value={leadDetailsBudget}
+                onChange={(event) => setLeadDetailsBudget(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Remarks</Label>
+              <Textarea
+                rows={4}
+                value={leadDetailsRemarks}
+                onChange={(event) => setLeadDetailsRemarks(event.target.value)}
+              />
+            </div>
+            {leadDetailsError ? <p className="text-sm text-destructive">{leadDetailsError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveLeadDetails} disabled={savingLeadDetails}>
+              {savingLeadDetails ? 'Saving...' : 'Save Details'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addFollowupOpen} onOpenChange={handleAddFollowupOpenChange}>
         <DialogContent>

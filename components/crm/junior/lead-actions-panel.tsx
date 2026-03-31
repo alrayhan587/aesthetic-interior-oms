@@ -126,6 +126,7 @@ interface LeadActionsPanelProps {
   onAttachmentRefresh?: () => void
   onAddFollowup: () => void
   onAddAttachment?: () => void
+  onAddLeadDetails?: () => void
   onLeadRefresh?: () => void
 }
 
@@ -157,6 +158,7 @@ export function LeadActionsPanel({
   onAttachmentRefresh,
   onAddFollowup,
   onAddAttachment,
+  onAddLeadDetails,
   onLeadRefresh,
 }: LeadActionsPanelProps) {
   const [assignOpen, setAssignOpen] = useState(false)
@@ -1396,6 +1398,15 @@ export function LeadActionsPanel({
               Add Followup
             </Button>
           ) : null}
+          <Button
+            className="w-full justify-start gap-2"
+            variant="outline"
+            onClick={onAddLeadDetails}
+            disabled={!onAddLeadDetails}
+          >
+            <Plus className="w-4 h-4" />
+            Add Lead Details
+          </Button>
           <Button
             className="w-full justify-start gap-2"
             variant="outline"
