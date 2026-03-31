@@ -8,6 +8,7 @@ type UpdateUserBody = {
   fullName?: string;
   email?: string;
   phone?: string;
+  isActive?: boolean;
   clerkUserId?: string | null;
   roleNames?: string[];
   departmentNames?: string[];
@@ -48,7 +49,7 @@ export async function PATCH(req: Request, { params: paramsPromise }: RouteParams
     }
 
     const body = (await req.json()) as UpdateUserBody;
-    const { fullName, email, phone, clerkUserId, roleNames, departmentNames } = body;
+    const { fullName, email, phone, isActive, clerkUserId, roleNames, departmentNames } = body;
 
     const updated = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id } });
@@ -62,6 +63,7 @@ export async function PATCH(req: Request, { params: paramsPromise }: RouteParams
           ...(fullName !== undefined ? { fullName } : {}),
           ...(email !== undefined ? { email } : {}),
           ...(phone !== undefined ? { phone } : {}),
+          ...(typeof isActive === "boolean" ? { isActive } : {}),
           ...(clerkUserId !== undefined ? { clerkUserId } : {}),
         },
       });

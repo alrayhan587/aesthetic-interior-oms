@@ -21,6 +21,7 @@ export type FacebookSyncControlState = {
   lastSyncTrigger: string | null
   incrementalCursor: string | null
   incrementalWatermark: string | null
+  jrCrmRoundRobinOffset: number
   nextScheduledAt: string | null
 }
 
@@ -63,6 +64,7 @@ function serializeControlRow(row: {
   lastSyncTrigger: string | null
   incrementalCursor: string | null
   incrementalWatermark: Date | null
+  jrCrmRoundRobinOffset: number
 }): FacebookSyncControlState {
   const nextScheduledAt =
     row.fallbackEnabled && row.lastSyncAt
@@ -82,6 +84,7 @@ function serializeControlRow(row: {
     lastSyncTrigger: row.lastSyncTrigger,
     incrementalCursor: row.incrementalCursor,
     incrementalWatermark: row.incrementalWatermark?.toISOString() ?? null,
+    jrCrmRoundRobinOffset: row.jrCrmRoundRobinOffset,
     nextScheduledAt,
   }
 }
@@ -162,6 +165,7 @@ export async function recordFacebookSyncResult(input: {
   error?: string | null
   incrementalCursor?: string | null
   incrementalWatermarkIso?: string | null
+  jrCrmRoundRobinOffset?: number
 }) {
   await ensureControlRow()
 
@@ -184,6 +188,9 @@ export async function recordFacebookSyncResult(input: {
               : null,
           }
         : {}),
+      ...(typeof input.jrCrmRoundRobinOffset === 'number'
+        ? { jrCrmRoundRobinOffset: Math.max(0, Math.floor(input.jrCrmRoundRobinOffset)) }
+        : {}),
     },
   })
 }
@@ -203,6 +210,7 @@ async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFace
     limit: settings.batchLimit,
     afterCursor: settings.incrementalCursor,
     watermarkIso: settings.incrementalWatermark?.toISOString() ?? null,
+    jrCrmRoundRobinOffset: settings.jrCrmRoundRobinOffset,
   })
 
   await recordFacebookSyncResult({
@@ -212,6 +220,7 @@ async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFace
     createdLeads: result.createdLeads,
     incrementalCursor: result.nextCursor,
     incrementalWatermarkIso: result.maxUpdatedTimeIso,
+    jrCrmRoundRobinOffset: result.nextJrCrmRoundRobinOffset,
   })
 
   return {

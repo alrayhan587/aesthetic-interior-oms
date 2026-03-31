@@ -1,6 +1,7 @@
 import 'server-only'
 
 import prisma from '@/lib/prisma'
+import { LeadAssignmentDepartment, LeadStage } from '@/generated/prisma/client'
 
 type FacebookConversation = {
   id: string
@@ -63,6 +64,7 @@ type SyncFacebookIncrementalOptions = {
   limit?: number
   afterCursor?: string | null
   watermarkIso?: string | null
+  jrCrmRoundRobinOffset?: number
 }
 
 type SyncFacebookIncrementalResult = {
@@ -70,6 +72,12 @@ type SyncFacebookIncrementalResult = {
   createdLeads: number
   nextCursor: string | null
   maxUpdatedTimeIso: string | null
+  nextJrCrmRoundRobinOffset: number
+}
+
+type JrCrmAgent = {
+  id: string
+  fullName: string
 }
 
 const FB_DEFAULT_LIMIT = 20
@@ -100,6 +108,58 @@ export function getFacebookConfigStatus() {
 
 function conversationMarker(conversationId: string): string {
   return `FB_CONVERSATION_ID:${conversationId}`
+}
+
+function normalizeForNameMatch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function extractAssignedNameFromMessage(message: string): string | null {
+  const normalized = message.trim()
+  if (!normalized) return null
+
+  const patterns = [
+    /assigned\s+this\s+conversation\s+to\s+([^\.\n\r]+)/i,
+    /assigned\s+to\s+([^\.\n\r]+)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)
+    const candidate = match?.[1]?.trim()
+    if (candidate && candidate.length > 1) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function extractPhoneFromMessage(message: string): string | null {
+  if (!message.trim()) return null
+
+  const matches = message.match(/\+?[\d\s()\-]{8,}/g) ?? []
+  for (const raw of matches) {
+    const compact = raw.replace(/[\s()\-]/g, '')
+    const digitsOnly = compact.replace(/\D/g, '')
+
+    if (digitsOnly.length < 8 || digitsOnly.length > 15) {
+      continue
+    }
+
+    if (compact.startsWith('+')) {
+      return `+${digitsOnly}`
+    }
+
+    return digitsOnly
+  }
+
+  return null
+}
+
+function getConversationMessages(conversation: FacebookConversation): string[] {
+  return (conversation.messages?.data ?? [])
+    .map((item) => item.message?.trim() ?? '')
+    .filter((item) => item.length > 0)
 }
 
 async function graphGet<T>(path: string, params: Record<string, string>): Promise<T> {
@@ -144,6 +204,7 @@ export async function fetchFacebookConversationPage(
     console.warn(`${FB_LOG_PREFIX} fetch_conversations aborted reason=missing_page_id`)
     throw new Error('FB_PAGE_ID is missing')
   }
+
   const limit = options.limit ?? FB_DEFAULT_LIMIT
   const afterCursor = options.afterCursor?.trim() || null
   console.info(
@@ -152,7 +213,7 @@ export async function fetchFacebookConversationPage(
 
   const payload = await graphGet<FacebookConversationResponse>(`/${pageId}/conversations`, {
     fields:
-      'id,updated_time,participants.limit(10){id,name},messages.limit(1){id,message,created_time,from{id,name}}',
+      'id,updated_time,participants.limit(10){id,name},messages.limit(10){id,message,created_time,from{id,name}}',
     limit: String(limit),
     ...(afterCursor ? { after: afterCursor } : {}),
   })
@@ -206,10 +267,82 @@ function extractCustomerName(conversation: FacebookConversation, pageId: string)
   return normalized && normalized.length > 0 ? normalized : null
 }
 
-async function importConversationToLead(conversation: FacebookConversation, pageId: string): Promise<boolean> {
-  if (!conversation.id) {
-    return false
+async function getActiveJrCrmAgents(): Promise<JrCrmAgent[]> {
+  const users = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      userDepartments: {
+        some: {
+          department: {
+            name: 'JR_CRM',
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      fullName: true,
+    },
+    orderBy: {
+      fullName: 'asc',
+    },
+  })
+
+  return users
+}
+
+function findAgentByAssignedMessages(agents: JrCrmAgent[], messages: string[]): JrCrmAgent | null {
+  for (const message of messages) {
+    const assignedName = extractAssignedNameFromMessage(message)
+    if (!assignedName) continue
+
+    const normalizedAssignedName = normalizeForNameMatch(assignedName)
+    if (!normalizedAssignedName) continue
+
+    for (const agent of agents) {
+      const normalizedAgentName = normalizeForNameMatch(agent.fullName)
+      if (!normalizedAgentName) continue
+
+      if (
+        normalizedAssignedName === normalizedAgentName ||
+        normalizedAssignedName.includes(normalizedAgentName) ||
+        normalizedAgentName.includes(normalizedAssignedName)
+      ) {
+        return agent
+      }
+    }
   }
+
+  return null
+}
+
+function extractPhoneFromMessages(messages: string[]): string | null {
+  for (const message of messages) {
+    const phone = extractPhoneFromMessage(message)
+    if (phone) return phone
+  }
+  return null
+}
+
+async function importConversationToLead(
+  conversation: FacebookConversation,
+  pageId: string,
+  options: {
+    jrCrmAgents: JrCrmAgent[]
+    jrCrmRoundRobinOffset: number
+  },
+): Promise<{
+  created: boolean
+  usedRoundRobin: boolean
+}> {
+  if (!conversation.id) {
+    return { created: false, usedRoundRobin: false }
+  }
+
+  const messages = getConversationMessages(conversation)
+  const lastMessage = messages[0] ?? ''
+  const detectedAgent = findAgentByAssignedMessages(options.jrCrmAgents, messages)
+  const detectedPhone = extractPhoneFromMessages(messages)
 
   const marker = conversationMarker(conversation.id)
   const existing = await prisma.lead.findFirst({
@@ -217,60 +350,136 @@ async function importConversationToLead(conversation: FacebookConversation, page
       source: { equals: 'Facebook', mode: 'insensitive' },
       remarks: { contains: marker },
     },
-    select: { id: true },
+    select: { id: true, phone: true, assignedTo: true },
   })
 
   if (existing) {
-    return false
+    const updates: {
+      phone?: string
+      stage?: LeadStage
+      assignedTo?: string
+    } = {}
+
+    if (detectedPhone && !existing.phone) {
+      const existingByPhone = await prisma.lead.findFirst({
+        where: {
+          phone: detectedPhone,
+          id: { not: existing.id },
+        },
+        select: { id: true },
+      })
+
+      if (!existingByPhone) {
+        updates.phone = detectedPhone
+        updates.stage = LeadStage.NUMBER_COLLECTED
+      }
+    }
+
+    if (detectedAgent && existing.assignedTo !== detectedAgent.id) {
+      updates.assignedTo = detectedAgent.id
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await prisma.$transaction(async (tx) => {
+        await tx.lead.update({
+          where: { id: existing.id },
+          data: updates,
+        })
+
+        if (detectedAgent) {
+          await tx.leadAssignment.createMany({
+            data: [
+              {
+                leadId: existing.id,
+                userId: detectedAgent.id,
+                department: LeadAssignmentDepartment.JR_CRM,
+              },
+            ],
+            skipDuplicates: true,
+          })
+        }
+      })
+    }
+
+    return { created: false, usedRoundRobin: false }
   }
 
   const customerName =
     extractCustomerName(conversation, pageId) ??
     `Facebook User ${conversation.id.slice(-6)}`
 
-  const lastMessage = conversation.messages?.data?.[0]?.message?.trim() ?? ''
+  let assignee: JrCrmAgent | null = detectedAgent
+  let usedRoundRobin = false
 
-  await prisma.lead.create({
-    data: {
-      name: customerName,
-      source: 'Facebook',
-      remarks: lastMessage
-        ? `${marker}\nImported from Facebook.\nLast message: ${lastMessage}`
-        : `${marker}\nImported from Facebook conversation.`,
-    },
+  if (!assignee && options.jrCrmAgents.length > 0) {
+    const index = options.jrCrmRoundRobinOffset % options.jrCrmAgents.length
+    assignee = options.jrCrmAgents[index]
+    usedRoundRobin = true
+  }
+
+  let leadPhone: string | null = null
+  let stage: LeadStage = LeadStage.NEW
+
+  if (detectedPhone) {
+    const existingByPhone = await prisma.lead.findFirst({
+      where: { phone: detectedPhone },
+      select: { id: true },
+    })
+
+    if (!existingByPhone) {
+      leadPhone = detectedPhone
+      stage = LeadStage.NUMBER_COLLECTED
+    }
+  }
+
+  const assignmentFromMessage = detectedAgent ? `\nAssigned by Meta message to: ${detectedAgent.fullName}` : ''
+  const phoneMarker = leadPhone ? `\nDetected phone: ${leadPhone}` : ''
+
+  await prisma.$transaction(async (tx) => {
+    const lead = await tx.lead.create({
+      data: {
+        name: customerName,
+        source: 'Facebook',
+        phone: leadPhone,
+        stage,
+        assignedTo: assignee?.id ?? null,
+        remarks: lastMessage
+          ? `${marker}\nImported from Facebook.\nLast message: ${lastMessage}${assignmentFromMessage}${phoneMarker}`
+          : `${marker}\nImported from Facebook conversation.${assignmentFromMessage}${phoneMarker}`,
+      },
+      select: { id: true },
+    })
+
+    if (assignee) {
+      await tx.leadAssignment.create({
+        data: {
+          leadId: lead.id,
+          userId: assignee.id,
+          department: LeadAssignmentDepartment.JR_CRM,
+        },
+      })
+    }
   })
 
-  return true
+  return {
+    created: true,
+    usedRoundRobin,
+  }
 }
 
 export async function syncRecentFacebookConversationsToLeads(
   options: SyncFacebookOptions = {},
 ): Promise<SyncFacebookResult> {
-  const { pageId } = getFacebookConfig()
-  const limit = options.limit ?? FB_DEFAULT_LIMIT
-  console.info(
-    `${FB_LOG_PREFIX} sync start page_id_configured=${Boolean(pageId)} config_ok=${isFacebookConfigured()} limit=${limit}`,
-  )
-  if (!pageId || !isFacebookConfigured()) {
-    console.warn(`${FB_LOG_PREFIX} sync skipped reason=incomplete_config`)
-    return { fetchedConversations: 0, createdLeads: 0 }
-  }
+  const result = await syncFacebookConversationsIncremental({
+    limit: options.limit,
+    afterCursor: null,
+    watermarkIso: null,
+    jrCrmRoundRobinOffset: 0,
+  })
 
-  const { conversations } = await fetchFacebookConversationPage({ limit })
-  let createdLeads = 0
-
-  for (const conversation of conversations) {
-    if (await importConversationToLead(conversation, pageId)) {
-      createdLeads += 1
-    }
-  }
-
-  console.info(
-    `${FB_LOG_PREFIX} sync completed fetched=${conversations.length} created=${createdLeads}`,
-  )
   return {
-    fetchedConversations: conversations.length,
-    createdLeads,
+    fetchedConversations: result.fetchedConversations,
+    createdLeads: result.createdLeads,
   }
 }
 
@@ -282,8 +491,11 @@ export async function syncFacebookConversationsIncremental(
   const afterCursor = options.afterCursor?.trim() || null
   const watermark = options.watermarkIso ? new Date(options.watermarkIso) : null
   const watermarkMs = watermark && !Number.isNaN(watermark.getTime()) ? watermark.getTime() : null
+  const jrCrmAgents = await getActiveJrCrmAgents()
+  let jrCrmRoundRobinOffset = Math.max(0, options.jrCrmRoundRobinOffset ?? 0)
+
   console.info(
-    `${FB_LOG_PREFIX} sync_incremental start page_id_configured=${Boolean(pageId)} config_ok=${isFacebookConfigured()} limit=${limit} after_cursor=${afterCursor ?? 'null'} watermark=${options.watermarkIso ?? 'null'}`,
+    `${FB_LOG_PREFIX} sync_incremental start page_id_configured=${Boolean(pageId)} config_ok=${isFacebookConfigured()} limit=${limit} after_cursor=${afterCursor ?? 'null'} watermark=${options.watermarkIso ?? 'null'} jr_agents=${jrCrmAgents.length} rr_offset=${jrCrmRoundRobinOffset}`,
   )
 
   if (!pageId || !isFacebookConfigured()) {
@@ -293,6 +505,7 @@ export async function syncFacebookConversationsIncremental(
       createdLeads: 0,
       nextCursor: null,
       maxUpdatedTimeIso: options.watermarkIso ?? null,
+      nextJrCrmRoundRobinOffset: jrCrmRoundRobinOffset,
     }
   }
 
@@ -312,19 +525,29 @@ export async function syncFacebookConversationsIncremental(
       maxUpdatedMs = maxUpdatedMs === null ? updatedMs : Math.max(maxUpdatedMs, updatedMs)
     }
 
-    if (await importConversationToLead(conversation, pageId)) {
+    const imported = await importConversationToLead(conversation, pageId, {
+      jrCrmAgents,
+      jrCrmRoundRobinOffset,
+    })
+
+    if (imported.created) {
       createdLeads += 1
+      if (imported.usedRoundRobin && jrCrmAgents.length > 0) {
+        jrCrmRoundRobinOffset = (jrCrmRoundRobinOffset + 1) % jrCrmAgents.length
+      }
     }
   }
 
   const maxUpdatedTimeIso = maxUpdatedMs === null ? null : new Date(maxUpdatedMs).toISOString()
   console.info(
-    `${FB_LOG_PREFIX} sync_incremental completed fetched=${conversations.length} created=${createdLeads} next_cursor=${nextCursor ?? 'null'} max_updated=${maxUpdatedTimeIso ?? 'null'}`,
+    `${FB_LOG_PREFIX} sync_incremental completed fetched=${conversations.length} created=${createdLeads} next_cursor=${nextCursor ?? 'null'} max_updated=${maxUpdatedTimeIso ?? 'null'} rr_offset=${jrCrmRoundRobinOffset}`,
   )
+
   return {
     fetchedConversations: conversations.length,
     createdLeads,
     nextCursor,
     maxUpdatedTimeIso,
+    nextJrCrmRoundRobinOffset: jrCrmRoundRobinOffset,
   }
 }

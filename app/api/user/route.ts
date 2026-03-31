@@ -6,6 +6,7 @@ type CreateUserBody = {
   fullName?: string;
   email?: string;
   phone?: string;
+  isActive?: boolean;
   clerkUserId?: string | null;
   roleNames?: string[];
   departmentNames?: string[];
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as CreateUserBody;
-    const { fullName, email, phone, clerkUserId, roleNames = [], departmentNames = [] } = body;
+    const { fullName, email, phone, isActive, clerkUserId, roleNames = [], departmentNames = [] } = body;
 
     if (!fullName || !email || !phone) {
       return NextResponse.json(
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
           fullName,
           email,
           phone,
+          isActive: typeof isActive === "boolean" ? isActive : true,
           clerkUserId: clerkUserId ?? null,
         },
       });

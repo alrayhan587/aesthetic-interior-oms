@@ -28,6 +28,7 @@ type SyncControl = {
   lastSyncTrigger: string | null
   incrementalCursor: string | null
   incrementalWatermark: string | null
+  jrCrmRoundRobinOffset: number
   nextScheduledAt: string | null
 }
 
@@ -266,6 +267,9 @@ export function IntegrationSettings() {
               </p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
                 Cursor: {syncControl.incrementalCursor ?? 'none'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                JR CRM round-robin pointer: {syncControl.jrCrmRoundRobinOffset}
               </p>
             </div>
           </div>
