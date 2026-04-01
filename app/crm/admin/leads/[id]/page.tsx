@@ -556,7 +556,7 @@ export default function LeadDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <Button onClick={() => router.back()} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -572,7 +572,7 @@ export default function LeadDetailPage() {
 
   if (!lead) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <Button onClick={() => router.back()} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -583,7 +583,7 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <Button onClick={() => router.back()} variant="outline" size="sm" className="gap-2">
@@ -592,16 +592,16 @@ export default function LeadDetailPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
         {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-4 lg:col-span-2 lg:space-y-6">
           {/* Lead Info Card */}
           <LeadInfoCard lead={lead} stage={stage} hasPendingFollowup={hasPendingFollowup} />
 
           {/* Tabs Section */}
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as LeadTabValue)} className="w-full">
             {/* Tab List - Fixed Row Layout */}
-            <TabsList className="inline-flex h-12 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground lg:w-max lg:mx-auto">
+            <TabsList className="grid h-auto w-full grid-cols-4 rounded-lg bg-muted p-1 text-muted-foreground lg:mx-auto lg:w-max lg:inline-flex lg:h-12 lg:items-center lg:justify-center">
               <TabsTrigger value="notes" className="flex items-center justify-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Notes</span>
@@ -621,7 +621,7 @@ export default function LeadDetailPage() {
             </TabsList>
 
             {/* Tab Content */}
-            <TabsContent value="notes" className="mt-6">
+            <TabsContent value="notes" className="mt-4 sm:mt-6">
               <LeadNotesTab
                 notes={notes}
                 notesLoading={notesLoading}
@@ -632,7 +632,7 @@ export default function LeadDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="activity" className="mt-6">
+            <TabsContent value="activity" className="mt-4 sm:mt-6">
               {activityLoading ? (
                 <div className="space-y-3 animate-pulse">
                   {Array.from({ length: 4 }).map((_, idx) => (
@@ -644,7 +644,7 @@ export default function LeadDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="followups" className="mt-6">
+            <TabsContent value="followups" className="mt-4 sm:mt-6">
               {followupsLoading ? (
                 <div className="space-y-3 animate-pulse">
                   {Array.from({ length: 3 }).map((_, idx) => (
@@ -662,7 +662,7 @@ export default function LeadDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="attachments" className="mt-6">
+            <TabsContent value="attachments" className="mt-4 sm:mt-6">
               {attachmentsLoading ? (
                 <div className="space-y-3 animate-pulse">
                   {Array.from({ length: 4 }).map((_, idx) => (
@@ -670,7 +670,7 @@ export default function LeadDetailPage() {
                   ))}
                 </div>
               ) : (
-              <div className="space-y-6 rounded-xl border border-border bg-card p-4">
+              <div className="space-y-5 rounded-xl border border-border bg-card p-3 sm:p-4">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">Media</h3>
                   {mediaAttachments.length === 0 ? (

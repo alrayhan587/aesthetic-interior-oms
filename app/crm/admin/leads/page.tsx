@@ -193,6 +193,17 @@ function getTodayRange(): { from: string; to: string } {
   return { from: today, to: today }
 }
 
+function getPreviousDayRange(): { from: string; to: string } {
+  const now = new Date()
+  const previous = new Date(now)
+  previous.setDate(previous.getDate() - 1)
+  const previousDate = formatDateInput(previous)
+  return {
+    from: previousDate,
+    to: previousDate,
+  }
+}
+
 function getThisMonthRange(): { from: string; to: string } {
   const now = new Date()
   return {
@@ -215,15 +226,6 @@ function getLastMonthRange(): { from: string; to: string } {
   return { from: formatDateInput(firstDayLastMonth), to: formatDateInput(lastDayLastMonth) }
 }
 
-function getLastYearRange(): { from: string; to: string } {
-  const now = new Date()
-  const year = now.getFullYear() - 1
-  return {
-    from: formatDateInput(new Date(year, 0, 1)),
-    to: formatDateInput(new Date(year, 11, 31)),
-  }
-}
-
 function getLifetimeStartDate(): string {
   const envValue = process.env.NEXT_PUBLIC_LEAD_LIFETIME_START_DATE?.trim()
   if (envValue && /^\d{4}-\d{2}-\d{2}$/.test(envValue)) {
@@ -240,14 +242,14 @@ function getLifetimeRange(): { from: string; to: string } {
 }
 
 export default function LeadsPage() {
-  const defaultRange = useMemo(() => getThisMonthRange(), [])
+  const defaultRange = useMemo(() => getTodayRange(), [])
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loadingInitial, setLoadingInitial] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('ALL')
-  const [datePreset, setDatePreset] = useState<LeadDatePreset>('THIS_MONTH')
+  const [datePreset, setDatePreset] = useState<LeadDatePreset>('TODAY')
   const [createdFrom, setCreatedFrom] = useState(defaultRange.from)
   const [createdTo, setCreatedTo] = useState(defaultRange.to)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -448,9 +450,9 @@ export default function LeadsPage() {
     }
     let range = getThisMonthRange()
     if (preset === 'TODAY') range = getTodayRange()
+    if (preset === 'PREVIOUS_DAY') range = getPreviousDayRange()
     if (preset === 'LAST_7_DAYS') range = getLast7DaysRange()
     if (preset === 'LAST_MONTH') range = getLastMonthRange()
-    if (preset === 'LAST_YEAR') range = getLastYearRange()
     if (preset === 'LIFETIME') range = getLifetimeRange()
     setDatePreset(preset)
     setCreatedFrom(range.from)
@@ -612,13 +614,13 @@ export default function LeadsPage() {
         title="Leads"
         subtitle="View and manage all leads"
       />
-      <main className="mx-auto max-w-[1440px] px-6 py-6">
+      <main className="mx-auto max-w-[1440px] px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">
         <div className="space-y-6">
           <div className="flex items-center justify-end">
             <LeadCreateModal onCreated={refreshLeads} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
             {stageGridStages.map((stage) => {
               const config = stageStatConfig[stage]
               const Icon = config.icon
@@ -638,7 +640,7 @@ export default function LeadsPage() {
                         <Icon className="size-5" />
                       </div>
                       <p className="text-xs font-medium text-muted-foreground">{stage.replace(/_/g, ' ')}</p>
-                      <p className="text-3xl font-bold leading-tight text-foreground">{stageCounts[stage] ?? 0}</p>
+                      <p className="text-2xl font-bold leading-tight text-foreground sm:text-3xl">{stageCounts[stage] ?? 0}</p>
                     </button>
                   </CardContent>
                 </Card>
@@ -646,7 +648,7 @@ export default function LeadsPage() {
             })}
           </div>
 
-          <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center">
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

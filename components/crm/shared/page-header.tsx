@@ -44,14 +44,14 @@ export function CrmPageHeader({ title, subtitle }: CrmPageHeaderProps) {
   )
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4">
+    <header className="sticky top-0 z-20 border-b border-border bg-card/80 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+          <p className="text-xs text-muted-foreground sm:text-sm">{subtitle}</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{todayLabel}</span>
+          <span className="hidden text-sm text-muted-foreground sm:inline">{todayLabel}</span>
           <div className="inline-flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
             {initials === 'CRM' ? <UserCircle2 className="size-5" /> : <span className="text-xs font-semibold">{initials}</span>}
           </div>

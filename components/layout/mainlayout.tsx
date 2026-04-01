@@ -15,7 +15,7 @@ export function MainLayout({
   children,
   role = 'JR CRM',
 }: MainLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="flex h-screen bg-background">

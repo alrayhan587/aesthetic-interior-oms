@@ -8,7 +8,6 @@ import {
   Users,
   Calendar,
   CheckSquare,
-  LogOut,
   Moon,
   Sun,
   X,
@@ -18,7 +17,6 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useRouter } from 'next/navigation'
 import { useTheme } from '@/components/theme-provider'
 import { useEffect, useState } from 'react'
 
@@ -81,7 +79,6 @@ const visitsNavItems = [
 
 export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const pathname = usePathname() || ''
-  const router = useRouter()
   const { theme, toggleTheme } = useTheme()
 
   const [mounted, setMounted] = useState(false)
@@ -111,17 +108,12 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
     })
   }, [groups, isVisits])
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
-  }
-
   return (
     <>
       {/* Mobile overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => onOpenChange(false)}
         />
       )}
@@ -129,7 +121,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-30 h-screen w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 md:translate-x-0',
+          'fixed top-0 left-0 z-50 h-screen w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -142,7 +134,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="md:hidden rounded p-1 hover:bg-sidebar-accent"
+            className="lg:hidden rounded p-1 hover:bg-sidebar-accent"
           >
             <X className="w-5 h-5" />
           </button>
@@ -226,7 +218,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
           )}
         </nav>
 
-        {/* Footer – theme toggle + logout; no “back to CRM” in visits mode */}
+        {/* Footer – theme toggle only */}
         <div className="space-y-2 border-t border-sidebar-border p-4">
           <div className="w-full flex justify-start items-center gap-1">
             <div
@@ -246,19 +238,11 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                 </div>)}
             </div>
           </div>
-          <Button
-            onClick={handleLogout}
-            variant="ghost"
-            className="w-full justify-start gap-3 text-red-500 hover:bg-sidebar-accent hover:text-red-500"
-          >
-            <LogOut className="w-5 h-5" />
-            Logout
-          </Button>
         </div>
       </aside>
 
       {/* Spacer for desktop */}
-      <div className="hidden md:block w-64" />
+      <div className="hidden lg:block w-64" />
     </>
   )
 }

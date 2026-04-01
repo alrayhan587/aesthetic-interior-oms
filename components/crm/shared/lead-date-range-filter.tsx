@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-export type LeadDatePreset = 'TODAY' | 'THIS_MONTH' | 'LAST_7_DAYS' | 'LAST_MONTH' | 'LAST_YEAR' | 'LIFETIME' | 'CUSTOM'
+export type LeadDatePreset = 'TODAY' | 'PREVIOUS_DAY' | 'THIS_MONTH' | 'LAST_7_DAYS' | 'LAST_MONTH' | 'LIFETIME' | 'CUSTOM'
 
 type LeadDateRangeFilterProps = {
   preset: LeadDatePreset
@@ -20,10 +20,10 @@ type LeadDateRangeFilterProps = {
 
 const PRESET_OPTIONS: Array<{ value: LeadDatePreset; label: string }> = [
   { value: 'TODAY', label: 'Today' },
+  { value: 'PREVIOUS_DAY', label: 'Previous Day' },
   { value: 'THIS_MONTH', label: 'This Month' },
   { value: 'LAST_7_DAYS', label: 'Last 7 Days' },
   { value: 'LAST_MONTH', label: 'Last Month' },
-  { value: 'LAST_YEAR', label: 'Last Year' },
   { value: 'LIFETIME', label: 'Lifetime' },
 ]
 
