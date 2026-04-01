@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { requireDatabaseRoles } from "@/lib/authz";
+import { LeadAssignmentDepartment } from "@/generated/prisma/client";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -152,8 +153,133 @@ export async function DELETE(_req: Request, { params: paramsPromise }: RoutePara
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    await prisma.user.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    const result = await prisma.$transaction(async (tx) => {
+      const assignmentsToTransfer = await tx.leadAssignment.findMany({
+        where: { userId: id },
+        select: { id: true, leadId: true, department: true },
+      });
+
+      const assignmentDepartments = Array.from(
+        new Set(assignmentsToTransfer.map((row) => row.department)),
+      );
+
+      const replacementUsers = assignmentDepartments.length
+        ? await tx.user.findMany({
+            where: {
+              id: { not: id },
+              isActive: true,
+              userDepartments: {
+                some: {
+                  department: {
+                    name: { in: assignmentDepartments },
+                  },
+                },
+              },
+            },
+            select: {
+              id: true,
+              fullName: true,
+              userDepartments: {
+                select: {
+                  department: {
+                    select: { name: true },
+                  },
+                },
+              },
+            },
+            orderBy: { fullName: "asc" },
+          })
+        : [];
+
+      const candidatesByDepartment = new Map<string, string[]>();
+      for (const user of replacementUsers) {
+        for (const row of user.userDepartments) {
+          const departmentName = row.department.name;
+          const existingList = candidatesByDepartment.get(departmentName) ?? [];
+          existingList.push(user.id);
+          candidatesByDepartment.set(departmentName, existingList);
+        }
+      }
+
+      const cursorByDepartment = new Map<string, number>();
+      const nextCandidateForDepartment = (department: string): string | null => {
+        const candidates = candidatesByDepartment.get(department) ?? [];
+        if (candidates.length === 0) return null;
+        const cursor = cursorByDepartment.get(department) ?? 0;
+        const candidate = candidates[cursor % candidates.length];
+        cursorByDepartment.set(department, (cursor + 1) % candidates.length);
+        return candidate;
+      };
+
+      for (const assignment of assignmentsToTransfer) {
+        const replacementUserId = nextCandidateForDepartment(assignment.department);
+        if (!replacementUserId) {
+          await tx.leadAssignment.delete({ where: { id: assignment.id } });
+          continue;
+        }
+
+        const duplicate = await tx.leadAssignment.findFirst({
+          where: {
+            leadId: assignment.leadId,
+            department: assignment.department,
+            userId: replacementUserId,
+          },
+          select: { id: true },
+        });
+
+        if (duplicate) {
+          await tx.leadAssignment.delete({ where: { id: assignment.id } });
+        } else {
+          await tx.leadAssignment.update({
+            where: { id: assignment.id },
+            data: { userId: replacementUserId },
+          });
+        }
+      }
+
+      const leadsAssignedToUser = await tx.lead.findMany({
+        where: { assignedTo: id },
+        select: { id: true },
+      });
+
+      const leadIds = leadsAssignedToUser.map((row) => row.id);
+      const jrAssignmentsByLead = leadIds.length
+        ? await tx.leadAssignment.findMany({
+            where: {
+              leadId: { in: leadIds },
+              department: LeadAssignmentDepartment.JR_CRM,
+            },
+            select: {
+              leadId: true,
+              userId: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          })
+        : [];
+
+      const fallbackJrCandidate = (candidatesByDepartment.get(LeadAssignmentDepartment.JR_CRM) ?? [])[0] ?? null;
+
+      for (const lead of leadsAssignedToUser) {
+        const candidateFromLeadAssignment =
+          jrAssignmentsByLead.find((row) => row.leadId === lead.id)?.userId ?? null;
+        const nextAssignee = candidateFromLeadAssignment ?? fallbackJrCandidate;
+
+        await tx.lead.update({
+          where: { id: lead.id },
+          data: { assignedTo: nextAssignee },
+        });
+      }
+
+      await tx.user.delete({ where: { id } });
+
+      return {
+        reassignedLeadCount: leadsAssignedToUser.length,
+        transferredAssignmentCount: assignmentsToTransfer.length,
+      };
+    });
+
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

@@ -15,6 +15,7 @@ const ROTATING_LINES = [
 
 export default function Home() {
   const [activeLine, setActiveLine] = useState(0)
+  const [showAdminSignup, setShowAdminSignup] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -22,6 +23,31 @@ export default function Home() {
     }, 2800)
 
     return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const loadMe = async () => {
+      try {
+        const response = await fetch('/api/me', { cache: 'no-store' })
+        if (!response.ok) {
+          setShowAdminSignup(false)
+          return
+        }
+
+        const payload = (await response.json()) as {
+          userDepartments?: Array<{ department?: { name?: string | null } | null }>
+        }
+
+        const isAdmin = (payload.userDepartments ?? []).some(
+          (row) => row?.department?.name === 'ADMIN',
+        )
+        setShowAdminSignup(isAdmin)
+      } catch {
+        setShowAdminSignup(false)
+      }
+    }
+
+    void loadMe()
   }, [])
 
   return (
@@ -105,11 +131,6 @@ export default function Home() {
                     Sign In
                   </Button>
                 </SignInButton>
-                <SignUpButton forceRedirectUrl="/onboarding">
-                  <Button variant="outline" className="h-10 border-foreground/25 bg-transparent hover:bg-foreground/5">
-                    Sign Up
-                  </Button>
-                </SignUpButton>
               </SignedOut>
 
               <SignedIn>
@@ -118,6 +139,13 @@ export default function Home() {
                     Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
+                {showAdminSignup ? (
+                  <SignUpButton forceRedirectUrl="/onboarding">
+                    <Button variant="outline" className="h-10 border-foreground/25 bg-transparent hover:bg-foreground/5">
+                      Sign Up
+                    </Button>
+                  </SignUpButton>
+                ) : null}
               </SignedIn>
             </div>
           </div>
