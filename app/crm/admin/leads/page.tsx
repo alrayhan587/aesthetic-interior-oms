@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import LeadCreateModal from '@/components/crm/junior/LeadCreateModal'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
+import { LeadDateRangeFilter, type LeadDatePreset } from '@/components/crm/shared/lead-date-range-filter'
 
 const PAGE_SIZE = 20
 const stages = ['NEW', 'NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_COMPLETED', 'CLOSED']
@@ -178,14 +179,72 @@ type LeadsCacheEntry = {
 const LEADS_CACHE_TTL_MS = 60_000
 let leadsCache: LeadsCacheEntry | null = null
 const leadsRequestMap = new Map<string, Promise<LeadsResponse>>()
+const DEFAULT_LIFETIME_START_DATE = '2026-03-25'
+
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getThisMonthRange(): { from: string; to: string } {
+  const now = new Date()
+  return {
+    from: formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: formatDateInput(now),
+  }
+}
+
+function getLast7DaysRange(): { from: string; to: string } {
+  const now = new Date()
+  const from = new Date(now)
+  from.setDate(from.getDate() - 6)
+  return { from: formatDateInput(from), to: formatDateInput(now) }
+}
+
+function getLastMonthRange(): { from: string; to: string } {
+  const now = new Date()
+  const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const lastDayLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+  return { from: formatDateInput(firstDayLastMonth), to: formatDateInput(lastDayLastMonth) }
+}
+
+function getLastYearRange(): { from: string; to: string } {
+  const now = new Date()
+  const year = now.getFullYear() - 1
+  return {
+    from: formatDateInput(new Date(year, 0, 1)),
+    to: formatDateInput(new Date(year, 11, 31)),
+  }
+}
+
+function getLifetimeStartDate(): string {
+  const envValue = process.env.NEXT_PUBLIC_LEAD_LIFETIME_START_DATE?.trim()
+  if (envValue && /^\d{4}-\d{2}-\d{2}$/.test(envValue)) {
+    return envValue
+  }
+  return DEFAULT_LIFETIME_START_DATE
+}
+
+function getLifetimeRange(): { from: string; to: string } {
+  return {
+    from: getLifetimeStartDate(),
+    to: formatDateInput(new Date()),
+  }
+}
 
 export default function LeadsPage() {
+  const defaultRange = useMemo(() => getThisMonthRange(), [])
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loadingInitial, setLoadingInitial] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('ALL')
+  const [datePreset, setDatePreset] = useState<LeadDatePreset>('THIS_MONTH')
+  const [createdFrom, setCreatedFrom] = useState(defaultRange.from)
+  const [createdTo, setCreatedTo] = useState(defaultRange.to)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({})
   const [totalCount, setTotalCount] = useState(0)
@@ -242,7 +301,7 @@ export default function LeadsPage() {
 
   const fetchLeads = useCallback(async (offset: number, replace: boolean) => {
     try {
-      const filterKey = `${search}|${stageFilter}`
+      const filterKey = `${search}|${stageFilter}|${createdFrom}|${createdTo}`
       const requestKey = `${filterKey}|${offset}|${replace ? 'replace' : 'append'}`
 
       if (inFlightKeyRef.current === requestKey) {
@@ -283,6 +342,14 @@ export default function LeadsPage() {
 
       if (stageFilter !== 'ALL') {
         params.set('stage', stageFilter)
+      }
+
+      if (createdFrom) {
+        params.set('createdFrom', createdFrom)
+      }
+
+      if (createdTo) {
+        params.set('createdTo', createdTo)
       }
 
       let payloadPromise = leadsRequestMap.get(requestKey)
@@ -338,7 +405,7 @@ export default function LeadsPage() {
       setLoadingInitial(false)
       setLoadingMore(false)
     }
-  }, [search, stageFilter])
+  }, [createdFrom, createdTo, search, stageFilter])
 
   useEffect(() => {
     fetchLeads(0, true)
@@ -368,6 +435,21 @@ export default function LeadsPage() {
   const refreshLeads = useCallback(() => {
     fetchLeads(0, true)
   }, [fetchLeads])
+
+  const applyDatePreset = useCallback((preset: LeadDatePreset) => {
+    if (preset === 'CUSTOM') {
+      setDatePreset('CUSTOM')
+      return
+    }
+    let range = getThisMonthRange()
+    if (preset === 'LAST_7_DAYS') range = getLast7DaysRange()
+    if (preset === 'LAST_MONTH') range = getLastMonthRange()
+    if (preset === 'LAST_YEAR') range = getLastYearRange()
+    if (preset === 'LIFETIME') range = getLifetimeRange()
+    setDatePreset(preset)
+    setCreatedFrom(range.from)
+    setCreatedTo(range.to)
+  }, [])
 
   const fetchDepartments = useCallback(async () => {
     setLoadingDepartments(true)
@@ -558,7 +640,7 @@ export default function LeadsPage() {
             })}
           </div>
 
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+          <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -568,6 +650,15 @@ export default function LeadsPage() {
                 className="pl-10"
               />
             </div>
+            <LeadDateRangeFilter
+              preset={datePreset}
+              createdFrom={createdFrom}
+              createdTo={createdTo}
+              onPresetChange={applyDatePreset}
+              onCreatedFromChange={setCreatedFrom}
+              onCreatedToChange={setCreatedTo}
+              onReset={() => applyDatePreset('THIS_MONTH')}
+            />
             {stageFilter !== 'ALL' ? (
               <Button variant="outline" onClick={() => setStageFilter('ALL')}>
                 Clear Stage ({stageFilter.replace(/_/g, ' ')})

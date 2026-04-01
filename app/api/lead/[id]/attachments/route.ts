@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto'
-import { mkdir, writeFile } from 'fs/promises'
-import path from 'path'
+import { put } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
@@ -28,8 +27,6 @@ function getCategory(fileType: string): 'MEDIA' | 'FILE' {
 
   return 'FILE'
 }
-
-const INLINE_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   const leadId = await resolveLeadId(context)
@@ -98,49 +95,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const safeName = sanitizeFileName(fileEntry.name || 'attachment')
     const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
-    const relativeDir = path.join('uploads', 'leads', leadId)
-    const uploadDir = path.join(process.cwd(), 'public', relativeDir)
-    const fullPath = path.join(uploadDir, storedFileName)
-
-    await mkdir(uploadDir, { recursive: true })
-
-    const arrayBuffer = await fileEntry.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
     const fileType = fileEntry.type || 'application/octet-stream'
-    let attachmentUrl = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
-
-    try {
-      await writeFile(fullPath, buffer)
-    } catch (fileWriteError) {
-      const nodeError = fileWriteError as NodeJS.ErrnoException
-      const isReadOnlyFs =
-        nodeError?.code === 'EROFS' ||
-        nodeError?.code === 'EPERM' ||
-        nodeError?.code === 'EACCES'
-
-      if (!isReadOnlyFs) {
-        throw fileWriteError
-      }
-
-      if (fileEntry.size > INLINE_ATTACHMENT_MAX_BYTES) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              'File upload is not available in this deployment for large files yet. Configure external blob storage or upload files smaller than 5MB.',
-          },
-          { status: 400 },
-        )
-      }
-
-      // Fallback for read-only production filesystems (e.g., serverless deployments).
-      attachmentUrl = `data:${fileType};base64,${buffer.toString('base64')}`
-    }
+    const blob = await put(`leads/${leadId}/${storedFileName}`, fileEntry, {
+      access: 'public',
+      contentType: fileType,
+    })
 
     const attachment = await prisma.leadAttachment.create({
       data: {
         leadId,
-        url: attachmentUrl,
+        url: blob.url,
         fileName: fileEntry.name || safeName,
         fileType,
         category: getCategory(fileType),
@@ -160,6 +124,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
       return NextResponse.json(
         { success: false, error: 'Attachments table is not ready yet. Please run migrations.' },
+        { status: 503 },
+      )
+    }
+    if (error instanceof Error && error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Blob storage is not configured. Set BLOB_READ_WRITE_TOKEN in environment variables.',
+        },
         { status: 503 },
       )
     }

@@ -82,6 +82,17 @@ type JrCrmAgent = {
 
 const FB_DEFAULT_LIMIT = 20
 const FB_LOG_PREFIX = '[facebook-lib]'
+const FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT = 50
+
+function clampMessageLookbackLimit(value: number): number {
+  if (!Number.isFinite(value)) return FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT
+  return Math.max(10, Math.min(100, Math.trunc(value)))
+}
+
+function getConversationMessageLookbackLimit(): number {
+  const raw = Number(process.env.FB_CONVERSATION_MESSAGE_LOOKBACK_LIMIT ?? FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT)
+  return clampMessageLookbackLimit(raw)
+}
 
 function getFacebookConfig() {
   const token = process.env.FB_PAGE_ACCESS_TOKEN
@@ -218,14 +229,15 @@ export async function fetchFacebookConversationPage(
   }
 
   const limit = options.limit ?? FB_DEFAULT_LIMIT
+  const messageLookbackLimit = getConversationMessageLookbackLimit()
   const afterCursor = options.afterCursor?.trim() || null
   console.info(
-    `${FB_LOG_PREFIX} fetch_conversations start page_id=${pageId} limit=${limit} after_cursor=${afterCursor ?? 'null'}`,
+    `${FB_LOG_PREFIX} fetch_conversations start page_id=${pageId} limit=${limit} message_lookback_limit=${messageLookbackLimit} after_cursor=${afterCursor ?? 'null'}`,
   )
 
   const payload = await graphGet<FacebookConversationResponse>(`/${pageId}/conversations`, {
     fields:
-      'id,updated_time,participants.limit(10){id,name},messages.limit(10){id,message,created_time,from{id,name}}',
+      `id,updated_time,participants.limit(10){id,name},messages.limit(${messageLookbackLimit}){id,message,created_time,from{id,name}}`,
     limit: String(limit),
     ...(afterCursor ? { after: afterCursor } : {}),
   })
@@ -356,6 +368,12 @@ async function importConversationToLead(
   const detectedAgent = findAgentByAssignedMessages(options.jrCrmAgents, messages)
   const detectedPhone = extractPhoneFromMessages(messages)
 
+  // Business rule: ignore Facebook conversations that do not contain a phone number.
+  // No lead creation, no updates, no assignment/history writes for these conversations.
+  if (!detectedPhone) {
+    return { created: false, usedRoundRobin: false }
+  }
+
   const marker = conversationMarker(conversation.id)
   const existing = await prisma.lead.findFirst({
     where: {
@@ -422,10 +440,6 @@ async function importConversationToLead(
 
   let assignee: JrCrmAgent | null = detectedAgent
   let usedRoundRobin = false
-
-  if (!detectedPhone) {
-    return { created: false, usedRoundRobin: false }
-  }
 
   if (!assignee && options.jrCrmAgents.length > 0) {
     const index = options.jrCrmRoundRobinOffset % options.jrCrmAgents.length

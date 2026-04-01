@@ -162,6 +162,22 @@ function toPositiveInt(value: string | null, fallback: number): number {
   return parsed;
 }
 
+function parseDateAtStartOfDayUtc(value: string | null): Date | null {
+  const normalized = toOptionalString(value);
+  if (!normalized) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateAtEndOfDayUtc(value: string | null): Date | null {
+  const normalized = toOptionalString(value);
+  if (!normalized) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const date = new Date(`${normalized}T23:59:59.999Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 // GET endpoint - Retrieve leads from the database (paginated)
 export async function GET(request: NextRequest) {
   const requestStart = performance.now();
@@ -196,10 +212,37 @@ export async function GET(request: NextRequest) {
     const offset = toPositiveInt(searchParams.get('offset'), 0);
     const stageParam = toLeadStageParam(searchParams.get('stage'));
     const searchParam = toOptionalString(searchParams.get('search'));
+    const createdFrom = parseDateAtStartOfDayUtc(searchParams.get('createdFrom'));
+    const createdTo = parseDateAtEndOfDayUtc(searchParams.get('createdTo'));
+    const hasCreatedFromParam = Boolean(toOptionalString(searchParams.get('createdFrom')));
+    const hasCreatedToParam = Boolean(toOptionalString(searchParams.get('createdTo')));
+
+    if ((hasCreatedFromParam && !createdFrom) || (hasCreatedToParam && !createdTo)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid date format. Use YYYY-MM-DD for createdFrom/createdTo.' },
+        { status: 400 },
+      );
+    }
+
+    if (createdFrom && createdTo && createdFrom.getTime() > createdTo.getTime()) {
+      return NextResponse.json(
+        { success: false, error: 'createdFrom must be before or equal to createdTo.' },
+        { status: 400 },
+      );
+    }
+
+    const createdAtWhere: Prisma.DateTimeFilter | undefined =
+      createdFrom || createdTo
+        ? {
+            ...(createdFrom ? { gte: createdFrom } : {}),
+            ...(createdTo ? { lte: createdTo } : {}),
+          }
+        : undefined;
 
     const where: Prisma.LeadWhereInput = {
       ...baseWhere,
       ...(stageParam ? { stage: stageParam } : {}),
+      ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
       ...(searchParam
         ? {
             OR: [
@@ -213,17 +256,20 @@ export async function GET(request: NextRequest) {
 
     let facebookTimingMetric = '';
     const syncFacebookFlag = request.nextUrl.searchParams.get('syncFacebook') === '1';
+    const hasCreatedDateFilter = Boolean(createdAtWhere);
     const shouldSyncFacebook =
       syncFacebookFlag &&
       offset === 0 &&
       !searchParam &&
       !stageParam &&
+      !hasCreatedDateFilter &&
       isFacebookConfigured();
 
     const shouldRunFallbackFacebookSync =
       offset === 0 &&
       !searchParam &&
-      !stageParam;
+      !stageParam &&
+      !hasCreatedDateFilter;
 
     if (shouldRunFallbackFacebookSync) {
       try {
@@ -270,7 +316,10 @@ export async function GET(request: NextRequest) {
         }),
         prisma.lead.groupBy({
           by: ['stage'],
-          where: baseWhere,
+          where: {
+            ...baseWhere,
+            ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
+          },
           _count: { stage: true },
         }),
       ]);
