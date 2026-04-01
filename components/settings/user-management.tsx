@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Building2, Mail, Power, RefreshCw, Search, UserCheck, UserX, Users2 } from 'lucide-react'
 
 type UserApiItem = {
@@ -12,6 +13,20 @@ type UserApiItem = {
   fullName: string
   email: string
   isActive: boolean
+}
+
+type AdminUserApiItem = {
+  id: string
+  fullName: string
+  email: string
+  isActive: boolean
+  created_at?: string
+  userDepartments?: Array<{
+    department?: {
+      id?: string
+      name?: string
+    } | null
+  }>
 }
 
 type DepartmentApiItem = {
@@ -42,6 +57,10 @@ export function UserManagement() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [togglingIds, setTogglingIds] = useState<Record<string, boolean>>({})
+  const [pendingUsers, setPendingUsers] = useState<AdminUserApiItem[]>([])
+  const [approvalDepartmentByUser, setApprovalDepartmentByUser] = useState<Record<string, string>>({})
+  const [openApproveByUser, setOpenApproveByUser] = useState<Record<string, boolean>>({})
+  const [approvingIds, setApprovingIds] = useState<Record<string, boolean>>({})
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -55,6 +74,22 @@ export function UserManagement() {
       }
 
       const departmentRows = departmentsPayload.data
+      const usersResponse = await fetch('/api/user', { cache: 'no-store' })
+      const usersPayload = (await usersResponse.json()) as AdminUserApiItem[] | { error?: string }
+      if (!usersResponse.ok || !Array.isArray(usersPayload)) {
+        const message =
+          typeof usersPayload === 'object' && usersPayload !== null && 'error' in usersPayload
+            ? usersPayload.error
+            : 'Failed to load users'
+        throw new Error(message || 'Failed to load users')
+      }
+
+      const pending = usersPayload.filter((user) => {
+        const departments = Array.isArray(user.userDepartments) ? user.userDepartments : []
+        return departments.length === 0 && user.isActive
+      })
+      setPendingUsers(pending)
+
       const usersByDepartment = await Promise.all(
         departmentRows.map(async (department) => {
           const response = await fetch(`/api/department/${department.id}/users`, { cache: 'no-store' })
@@ -165,6 +200,74 @@ export function UserManagement() {
     }
   }
 
+  const approvePendingUser = async (user: AdminUserApiItem) => {
+    const selectedDepartmentId = approvalDepartmentByUser[user.id]
+    if (!selectedDepartmentId) {
+      setStatusError(`Select a department before approving ${user.fullName}.`)
+      return
+    }
+
+    const department = departments.find((item) => item.key === selectedDepartmentId)
+    if (!department) {
+      setStatusError('Selected department is invalid.')
+      return
+    }
+
+    setStatusMessage(null)
+    setStatusError(null)
+    setApprovingIds((prev) => ({ ...prev, [user.id]: true }))
+    try {
+      const response = await fetch(`/api/user/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          departmentNames: [department.name],
+          isActive: true,
+        }),
+      })
+
+      const payload = (await response.json()) as { error?: string }
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Failed to approve ${user.fullName}`)
+      }
+
+      setStatusMessage(`${user.fullName} approved and assigned to ${department.name}.`)
+      await loadData()
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : `Failed to approve ${user.fullName}`)
+    } finally {
+      setApprovingIds((prev) => ({ ...prev, [user.id]: false }))
+    }
+  }
+
+  const rejectPendingUser = async (user: AdminUserApiItem) => {
+    setStatusMessage(null)
+    setStatusError(null)
+    setApprovingIds((prev) => ({ ...prev, [user.id]: true }))
+    try {
+      const response = await fetch(`/api/user/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isActive: false,
+          departmentNames: [],
+        }),
+      })
+
+      const payload = (await response.json()) as { error?: string }
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Failed to reject ${user.fullName}`)
+      }
+
+      setStatusMessage(`${user.fullName} rejected. Account is blocked until admin enables it.`)
+      await loadData()
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : `Failed to reject ${user.fullName}`)
+    } finally {
+      setApprovingIds((prev) => ({ ...prev, [user.id]: false }))
+    }
+  }
+
   if (loading) {
     return (
       <Card className="border-border">
@@ -190,6 +293,87 @@ export function UserManagement() {
             </Button>
           </div>
         </CardHeader>
+      </Card>
+
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Pending Approval Requests</CardTitle>
+          <CardDescription>
+            New signups are listed here until an admin assigns their department.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pendingUsers.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+              No pending signup requests.
+            </div>
+          ) : (
+            pendingUsers.map((user) => (
+              <div
+                key={user.id}
+                className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{user.fullName}</p>
+                  <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  {openApproveByUser[user.id] ? (
+                    <>
+                      <Select
+                        value={approvalDepartmentByUser[user.id] ?? ''}
+                        onValueChange={(value) =>
+                          setApprovalDepartmentByUser((prev) => ({ ...prev, [user.id]: value }))
+                        }
+                      >
+                        <SelectTrigger className="w-full sm:w-[220px]">
+                          <SelectValue placeholder="Assign department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments.map((department) => (
+                            <SelectItem key={department.key} value={department.key}>
+                              {department.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void approvePendingUser(user)}
+                        disabled={Boolean(approvingIds[user.id])}
+                      >
+                        {approvingIds[user.id] ? 'Approving...' : 'Approve'}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          setOpenApproveByUser((prev) => ({ ...prev, [user.id]: true }))
+                        }
+                        disabled={Boolean(approvingIds[user.id])}
+                      >
+                        Yes
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void rejectPendingUser(user)}
+                        disabled={Boolean(approvingIds[user.id])}
+                      >
+                        {approvingIds[user.id] ? 'Saving...' : 'No'}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
       </Card>
 
       <div className="grid gap-3 md:grid-cols-4">

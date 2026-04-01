@@ -60,6 +60,7 @@ export async function GET() {
         fullName: true,
         email: true,
         phone: true,
+        isActive: true,
         clerkUserId: true,
         created_at: true,
         updated_at: true,
@@ -96,12 +97,19 @@ export async function GET() {
     const hasAdminDepartment = user.userDepartments.some(
       (row) => row.department.name === "ADMIN",
     );
-    const requiresAdminApproval = needsOnboarding && !hasAdminDepartment;
+    const isRejected = needsOnboarding && !user.isActive;
+    const requiresAdminApproval = needsOnboarding && user.isActive && !hasAdminDepartment;
     const response = NextResponse.json({
       ...user,
       needsOnboarding,
       canSelfAssignDepartment: hasAdminDepartment,
       requiresAdminApproval,
+      isRejected,
+      accountStatus: isRejected
+        ? "REJECTED"
+        : requiresAdminApproval
+          ? "PENDING_APPROVAL"
+          : "ACTIVE",
     });
     const totalDurationMs = performance.now() - requestStart;
     response.headers.set(
@@ -158,6 +166,7 @@ export async function PATCH(req: Request) {
         where: { clerkUserId: userId },
         select: {
           id: true,
+          isActive: true,
           userDepartments: {
             select: {
               department: {
@@ -180,6 +189,9 @@ export async function PATCH(req: Request) {
       );
       if (!hasAdminDepartment) {
         throw new Error("ADMIN_APPROVAL_REQUIRED");
+      }
+      if (!user.isActive) {
+        throw new Error("ACCOUNT_DISABLED");
       }
 
       debugLog(`[PATCH /me] [TX] Checking if department exists...`);
@@ -243,6 +255,12 @@ export async function PATCH(req: Request) {
     if (message.includes("ADMIN_APPROVAL_REQUIRED")) {
       return NextResponse.json(
         { error: "Account setup requires admin approval. Please contact an administrator." },
+        { status: 403 },
+      );
+    }
+    if (message.includes("ACCOUNT_DISABLED")) {
+      return NextResponse.json(
+        { error: "Your account is blocked. Please contact an administrator." },
         { status: 403 },
       );
     }

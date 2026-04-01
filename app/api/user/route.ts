@@ -14,9 +14,13 @@ type CreateUserBody = {
 
 export async function GET() {
   try {
-    const authz = await requireDatabaseRoles(["admin"]);
+    const authz = await requireDatabaseRoles([]);
     if (!authz.ok) {
       return authz.response;
+    }
+    const isAdminDepartmentUser = authz.actor.userDepartments.includes("ADMIN");
+    if (!isAdminDepartmentUser) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const users = await prisma.user.findMany({
@@ -39,9 +43,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const authz = await requireDatabaseRoles(["admin"]);
+    const authz = await requireDatabaseRoles([]);
     if (!authz.ok) {
       return authz.response;
+    }
+    const isAdminDepartmentUser = authz.actor.userDepartments.includes("ADMIN");
+    if (!isAdminDepartmentUser) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = (await req.json()) as CreateUserBody;

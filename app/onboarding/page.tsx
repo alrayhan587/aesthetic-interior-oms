@@ -37,9 +37,12 @@ type Department = {
 type MeResponse = {
   id: string;
   fullName?: string;
+  isActive?: boolean;
   needsOnboarding?: boolean;
   canSelfAssignDepartment?: boolean;
   requiresAdminApproval?: boolean;
+  isRejected?: boolean;
+  accountStatus?: "ACTIVE" | "PENDING_APPROVAL" | "REJECTED";
   userDepartments?: Array<{ department: { id: string; name: string } }>;
   clerkDepartment?: { id: string | null; name: string | null };
 };
@@ -56,6 +59,7 @@ export default function OnboardingPage() {
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [requiresAdminApproval, setRequiresAdminApproval] = useState(false);
+  const [isRejected, setIsRejected] = useState(false);
   
   // console.log('[OnboardingPage] State:', { loading, saving, departmentsCount: departments.length, selectedDepartmentId });
 
@@ -105,6 +109,7 @@ export default function OnboardingPage() {
         const existingDepartmentName =
           me.userDepartments?.[0]?.department?.name ?? me.clerkDepartment?.name ?? null;
         setRequiresAdminApproval(Boolean(me.requiresAdminApproval));
+        setIsRejected(Boolean(me.isRejected));
         // console.log('[OnboardingPage] existingDepartmentName:', existingDepartmentName);
 
         if (me.needsOnboarding === false && existingDepartmentName) {
@@ -159,6 +164,10 @@ export default function OnboardingPage() {
 
     if (requiresAdminApproval) {
       setError("Account setup requires admin approval. Please contact an administrator.");
+      return;
+    }
+    if (isRejected) {
+      setError("Your account request was rejected. Please contact admin.");
       return;
     }
 
@@ -252,6 +261,8 @@ export default function OnboardingPage() {
           <CardDescription>
             {requiresAdminApproval
               ? "Your account is created. Please wait for admin approval to continue."
+              : isRejected
+                ? "Access denied by admin. Please contact admin to request access."
               : "Choose the department you work with so we can personalize your workspace."}
           </CardDescription>
         </CardHeader>
@@ -260,6 +271,10 @@ export default function OnboardingPage() {
             <p className="text-sm text-muted-foreground">
               Ask an administrator to assign your role and department. You can sign in now, but
               access will be enabled only after approval.
+            </p>
+          ) : isRejected ? (
+            <p className="text-sm text-destructive">
+              Your account is banned. Contact admin for approval.
             </p>
           ) : (
             <>
@@ -299,9 +314,9 @@ export default function OnboardingPage() {
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </CardContent>
         <CardFooter className="flex flex-col gap-3">
-          {requiresAdminApproval ? (
+          {requiresAdminApproval || isRejected ? (
             <p className="text-xs text-muted-foreground text-center w-full">
-              Approval pending. Please contact admin.
+              {isRejected ? "Access blocked. Contact admin." : "Approval pending. Please contact admin."}
             </p>
           ) : (
             <>

@@ -18,9 +18,13 @@ type UpdateUserBody = {
 export async function GET(_req: Request, { params: paramsPromise }: RouteParams) {
   try {
     const { id } = await paramsPromise;
-    const authz = await requireDatabaseRoles(["admin"]);
+    const authz = await requireDatabaseRoles([]);
     if (!authz.ok) {
       return authz.response;
+    }
+    const isAdminDepartmentUser = authz.actor.userDepartments.includes("ADMIN");
+    if (!isAdminDepartmentUser) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const user = await prisma.user.findUnique({
@@ -44,9 +48,13 @@ export async function GET(_req: Request, { params: paramsPromise }: RouteParams)
 export async function PATCH(req: Request, { params: paramsPromise }: RouteParams) {
   try {
     const { id } = await paramsPromise;
-    const authz = await requireDatabaseRoles(["admin"]);
+    const authz = await requireDatabaseRoles([]);
     if (!authz.ok) {
       return authz.response;
+    }
+    const isAdminDepartmentUser = authz.actor.userDepartments.includes("ADMIN");
+    if (!isAdminDepartmentUser) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = (await req.json()) as UpdateUserBody;
@@ -143,9 +151,13 @@ export async function PATCH(req: Request, { params: paramsPromise }: RouteParams
 export async function DELETE(_req: Request, { params: paramsPromise }: RouteParams) {
   try {
     const { id } = await paramsPromise;
-    const authz = await requireDatabaseRoles(["admin"]);
+    const authz = await requireDatabaseRoles([]);
     if (!authz.ok) {
       return authz.response;
+    }
+    const isAdminDepartmentUser = authz.actor.userDepartments.includes("ADMIN");
+    if (!isAdminDepartmentUser) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const existing = await prisma.user.findUnique({ where: { id } });
