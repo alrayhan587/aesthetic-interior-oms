@@ -188,6 +188,11 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+function getTodayRange(): { from: string; to: string } {
+  const today = formatDateInput(new Date())
+  return { from: today, to: today }
+}
+
 function getThisMonthRange(): { from: string; to: string } {
   const now = new Date()
   return {
@@ -442,6 +447,7 @@ export default function LeadsPage() {
       return
     }
     let range = getThisMonthRange()
+    if (preset === 'TODAY') range = getTodayRange()
     if (preset === 'LAST_7_DAYS') range = getLast7DaysRange()
     if (preset === 'LAST_MONTH') range = getLastMonthRange()
     if (preset === 'LAST_YEAR') range = getLastYearRange()
