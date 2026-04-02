@@ -52,9 +52,9 @@ export default function Home() {
                 className="mb-4 h-14 w-14 rounded-xl border border-foreground/10 bg-background/60 p-2 shadow-sm"
               />
               <p className="text-xs tracking-[0.3em] text-foreground/65">AESTHETIC INTERIOR</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-wide sm:text-4xl">
-                Operations Management Software <span className="text-foreground/50 font-bold text-xs border border-foreground/25 bg-background px-2 py-1 rounded-4xl  ">•V1.2.0</span> 
-              </h1>
+              <div className="flex items-center justify-center gap-3">
+                <span className=' mt-3 text-3xl font-semibold tracking-wide sm:text-4xl'>Operations Management Software</span> <span className="text-foreground/50 font-extrabold text-xs border border-foreground/50 bg-background px-2 py-1 rounded-4xl ">V 1.2.0</span> 
+              </div>
             </div>
             <SignedIn>
               <UserButton />
