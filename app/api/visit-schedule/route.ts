@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
 
     const leadId = toOptionalString(request.nextUrl.searchParams.get('leadId'));
     const assignedToId = toOptionalString(request.nextUrl.searchParams.get('assignedToId'));
+    const mode = toOptionalString(request.nextUrl.searchParams.get('mode'));
     const statusParam = toOptionalString(request.nextUrl.searchParams.get('status'));
     const status = toVisitStatus(statusParam);
 
@@ -65,13 +66,36 @@ export async function GET(request: NextRequest) {
           ? assignedToId
             ? { assignedToId }
             : {}
-          : { assignedToId: authResult.actorUserId }),
+          : mode === 'support'
+            ? { supportAssignments: { some: { supportUserId: authResult.actorUserId } } }
+            : mode === 'lead'
+              ? { assignedToId: authResult.actorUserId }
+              : {
+                  OR: [
+                    { assignedToId: authResult.actorUserId },
+                    { supportAssignments: { some: { supportUserId: authResult.actorUserId } } },
+                  ],
+                }),
         ...(status ? { status } : {}),
       },
       include: {
         lead: { select: { id: true, name: true, phone: true, location: true } },
         assignedTo: { select: { id: true, fullName: true, email: true, phone: true } },
         createdBy: { select: { id: true, fullName: true } },
+        supportAssignments: {
+          include: {
+            supportUser: { select: { id: true, fullName: true, email: true } },
+            result: { select: { id: true, completedAt: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        supportResults: {
+          include: {
+            supportUser: { select: { id: true, fullName: true, email: true } },
+            files: { orderBy: { createdAt: 'desc' } },
+          },
+          orderBy: { completedAt: 'desc' },
+        },
         result: {
           include: {
             files: {

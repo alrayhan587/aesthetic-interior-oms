@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Clock, MapPin, AlertCircle, Loader2, CalendarDays, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
+import { fetchMeCached } from '@/lib/client-me'
 
 type VisitRecord = {
   id: string
@@ -35,6 +36,25 @@ type VisitRecord = {
     phone: string
     location: string | null
   }
+  assignedTo?: {
+    id: string
+    fullName: string
+    email: string
+    phone: string
+  } | null
+  supportAssignments?: Array<{
+    id: string
+    supportUserId: string
+    supportUser: {
+      id: string
+      fullName: string
+      email: string
+    }
+    result?: {
+      id: string
+      completedAt: string
+    } | null
+  }>
 }
 
 type ApiResponse = {
@@ -65,6 +85,7 @@ function formatStatusLabel(status: string) {
 
 export default function VisitTodayPage() {
   const [visits, setVisits] = useState<VisitRecord[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [requestOpen, setRequestOpen] = useState(false)
@@ -76,13 +97,34 @@ export default function VisitTodayPage() {
   const [sendingRequest, setSendingRequest] = useState(false)
   const [completeOpen, setCompleteOpen] = useState(false)
   const [completeVisit, setCompleteVisit] = useState<VisitRecord | null>(null)
+  const [completeRole, setCompleteRole] = useState<'LEAD' | 'SUPPORT'>('LEAD')
   const [completeSummary, setCompleteSummary] = useState('')
   const [completeClientMood, setCompleteClientMood] = useState('')
   const [completeProjectStatus, setCompleteProjectStatus] = useState('')
   const [completeNote, setCompleteNote] = useState('')
+  const [completeClientPotentiality, setCompleteClientPotentiality] = useState('')
+  const [completeProjectType, setCompleteProjectType] = useState('')
+  const [completeClientPersonality, setCompleteClientPersonality] = useState('')
+  const [completeBudgetRange, setCompleteBudgetRange] = useState('')
+  const [completeTimelineUrgency, setCompleteTimelineUrgency] = useState('')
+  const [completeStylePreference, setCompleteStylePreference] = useState('')
+  const [supportClientName, setSupportClientName] = useState('')
+  const [supportProjectArea, setSupportProjectArea] = useState('')
+  const [supportProjectStatus, setSupportProjectStatus] = useState('')
+  const [supportExtraConcern, setSupportExtraConcern] = useState('')
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
+
+  useEffect(() => {
+    fetchMeCached()
+      .then((data) => {
+        if (data?.id) setCurrentUserId(String(data.id))
+      })
+      .catch(() => {
+        setCurrentUserId(null)
+      })
+  }, [])
 
   useEffect(() => {
     const loadVisits = async () => {
@@ -108,6 +150,13 @@ export default function VisitTodayPage() {
   }, [])
 
   const todayKey = formatDateKey(new Date())
+  const getVisitRole = (visit: VisitRecord): 'LEAD' | 'SUPPORT' | 'NONE' => {
+    if (!currentUserId) return 'NONE'
+    if (visit.assignedTo?.id === currentUserId) return 'LEAD'
+    const isSupport = (visit.supportAssignments ?? []).some((item) => item.supportUserId === currentUserId)
+    return isSupport ? 'SUPPORT' : 'NONE'
+  }
+
   const todayVisits = useMemo(() => {
     return visits
       .filter((visit) => {
@@ -138,7 +187,11 @@ export default function VisitTodayPage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.28, delay: index * 0.04 }}
-              className="rounded-xl border border-border bg-card p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md"
+              className={`rounded-xl border p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md ${
+                getVisitRole(visit) === 'SUPPORT'
+                  ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+                  : 'border-border bg-card'
+              }`}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
@@ -147,6 +200,18 @@ export default function VisitTodayPage() {
                       {visit.lead?.name || 'Unknown Lead'}
                     </h3>
                     <Badge className={getStatusBadgeColor(visit.status)}>{formatStatusLabel(visit.status)}</Badge>
+                    {getVisitRole(visit) !== 'NONE' ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          getVisitRole(visit) === 'LEAD'
+                            ? 'border-blue-300 text-blue-700'
+                            : 'border-emerald-300 text-emerald-700'
+                        }
+                      >
+                        {getVisitRole(visit) === 'LEAD' ? 'Leading' : 'Supporting'}
+                      </Badge>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
@@ -190,9 +255,9 @@ export default function VisitTodayPage() {
                   >
                     Cancel
                   </Button>
-                  {visit.status !== 'COMPLETED' ? (
+                  {visit.status !== 'COMPLETED' && getVisitRole(visit) !== 'NONE' ? (
                     <Button size="sm" onClick={() => openCompleteDialog(visit)}>
-                      Complete Visit
+                      {getVisitRole(visit) === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
                     </Button>
                   ) : null}
                 </div>
@@ -255,11 +320,24 @@ export default function VisitTodayPage() {
   }
 
   const openCompleteDialog = (visit: VisitRecord) => {
+    const role = getVisitRole(visit)
+    if (role === 'NONE') return
     setCompleteVisit(visit)
+    setCompleteRole(role)
     setCompleteSummary('')
     setCompleteClientMood('')
     setCompleteProjectStatus('')
     setCompleteNote('')
+    setCompleteClientPotentiality('')
+    setCompleteProjectType('')
+    setCompleteClientPersonality('')
+    setCompleteBudgetRange('')
+    setCompleteTimelineUrgency('')
+    setCompleteStylePreference('')
+    setSupportClientName('')
+    setSupportProjectArea('')
+    setSupportProjectStatus('')
+    setSupportExtraConcern('')
     setCompleteFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
@@ -320,19 +398,49 @@ export default function VisitTodayPage() {
 
   const handleCompleteVisit = async () => {
     if (!completeVisit) return
-    if (!completeSummary.trim()) {
+    const pendingSupportCount =
+      completeRole === 'LEAD'
+        ? (completeVisit.supportAssignments ?? []).filter((item) => !item.result).length
+        : 0
+    if (pendingSupportCount > 0) {
+      setCompleteError(
+        'Visit cannot be completed yet. All support members must submit support data first.',
+      )
+      return
+    }
+    if (completeRole === 'LEAD' && !completeSummary.trim()) {
       setCompleteError('Summary is required.')
       return
+    }
+    if (completeRole === 'SUPPORT') {
+      if (!supportClientName.trim() || !supportProjectArea.trim() || !supportProjectStatus.trim()) {
+        setCompleteError('Client Name, Project Area, and Project Status are required for support.')
+        return
+      }
     }
 
     setSubmittingComplete(true)
     setCompleteError(null)
     try {
       const formData = new FormData()
-      formData.append('summary', completeSummary.trim())
-      if (completeClientMood.trim()) formData.append('clientMood', completeClientMood.trim())
-      if (completeProjectStatus) formData.append('projectStatus', completeProjectStatus)
-      if (completeNote.trim()) formData.append('note', completeNote.trim())
+      formData.append('resultType', completeRole)
+      if (completeRole === 'LEAD') {
+        formData.append('summary', completeSummary.trim())
+        if (completeClientMood.trim()) formData.append('clientMood', completeClientMood.trim())
+        if (completeProjectStatus) formData.append('projectStatus', completeProjectStatus)
+        if (completeNote.trim()) formData.append('note', completeNote.trim())
+        if (completeClientPotentiality) formData.append('clientPotentiality', completeClientPotentiality)
+        if (completeProjectType) formData.append('projectType', completeProjectType)
+        if (completeClientPersonality) formData.append('clientPersonality', completeClientPersonality)
+        if (completeBudgetRange.trim()) formData.append('budgetRange', completeBudgetRange.trim())
+        if (completeTimelineUrgency) formData.append('timelineUrgency', completeTimelineUrgency)
+        if (completeStylePreference) formData.append('stylePreference', completeStylePreference)
+      } else {
+        formData.append('supportClientName', supportClientName.trim())
+        formData.append('supportProjectArea', supportProjectArea.trim())
+        formData.append('supportProjectStatus', supportProjectStatus.trim())
+        if (supportExtraConcern.trim()) formData.append('supportExtraConcern', supportExtraConcern.trim())
+      }
       completeFiles.forEach((file) => {
         formData.append('files', file)
       })
@@ -349,7 +457,11 @@ export default function VisitTodayPage() {
       setCompleteOpen(false)
       setCompleteVisit(null)
       setCompleteFiles([])
-      toast.success('Visit completed. Lead stage updated automatically.')
+      toast.success(
+        completeRole === 'SUPPORT'
+          ? 'Support data submitted.'
+          : 'Visit completed. Lead stage updated automatically.',
+      )
       setLoading(true)
       const refreshResponse = await fetch('/api/visit-schedule')
       const refreshPayload = (await refreshResponse.json()) as ApiResponse
@@ -560,52 +672,115 @@ export default function VisitTodayPage() {
           <DialogHeader>
             <DialogTitle className="text-lg">Complete Visit</DialogTitle>
             <DialogDescription className="text-sm">
-              Submit visit outcome. This marks visit complete and updates lead stage automatically.
+              {completeRole === 'SUPPORT'
+                ? 'Submit project details for your support visit.'
+                : 'Submit visit outcome. This marks visit complete and updates lead stage automatically.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Summary</Label>
-              <Textarea
-                value={completeSummary}
-                onChange={(event) => setCompleteSummary(event.target.value)}
-                rows={3}
-                placeholder="What happened in this visit?"
-                className="text-sm resize-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Client Mood (optional)</Label>
-              <Input
-                value={completeClientMood}
-                onChange={(event) => setCompleteClientMood(event.target.value)}
-                placeholder="Interested / Neutral / Not Interested"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Project Status (optional)</Label>
-              <select
-                value={completeProjectStatus}
-                onChange={(event) => setCompleteProjectStatus(event.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Select project status</option>
-                <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                <option value="READY">READY</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Note (optional)</Label>
-              <Textarea
-                value={completeNote}
-                onChange={(event) => setCompleteNote(event.target.value)}
-                rows={2}
-                placeholder="Add note"
-                className="text-sm resize-none"
-              />
-            </div>
+            {completeRole === 'LEAD' &&
+            completeVisit &&
+            (completeVisit.supportAssignments ?? []).some((item) => !item.result) ? (
+              <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                This visit cannot be completed yet. Support members must submit their support data first.
+              </div>
+            ) : null}
+            {completeRole === 'SUPPORT' ? (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Client Name</Label>
+                  <Input value={supportClientName} onChange={(event) => setSupportClientName(event.target.value)} className="text-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Project Area</Label>
+                  <Input value={supportProjectArea} onChange={(event) => setSupportProjectArea(event.target.value)} className="text-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Project Status</Label>
+                  <Input value={supportProjectStatus} onChange={(event) => setSupportProjectStatus(event.target.value)} className="text-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Extra Concern (optional)</Label>
+                  <Textarea
+                    value={supportExtraConcern}
+                    onChange={(event) => setSupportExtraConcern(event.target.value)}
+                    rows={2}
+                    className="text-sm resize-none"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Summary</Label>
+                  <Textarea
+                    value={completeSummary}
+                    onChange={(event) => setCompleteSummary(event.target.value)}
+                    rows={3}
+                    placeholder="What happened in this visit?"
+                    className="text-sm resize-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Client Mood (optional)</Label>
+                  <Input
+                    value={completeClientMood}
+                    onChange={(event) => setCompleteClientMood(event.target.value)}
+                    placeholder="Interested / Neutral / Not Interested"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <Input value={completeClientPotentiality} onChange={(event) => setCompleteClientPotentiality(event.target.value)} placeholder="Potentiality: Hot/Warm/Cold" className="text-sm" />
+                  <Input value={completeProjectType} onChange={(event) => setCompleteProjectType(event.target.value)} placeholder="Project Type" className="text-sm" />
+                  <select
+                    value={completeClientPersonality}
+                    onChange={(event) => setCompleteClientPersonality(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm md:col-span-2"
+                  >
+                    <option value="">Select Client Personality</option>
+                    <option value="ANALYTICAL">
+                      Analytical (Compliant/Thinker): Methodical, logical, and detail-oriented. They require data, facts, and time to weigh all options, valuing accuracy over speed.
+                    </option>
+                    <option value="DRIVER">
+                      Driver (Dominant/Assertive): Results-oriented, efficient, and direct. They are fast decision-makers who dislike wasting time and focus on the bottom line.
+                    </option>
+                    <option value="AMIABLE">
+                      Amiable (Supporter): Easy-going, patient, and people-oriented. They value relationships, stability, and trust, often taking a slower, more cautious approach to decisions.
+                    </option>
+                    <option value="EXPRESSIVE">
+                      Expressive (Influencer): Enthusiastic, creative, and fast-paced. They are often intuitive, relationship-focused, and willing to try new ideas, responding well to a collaborative, positive approach.
+                    </option>
+                  </select>
+                  <Input value={completeBudgetRange} onChange={(event) => setCompleteBudgetRange(event.target.value)} placeholder="Budget Range" className="text-sm" />
+                  <Input value={completeTimelineUrgency} onChange={(event) => setCompleteTimelineUrgency(event.target.value)} placeholder="Timeline" className="text-sm" />
+                  <Input value={completeStylePreference} onChange={(event) => setCompleteStylePreference(event.target.value)} placeholder="Style Preference" className="text-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Project Status (optional)</Label>
+                  <select
+                    value={completeProjectStatus}
+                    onChange={(event) => setCompleteProjectStatus(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select project status</option>
+                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
+                    <option value="READY">READY</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Note (optional)</Label>
+                  <Textarea
+                    value={completeNote}
+                    onChange={(event) => setCompleteNote(event.target.value)}
+                    rows={2}
+                    placeholder="Add note"
+                    className="text-sm resize-none"
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Attachments (optional)</Label>
               <Input
@@ -629,9 +804,21 @@ export default function VisitTodayPage() {
             <Button variant="outline" onClick={() => setCompleteOpen(false)} className="text-sm">
               Close
             </Button>
-            <Button onClick={handleCompleteVisit} disabled={submittingComplete} className="text-sm gap-2">
+            <Button
+              onClick={handleCompleteVisit}
+              disabled={
+                submittingComplete ||
+                (completeRole === 'LEAD' &&
+                  Boolean(completeVisit?.supportAssignments?.some((item) => !item.result)))
+              }
+              className="text-sm gap-2"
+            >
               {submittingComplete && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submittingComplete ? 'Completing...' : 'Complete Visit'}
+              {submittingComplete
+                ? 'Submitting...'
+                : completeRole === 'SUPPORT'
+                  ? 'Submit Support Data'
+                  : 'Complete Visit'}
             </Button>
           </DialogFooter>
         </DialogContent>

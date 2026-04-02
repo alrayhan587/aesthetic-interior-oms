@@ -113,6 +113,20 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         lead: { select: { id: true, name: true, phone: true, location: true } },
         assignedTo: { select: { id: true, fullName: true, email: true, phone: true } },
         createdBy: { select: { id: true, fullName: true } },
+        supportAssignments: {
+          include: {
+            supportUser: { select: { id: true, fullName: true, email: true } },
+            result: { select: { id: true, completedAt: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        supportResults: {
+          include: {
+            supportUser: { select: { id: true, fullName: true, email: true } },
+            files: { orderBy: { createdAt: 'desc' } },
+          },
+          orderBy: { completedAt: 'desc' },
+        },
         result: {
           include: {
             files: {

@@ -53,7 +53,7 @@ export default function Home() {
               />
               <p className="text-xs tracking-[0.3em] text-foreground/65">AESTHETIC INTERIOR</p>
               <h1 className="mt-3 text-3xl font-semibold tracking-wide sm:text-4xl">
-                Operations Management Software
+                Operations Management Software <span className="text-foreground/50 font-bold text-xs border border-foreground/25 bg-background px-2 py-1 rounded-4xl  ">•V1.2.0</span> 
               </h1>
             </div>
             <SignedIn>

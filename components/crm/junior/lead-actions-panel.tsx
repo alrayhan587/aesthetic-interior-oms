@@ -75,6 +75,19 @@ type LeadVisitRecord = {
       email: string
     } | null
   }>
+  supportAssignments?: Array<{
+    id: string
+    supportUserId: string
+    supportUser: {
+      id: string
+      fullName: string
+      email: string
+    }
+    result?: {
+      id: string
+      completedAt: string
+    } | null
+  }>
   result?: {
     id: string
     summary: string
@@ -99,6 +112,12 @@ type LeadVisitRecord = {
   } | null
 }
 
+type VisitSupportMemberOption = {
+  id: string
+  fullName: string
+  email: string
+}
+
 interface LeadActionsPanelProps {
   leadId: string
   leadLocation?: string | null
@@ -113,6 +132,7 @@ interface LeadActionsPanelProps {
   canAddFollowup?: boolean
   canScheduleVisit?: boolean
   canSubmitVisitResult?: boolean
+  currentUserId?: string | null
   blurVisitResult?: boolean
   canManageVisitRequests?: boolean
   stage: string
@@ -146,6 +166,7 @@ export function LeadActionsPanel({
   canAddFollowup = true,
   canScheduleVisit = true,
   canSubmitVisitResult = false,
+  currentUserId = null,
   blurVisitResult = false,
   canManageVisitRequests = false,
   stage,
@@ -213,6 +234,13 @@ export function LeadActionsPanel({
   const [visitResultError, setVisitResultError] = useState<string | null>(null)
   const [submittingVisitResult, setSubmittingVisitResult] = useState(false)
   const [localVisitStageLock, setLocalVisitStageLock] = useState(false)
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false)
+  const [supportDialogVisitId, setSupportDialogVisitId] = useState('')
+  const [availableSupportMembers, setAvailableSupportMembers] = useState<VisitSupportMemberOption[]>([])
+  const [supportMemberSelection, setSupportMemberSelection] = useState('')
+  const [supportDialogError, setSupportDialogError] = useState<string | null>(null)
+  const [loadingSupportMembers, setLoadingSupportMembers] = useState(false)
+  const [savingSupportMember, setSavingSupportMember] = useState(false)
   const locationTouchedRef = useRef(false)
   const locationPrefilledRef = useRef(false)
 
@@ -379,6 +407,83 @@ export function LeadActionsPanel({
       ),
     [leadVisits],
   )
+
+  const selectedSupportVisit = useMemo(
+    () => leadVisits.find((visit) => visit.id === supportDialogVisitId) ?? null,
+    [leadVisits, supportDialogVisitId],
+  )
+
+  const canManageSupportForVisit = useCallback(
+    (visit: LeadVisitRecord) => {
+      if (!currentUserId) return false
+      if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
+      return visit.assignedTo?.id === currentUserId
+    },
+    [currentUserId],
+  )
+
+  const openSupportDialog = useCallback(
+    async (visit: LeadVisitRecord) => {
+      setSupportDialogVisitId(visit.id)
+      setSupportDialogOpen(true)
+      setSupportDialogError(null)
+      setSupportMemberSelection('')
+      setLoadingSupportMembers(true)
+
+      try {
+        const response = await fetch(`/api/visit-schedule/${visit.id}/supports`)
+        const payload = await response.json()
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error || 'Failed to load support members')
+        }
+
+        const members = Array.isArray(payload.data?.availableMembers)
+          ? payload.data.availableMembers
+          : []
+        setAvailableSupportMembers(members)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load support members'
+        setSupportDialogError(message)
+        setAvailableSupportMembers([])
+      } finally {
+        setLoadingSupportMembers(false)
+      }
+    },
+    [],
+  )
+
+  const handleAddSupportMember = async () => {
+    if (!supportDialogVisitId || !supportMemberSelection) {
+      setSupportDialogError('Please select a support member.')
+      return
+    }
+
+    setSavingSupportMember(true)
+    setSupportDialogError(null)
+    try {
+      const response = await fetch(`/api/visit-schedule/${supportDialogVisitId}/supports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supportUserId: supportMemberSelection }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Failed to add support member')
+      }
+
+      toast.success('Support member added.')
+      setSupportMemberSelection('')
+      setSupportDialogOpen(false)
+      setSupportDialogVisitId('')
+      setAvailableSupportMembers([])
+      refreshLeadVisits()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to add support member'
+      setSupportDialogError(message)
+    } finally {
+      setSavingSupportMember(false)
+    }
+  }
 
   const resetVisitResultForm = useCallback(() => {
     setVisitResultVisitId('')
@@ -861,7 +966,7 @@ export function LeadActionsPanel({
     }
   }
 
-  const handleDepartmentChange = async (value: string) => {
+  const handleDepartmentChange = async (value: string, preselectedUserId?: string) => {
     setDepartment(value)
     setSelectedUserId('')
     setAssignError(null)
@@ -876,6 +981,9 @@ export function LeadActionsPanel({
       // console.log('[LEAD-ACTIONS] Department API response:', data);
       if (data.success && Array.isArray(data.users)) {
         setDepartmentUsers(data.users)
+        if (preselectedUserId) {
+          setSelectedUserId(preselectedUserId)
+        }
         // console.log('[LEAD-ACTIONS] Set users:', data.users);
       } else {
         throw new Error(data.error || 'Failed to load users for department.')
@@ -929,6 +1037,13 @@ export function LeadActionsPanel({
     } finally {
       setAssigning(false)
     }
+  }
+
+  const openAssignmentEditor = (assignment: Assignment) => {
+    setAssignOpen(true)
+    setAssignError(null)
+    setDepartment(assignment.department)
+    void handleDepartmentChange(assignment.department, assignment.user.id)
   }
 
   return (
@@ -1033,6 +1148,17 @@ export function LeadActionsPanel({
                       <p className="font-semibold text-foreground mt-1 text-sm">{assignment.user.fullName}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{assignment.user.email}</p>
                     </div>
+                    {canManageAssignments ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => openAssignmentEditor(assignment)}
+                      >
+                        Change
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -1367,6 +1493,44 @@ export function LeadActionsPanel({
                 {visit.notes ? (
                   <p className="text-muted-foreground">{visit.notes}</p>
                 ) : null}
+                <div className="mt-2 rounded-md border border-border bg-background/70 p-2">
+                  <p className="text-xs font-semibold text-foreground">Support Members</p>
+                  {(visit.supportAssignments ?? []).length > 0 ? (
+                    <div className="mt-1 space-y-1">
+                      {(visit.supportAssignments ?? []).map((supportItem) => (
+                        <div key={supportItem.id} className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            {supportItem.supportUser.fullName}
+                          </p>
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              supportItem.result
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {supportItem.result ? 'Submitted' : 'Pending'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">No support members assigned yet.</p>
+                  )}
+                  {canManageSupportForVisit(visit) ? (
+                    <div className="pt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => void openSupportDialog(visit)}
+                      >
+                        Add Support Member
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
                 {(visit.updateRequests ?? []).length > 0 ? (
                   <div className="mt-2 space-y-2 rounded-md border border-amber-200 bg-amber-50/70 p-2">
                     {(visit.updateRequests ?? []).map((requestItem) => (
@@ -1572,6 +1736,84 @@ export function LeadActionsPanel({
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={supportDialogOpen}
+        onOpenChange={(open) => {
+          setSupportDialogOpen(open)
+          if (!open) {
+            setSupportDialogVisitId('')
+            setAvailableSupportMembers([])
+            setSupportMemberSelection('')
+            setSupportDialogError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Support Member</DialogTitle>
+            <DialogDescription>
+              Assign support from the visit team for this lead visit.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {selectedSupportVisit ? (
+              <div className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                <p className="font-semibold text-foreground">
+                  {selectedSupportVisit.assignedTo?.fullName ?? 'Unassigned Lead'}
+                </p>
+                <p>
+                  {new Date(selectedSupportVisit.scheduledAt).toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
+                <p>{selectedSupportVisit.location}</p>
+              </div>
+            ) : null}
+
+            <div className="space-y-2">
+              <Label>Support Member</Label>
+              <Select
+                value={supportMemberSelection}
+                onValueChange={setSupportMemberSelection}
+                disabled={loadingSupportMembers || availableSupportMembers.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      loadingSupportMembers
+                        ? 'Loading visit team members...'
+                        : availableSupportMembers.length === 0
+                          ? 'No available members'
+                          : 'Select support member'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSupportMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.fullName} ({member.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {supportDialogError ? <p className="text-sm text-destructive">{supportDialogError}</p> : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={handleAddSupportMember}
+              disabled={savingSupportMember || loadingSupportMembers || !supportMemberSelection}
+            >
+              {savingSupportMember ? 'Saving...' : 'Add Support Member'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={resolveRequestOpen}

@@ -758,6 +758,7 @@ export default function LeadDetailPage() {
             canScheduleVisit={!isVisitTeamView}
             canSubmitVisitResult={isVisitTeamView}
             blurVisitResult={blurVisitResult}
+            currentUserId={currentUserId}
             stage={stage}
             originalStage={lead.stage}
             subStatus={subStatus}

@@ -42,6 +42,19 @@ type VisitRecord = {
     email: string
     phone: string
   } | null
+  supportAssignments?: Array<{
+    id: string
+    supportUserId: string
+    supportUser: {
+      id: string
+      fullName: string
+      email: string
+    }
+    result?: {
+      id: string
+      completedAt: string
+    } | null
+  }>
   createdBy: {
     id: string
     fullName: string
@@ -100,10 +113,21 @@ export function VisitsPageView({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [completeOpen, setCompleteOpen] = useState(false)
   const [completeVisitId, setCompleteVisitId] = useState('')
+  const [completeRole, setCompleteRole] = useState<'LEAD' | 'SUPPORT'>('LEAD')
   const [completeSummary, setCompleteSummary] = useState('')
   const [completeClientMood, setCompleteClientMood] = useState('')
   const [completeNote, setCompleteNote] = useState('')
   const [completeProjectStatus, setCompleteProjectStatus] = useState('')
+  const [completeClientPotentiality, setCompleteClientPotentiality] = useState('')
+  const [completeProjectType, setCompleteProjectType] = useState('')
+  const [completeClientPersonality, setCompleteClientPersonality] = useState('')
+  const [completeBudgetRange, setCompleteBudgetRange] = useState('')
+  const [completeTimelineUrgency, setCompleteTimelineUrgency] = useState('')
+  const [completeStylePreference, setCompleteStylePreference] = useState('')
+  const [supportClientName, setSupportClientName] = useState('')
+  const [supportProjectArea, setSupportProjectArea] = useState('')
+  const [supportProjectStatus, setSupportProjectStatus] = useState('')
+  const [supportExtraConcern, setSupportExtraConcern] = useState('')
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
@@ -277,12 +301,32 @@ export function VisitsPageView({
     return creatorId === currentUserId
   }
 
-  const openCompleteDialog = (visitId: string) => {
-    setCompleteVisitId(visitId)
+  const getVisitRole = (visit: VisitRecord): 'LEAD' | 'SUPPORT' | 'NONE' => {
+    if (!currentUserId) return 'NONE'
+    if (visit.assignedTo?.id === currentUserId) return 'LEAD'
+    const isSupport = (visit.supportAssignments ?? []).some((item) => item.supportUserId === currentUserId)
+    return isSupport ? 'SUPPORT' : 'NONE'
+  }
+
+  const openCompleteDialog = (visit: VisitRecord) => {
+    const role = getVisitRole(visit)
+    if (role === 'NONE') return
+    setCompleteVisitId(visit.id)
+    setCompleteRole(role)
     setCompleteSummary('')
     setCompleteClientMood('')
     setCompleteNote('')
     setCompleteProjectStatus('')
+    setCompleteClientPotentiality('')
+    setCompleteProjectType('')
+    setCompleteClientPersonality('')
+    setCompleteBudgetRange('')
+    setCompleteTimelineUrgency('')
+    setCompleteStylePreference('')
+    setSupportClientName('')
+    setSupportProjectArea('')
+    setSupportProjectStatus('')
+    setSupportExtraConcern('')
     setCompleteFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
@@ -290,19 +334,48 @@ export function VisitsPageView({
 
   const submitCompleteVisit = async () => {
     if (!completeVisitId) return
-    if (!completeSummary.trim()) {
+    const currentVisit = visits.find((visit) => visit.id === completeVisitId) ?? null
+    const pendingSupportCount =
+      completeRole === 'LEAD'
+        ? (currentVisit?.supportAssignments ?? []).filter((item) => !item.result).length
+        : 0
+    if (pendingSupportCount > 0) {
+      setCompleteError('Visit cannot be completed until all support members submit their support data.')
+      return
+    }
+    if (completeRole === 'LEAD' && !completeSummary.trim()) {
       setCompleteError('Summary is required.')
       return
+    }
+    if (completeRole === 'SUPPORT') {
+      if (!supportClientName.trim() || !supportProjectArea.trim() || !supportProjectStatus.trim()) {
+        setCompleteError('Client Name, Project Area, and Project Status are required for support.')
+        return
+      }
     }
 
     setSubmittingComplete(true)
     setCompleteError(null)
     try {
       const formData = new FormData()
-      formData.append('summary', completeSummary.trim())
-      if (completeClientMood.trim()) formData.append('clientMood', completeClientMood.trim())
-      if (completeNote.trim()) formData.append('note', completeNote.trim())
-      if (completeProjectStatus) formData.append('projectStatus', completeProjectStatus)
+      formData.append('resultType', completeRole)
+      if (completeRole === 'LEAD') {
+        formData.append('summary', completeSummary.trim())
+        if (completeClientMood.trim()) formData.append('clientMood', completeClientMood.trim())
+        if (completeNote.trim()) formData.append('note', completeNote.trim())
+        if (completeProjectStatus) formData.append('projectStatus', completeProjectStatus)
+        if (completeClientPotentiality) formData.append('clientPotentiality', completeClientPotentiality)
+        if (completeProjectType) formData.append('projectType', completeProjectType)
+        if (completeClientPersonality) formData.append('clientPersonality', completeClientPersonality)
+        if (completeBudgetRange.trim()) formData.append('budgetRange', completeBudgetRange.trim())
+        if (completeTimelineUrgency) formData.append('timelineUrgency', completeTimelineUrgency)
+        if (completeStylePreference) formData.append('stylePreference', completeStylePreference)
+      } else {
+        formData.append('supportClientName', supportClientName.trim())
+        formData.append('supportProjectArea', supportProjectArea.trim())
+        formData.append('supportProjectStatus', supportProjectStatus.trim())
+        if (supportExtraConcern.trim()) formData.append('supportExtraConcern', supportExtraConcern.trim())
+      }
       completeFiles.forEach((file) => {
         formData.append('files', file)
       })
@@ -325,7 +398,7 @@ export function VisitsPageView({
       setCompleteNote('')
       setCompleteProjectStatus('')
       setCompleteFiles([])
-      toast.success('Visit marked as completed.')
+      toast.success(completeRole === 'SUPPORT' ? 'Support data submitted.' : 'Visit marked as completed.')
 
       setLoading(true)
       const response = await fetch('/api/visit-schedule')
@@ -348,6 +421,8 @@ export function VisitsPageView({
   const VisitCard = ({ visit }: { visit: VisitRecord }) => {
     const isVisible = canViewVisit(visit)
     const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
+    const visitRole = getVisitRole(visit)
+    const canComplete = allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE'
 
     return (
       <Card className="mb-3 overflow-hidden relative">
@@ -397,9 +472,9 @@ export function VisitsPageView({
                     <Button size="sm" variant="outline" asChild>
                       <Link href={leadHref}>Open Lead Details</Link>
                     </Button>
-                    {allowCompleteVisit && visit.status !== 'COMPLETED' && (
-                      <Button size="sm" variant="outline" onClick={() => openCompleteDialog(visit.id)}>
-                        Complete Visit
+                    {canComplete && (
+                      <Button size="sm" variant="outline" onClick={() => openCompleteDialog(visit)}>
+                        {visitRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
                       </Button>
                     )}
                   </div>
@@ -412,6 +487,19 @@ export function VisitsPageView({
               {formatVisitStatus(visit.status)}
             </span>
           </div>
+          {visitRole !== 'NONE' ? (
+            <div className="pt-2">
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  visitRole === 'LEAD'
+                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
+                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                }`}
+              >
+                {visitRole === 'LEAD' ? 'Leading' : 'Supporting'}
+              </span>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     )
@@ -473,6 +561,8 @@ export function VisitsPageView({
                           const dateStr = day ? getDateString(day) : null
                           const isSelected = selectedDate === dateStr
 
+                          const leadCount = visitsForDay.filter((visit) => getVisitRole(visit) === 'LEAD').length
+                          const supportCount = visitsForDay.filter((visit) => getVisitRole(visit) === 'SUPPORT').length
                           return (
                             <div
                               key={idx}
@@ -491,9 +581,18 @@ export function VisitsPageView({
                                 <div className="flex flex-col items-center justify-center h-full">
                                   <span className="font-semibold text-sm">{day}</span>
                                   {visitsForDay.length > 0 && (
-                                    <span className="inline-flex items-center justify-center w-5 h-5 mt-1 text-xs font-bold text-white bg-blue-500 rounded-full">
-                                      {visitsForDay.length}
-                                    </span>
+                                    <div className="mt-1 flex items-center gap-1">
+                                      {leadCount > 0 ? (
+                                        <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 text-[10px] font-bold text-white bg-blue-500 rounded-full">
+                                          {leadCount}
+                                        </span>
+                                      ) : null}
+                                      {supportCount > 0 ? (
+                                        <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 text-[10px] font-bold text-white bg-emerald-500 rounded-full">
+                                          {supportCount}
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   )}
                                 </div>
                               )}
@@ -509,6 +608,8 @@ export function VisitsPageView({
                         ))
                       : mobileCalendarRows.map((row) => {
                           const isSelected = selectedDate === row.dateString
+                          const leadCount = row.visits.filter((visit) => getVisitRole(visit) === 'LEAD').length
+                          const supportCount = row.visits.filter((visit) => getVisitRole(visit) === 'SUPPORT').length
                           return (
                             <div
                               key={row.dateString}
@@ -536,12 +637,17 @@ export function VisitsPageView({
                                     {row.visits.length}
                                   </span>
                                 </div>
+                                <div className="mt-1 flex items-center gap-1 text-[10px]">
+                                  <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-700">Lead {leadCount}</span>
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">Support {supportCount}</span>
+                                </div>
                               </button>
 
                               {row.visits.length > 0 ? (
                                 <div className="mt-2 space-y-2">
                                   {row.visits.slice(0, 3).map((visit) => {
                                     const isVisible = canViewVisit(visit)
+                                    const role = getVisitRole(visit)
                                     return (
                                       <div
                                         key={visit.id}
@@ -565,6 +671,11 @@ export function VisitsPageView({
                                               <Link href={`${leadHrefPrefix}/${visit.lead.id}`}>Open Lead</Link>
                                             </Button>
                                           </div>
+                                          {role !== 'NONE' ? (
+                                            <p className="text-[10px] font-semibold text-muted-foreground">
+                                              {role === 'LEAD' ? 'Leading' : 'Supporting'}
+                                            </p>
+                                          ) : null}
                                         </div>
                                       </div>
                                     )
@@ -612,6 +723,7 @@ export function VisitsPageView({
                     <div className="space-y-3">
                       {visitsByDate[selectedDate].map((visit) => {
                         const isVisible = canViewVisit(visit)
+                        const role = getVisitRole(visit)
                         return (
                           <div
                             key={visit.id}
@@ -645,6 +757,17 @@ export function VisitsPageView({
                               >
                                 {formatVisitStatus(visit.status)}
                               </span>
+                              {role !== 'NONE' ? (
+                                <span
+                                  className={`ml-2 inline-block px-2 py-1 rounded text-[10px] font-semibold ${
+                                    role === 'LEAD'
+                                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
+                                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                                  }`}
+                                >
+                                  {role === 'LEAD' ? 'Leading' : 'Supporting'}
+                                </span>
+                              ) : null}
                               <div className="pt-1">
                                 <Button
                                   size="sm"
@@ -737,48 +860,165 @@ export function VisitsPageView({
           <DialogHeader>
             <DialogTitle>Complete Visit</DialogTitle>
             <DialogDescription>
-              Submit visit outcome to mark this visit as completed and update lead stage automatically.
+              {completeRole === 'SUPPORT'
+                ? 'Submit project details as support member.'
+                : 'Submit visit outcome to mark this visit as completed and update lead stage automatically.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Summary</Label>
-              <Textarea
-                value={completeSummary}
-                onChange={(event) => setCompleteSummary(event.target.value)}
-                rows={3}
-                placeholder="What happened during this visit?"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Client Mood (optional)</Label>
-              <Input
-                value={completeClientMood}
-                onChange={(event) => setCompleteClientMood(event.target.value)}
-                placeholder="Interested / Neutral / Not Interested"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Project Status (optional)</Label>
-              <select
-                value={completeProjectStatus}
-                onChange={(event) => setCompleteProjectStatus(event.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Select project status</option>
-                <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                <option value="READY">READY</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Note (optional)</Label>
-              <Textarea
-                value={completeNote}
-                onChange={(event) => setCompleteNote(event.target.value)}
-                rows={2}
-                placeholder="Add follow-up note if needed"
-              />
-            </div>
+            {completeRole === 'LEAD' &&
+            completeVisitId &&
+            visits
+              .find((visit) => visit.id === completeVisitId)
+              ?.supportAssignments?.some((item) => !item.result) ? (
+              <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                This visit cannot be completed yet. Support members must submit their support data first.
+              </div>
+            ) : null}
+            {completeRole === 'SUPPORT' ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Client Name</Label>
+                  <Input value={supportClientName} onChange={(e) => setSupportClientName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Project Area</Label>
+                  <Input value={supportProjectArea} onChange={(e) => setSupportProjectArea(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Project Status</Label>
+                  <Input value={supportProjectStatus} onChange={(e) => setSupportProjectStatus(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Extra Concern (optional)</Label>
+                  <Textarea value={supportExtraConcern} onChange={(e) => setSupportExtraConcern(e.target.value)} rows={2} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Meeting Summary</Label>
+                  <Textarea
+                    value={completeSummary}
+                    onChange={(event) => setCompleteSummary(event.target.value)}
+                    rows={3}
+                    placeholder="What happened during this visit?"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Client Mood (optional)</Label>
+                  <Input
+                    value={completeClientMood}
+                    onChange={(event) => setCompleteClientMood(event.target.value)}
+                    placeholder="Interested / Neutral / Not Interested"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Potentiality / Hotness</Label>
+                    <select
+                      value={completeClientPotentiality}
+                      onChange={(event) => setCompleteClientPotentiality(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="HOT">Hot (Immediate)</option>
+                      <option value="WARM">Warm (3-6 months)</option>
+                      <option value="COLD">Cold (Long-term)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Project Type</Label>
+                    <select
+                      value={completeProjectType}
+                      onChange={(event) => setCompleteProjectType(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="DUPLEX">Duplex</option>
+                      <option value="APARTMENT">Apartment</option>
+                      <option value="TRIPLEX">Triplex</option>
+                      <option value="VILLA">Villa</option>
+                      <option value="OFFICE">Office</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Client Personality</Label>
+                    <select
+                      value={completeClientPersonality}
+                      onChange={(event) => setCompleteClientPersonality(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="ANALYTICAL">
+                        Analytical (Compliant/Thinker): Methodical, logical, and detail-oriented. They require data, facts, and time to weigh all options, valuing accuracy over speed.
+                      </option>
+                      <option value="DRIVER">
+                        Driver (Dominant/Assertive): Results-oriented, efficient, and direct. They are fast decision-makers who dislike wasting time and focus on the bottom line.
+                      </option>
+                      <option value="AMIABLE">
+                        Amiable (Supporter): Easy-going, patient, and people-oriented. They value relationships, stability, and trust, often taking a slower, more cautious approach to decisions.
+                      </option>
+                      <option value="EXPRESSIVE">
+                        Expressive (Influencer): Enthusiastic, creative, and fast-paced. They are often intuitive, relationship-focused, and willing to try new ideas, responding well to a collaborative, positive approach.
+                      </option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Budget Range</Label>
+                    <Input value={completeBudgetRange} onChange={(e) => setCompleteBudgetRange(e.target.value)} placeholder="e.g. 20L - 35L" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Timeline</Label>
+                    <select
+                      value={completeTimelineUrgency}
+                      onChange={(event) => setCompleteTimelineUrgency(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="IMMEDIATE">Immediate</option>
+                      <option value="THREE_TO_SIX_MONTHS">3-6 months</option>
+                      <option value="MORE_THAN_SIX_MONTHS">&gt; 6 months</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Style Preference</Label>
+                    <select
+                      value={completeStylePreference}
+                      onChange={(event) => setCompleteStylePreference(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="MODERN">Modern</option>
+                      <option value="TRADITIONAL">Traditional</option>
+                      <option value="MINIMALIST">Minimalist</option>
+                      <option value="LUXURY">Luxury</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Project Status (optional)</Label>
+                  <select
+                    value={completeProjectStatus}
+                    onChange={(event) => setCompleteProjectStatus(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select project status</option>
+                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
+                    <option value="READY">READY</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Note (optional)</Label>
+                  <Textarea
+                    value={completeNote}
+                    onChange={(event) => setCompleteNote(event.target.value)}
+                    rows={2}
+                    placeholder="Add follow-up note if needed"
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label>Attachments (optional)</Label>
               <Input
@@ -796,14 +1036,25 @@ export function VisitsPageView({
             <Button variant="outline" onClick={() => setCompleteOpen(false)}>
               Close
             </Button>
-            <Button onClick={submitCompleteVisit} disabled={submittingComplete}>
+            <Button
+              onClick={submitCompleteVisit}
+              disabled={
+                submittingComplete ||
+                (completeRole === 'LEAD' &&
+                  Boolean(
+                    visits
+                      .find((visit) => visit.id === completeVisitId)
+                      ?.supportAssignments?.some((item) => !item.result),
+                  ))
+              }
+            >
               {submittingComplete ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Completing...
+                  Submitting...
                 </>
               ) : (
-                'Complete Visit'
+                completeRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'
               )}
             </Button>
           </DialogFooter>

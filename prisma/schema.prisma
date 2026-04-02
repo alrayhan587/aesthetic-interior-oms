@@ -138,6 +138,9 @@ model User {
   visitsCreated   Visit[]             @relation("VisitCreator")
   visitUpdateRequests       VisitUpdateRequest[] @relation("VisitUpdateRequestedBy")
   resolvedVisitUpdateRequests VisitUpdateRequest[] @relation("VisitUpdateResolvedBy")
+  supportVisits             VisitSupportAssignment[] @relation("VisitSupportMember")
+  supportVisitsAssignedBy   VisitSupportAssignment[] @relation("VisitSupportAssignedBy")
+  supportVisitResults       VisitSupportResult[]
   notifications Notification[]
 }
 
@@ -160,6 +163,8 @@ model Visit {
   createdBy  User         @relation("VisitCreator", fields: [createdById], references: [id], onDelete: Cascade)
   result     VisitResult?
   updateRequests VisitUpdateRequest[]
+  supportAssignments VisitSupportAssignment[]
+  supportResults VisitSupportResult[]
 
   @@index([leadId])
   @@index([assignedToId])
@@ -194,10 +199,54 @@ model VisitResult {
   summary      String
   measurements Json?
   clientMood   String?
+  clientPotentiality String?
+  projectType String?
+  clientPersonality String?
+  budgetRange String?
+  timelineUrgency String?
+  stylePreference String?
   completedAt  DateTime     @default(now())
 
   visit Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
   files Attachment[]
+}
+
+model VisitSupportAssignment {
+  id            String   @id @default(cuid())
+  visitId        String
+  supportUserId  String
+  assignedById   String
+  createdAt      DateTime @default(now())
+
+  visit       Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  supportUser User  @relation("VisitSupportMember", fields: [supportUserId], references: [id], onDelete: Cascade)
+  assignedBy  User  @relation("VisitSupportAssignedBy", fields: [assignedById], references: [id], onDelete: Cascade)
+  result      VisitSupportResult?
+
+  @@unique([visitId, supportUserId])
+  @@index([visitId])
+  @@index([supportUserId])
+}
+
+model VisitSupportResult {
+  id                  String   @id @default(cuid())
+  visitId             String
+  supportAssignmentId String   @unique
+  supportUserId       String
+  clientName          String
+  projectArea         String
+  projectStatus       String
+  extraConcern        String?
+  completedAt         DateTime @default(now())
+
+  visit              Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  supportAssignment  VisitSupportAssignment @relation(fields: [supportAssignmentId], references: [id], onDelete: Cascade)
+  supportUser        User @relation(fields: [supportUserId], references: [id], onDelete: Cascade)
+  files              SupportAttachment[]
+
+  @@unique([visitId, supportUserId])
+  @@index([visitId])
+  @@index([supportUserId])
 }
 
 model Attachment {
@@ -226,6 +275,19 @@ model LeadAttachment {
 
   @@index([leadId])
   @@index([category])
+}
+
+model SupportAttachment {
+  id                  String   @id @default(cuid())
+  supportResultId     String
+  url                 String
+  fileName            String
+  fileType            String
+  createdAt           DateTime @default(now())
+
+  supportResult VisitSupportResult @relation(fields: [supportResultId], references: [id], onDelete: Cascade)
+
+  @@index([supportResultId])
 }
 
 model Notification {

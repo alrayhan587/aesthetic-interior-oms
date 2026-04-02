@@ -64,11 +64,30 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       },
     })
 
-    if (!result) {
+    const supportResults = await prisma.visitSupportResult.findMany({
+      where: { visitId },
+      include: {
+        supportUser: {
+          select: { id: true, fullName: true, email: true },
+        },
+        files: {
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+    })
+
+    if (!result && supportResults.length === 0) {
       return NextResponse.json({ success: false, error: 'Visit result not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: result })
+    return NextResponse.json({
+      success: true,
+      data: {
+        leadResult: result,
+        supportResults,
+      },
+    })
   } catch (error) {
     console.error('[visit-schedule/:id/result][GET] Error:', error)
     return NextResponse.json({ success: false, error: 'Failed to fetch visit result' }, { status: 500 })
@@ -113,10 +132,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const clientMood = toOptionalString(formData.get('clientMood'))
     const note = toOptionalString(formData.get('note'))
     const projectStatus = toProjectStatus(formData.get('projectStatus'))
+    const resultType = toOptionalString(formData.get('resultType'))?.toUpperCase()
+    const clientPotentiality = toOptionalString(formData.get('clientPotentiality'))
+    const projectType = toOptionalString(formData.get('projectType'))
+    const clientPersonality = toOptionalString(formData.get('clientPersonality'))
+    const budgetRange = toOptionalString(formData.get('budgetRange'))
+    const timelineUrgency = toOptionalString(formData.get('timelineUrgency'))
+    const stylePreference = toOptionalString(formData.get('stylePreference'))
+    const supportClientName = toOptionalString(formData.get('supportClientName'))
+    const supportProjectArea = toOptionalString(formData.get('supportProjectArea'))
+    const supportProjectStatus = toOptionalString(formData.get('supportProjectStatus'))
+    const supportExtraConcern = toOptionalString(formData.get('supportExtraConcern'))
 
-    if (!summary) {
-      return NextResponse.json({ success: false, error: 'Summary is required' }, { status: 400 })
-    }
     if (formData.get('projectStatus') !== null && !projectStatus) {
       return NextResponse.json(
         { success: false, error: 'projectStatus must be UNDER_CONSTRUCTION or READY' },
@@ -135,6 +162,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
           id: true,
           leadId: true,
           assignedToId: true,
+          supportAssignments: {
+            include: {
+              result: { select: { id: true } },
+            },
+          },
           lead: {
             select: { stage: true },
           },
@@ -148,12 +180,114 @@ export async function POST(request: NextRequest, context: RouteContext) {
         throw new Error('VISIT_NOT_FOUND')
       }
 
+      const supportAssignment = visit.supportAssignments.find(
+        (item) => item.supportUserId === authResult.actorUserId,
+      )
+      const isAssignedLeader = visit.assignedToId === authResult.actorUserId
+      const shouldSubmitSupport =
+        resultType === 'SUPPORT' || (!isAssignedLeader && Boolean(supportAssignment))
+      const shouldSubmitLead = resultType === 'LEAD' || isAssignedLeader
+
+      if (!shouldSubmitLead && !shouldSubmitSupport) {
+        throw new Error('NOT_ASSIGNED')
+      }
+
+      if (shouldSubmitSupport && supportAssignment) {
+        if (!supportClientName || !supportProjectArea || !supportProjectStatus) {
+          throw new Error('SUPPORT_FIELDS_REQUIRED')
+        }
+
+        const existingSupportResult = await tx.visitSupportResult.findUnique({
+          where: {
+            visitId_supportUserId: {
+              visitId: visit.id,
+              supportUserId: authResult.actorUserId,
+            },
+          },
+          select: { id: true },
+        })
+
+        if (existingSupportResult) {
+          throw new Error('SUPPORT_RESULT_EXISTS')
+        }
+
+        const createdSupportResult = await tx.visitSupportResult.create({
+          data: {
+            visitId: visit.id,
+            supportAssignmentId: supportAssignment.id,
+            supportUserId: authResult.actorUserId,
+            clientName: supportClientName,
+            projectArea: supportProjectArea,
+            projectStatus: supportProjectStatus,
+            extraConcern: supportExtraConcern,
+          },
+        })
+
+        if (files.length > 0) {
+          const relativeDir = path.join('uploads', 'visit-support-results', visitId)
+          const uploadDir = path.join(process.cwd(), 'public', relativeDir)
+          await mkdir(uploadDir, { recursive: true })
+
+          for (const file of files) {
+            const safeName = sanitizeFileName(file.name || 'attachment')
+            const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
+            const fullPath = path.join(uploadDir, storedFileName)
+            const arrayBuffer = await file.arrayBuffer()
+            const buffer = Buffer.from(arrayBuffer)
+            await writeFile(fullPath, buffer)
+
+            const url = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
+
+            await tx.supportAttachment.create({
+              data: {
+                supportResultId: createdSupportResult.id,
+                url,
+                fileName: file.name || safeName,
+                fileType: file.type || 'application/octet-stream',
+              },
+            })
+
+            await tx.leadAttachment.create({
+              data: {
+                leadId: visit.leadId,
+                url,
+                fileName: file.name || safeName,
+                fileType: file.type || 'application/octet-stream',
+                category: getLeadAttachmentCategory(file.type || 'application/octet-stream'),
+                sizeBytes: file.size,
+              },
+            })
+          }
+        }
+
+        await logActivity(tx, {
+          leadId: visit.leadId,
+          userId: authResult.actorUserId,
+          type: ActivityType.NOTE,
+          description: `Support visit data submitted for visit ${visit.id}.`,
+        })
+
+        return tx.visitSupportResult.findUnique({
+          where: { id: createdSupportResult.id },
+          include: {
+            files: { orderBy: { createdAt: 'desc' } },
+            supportUser: { select: { id: true, fullName: true, email: true } },
+          },
+        })
+      }
+
+      if (!summary) {
+        throw new Error('LEAD_SUMMARY_REQUIRED')
+      }
       if (visit.result) {
         throw new Error('RESULT_EXISTS')
       }
-
-      if (isVisitTeam && !isAdmin && visit.assignedToId !== authResult.actorUserId) {
+      if (isVisitTeam && !isAdmin && !isAssignedLeader) {
         throw new Error('NOT_ASSIGNED')
+      }
+      const pendingSupportCount = visit.supportAssignments.filter((item) => !item.result).length
+      if (pendingSupportCount > 0) {
+        throw new Error('SUPPORT_PENDING')
       }
 
       const createdResult = await tx.visitResult.create({
@@ -161,6 +295,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
           visitId,
           summary,
           clientMood,
+          clientPotentiality,
+          projectType,
+          clientPersonality,
+          budgetRange,
+          timelineUrgency,
+          stylePreference,
         },
       })
 
@@ -195,10 +335,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
           const buffer = Buffer.from(arrayBuffer)
           await writeFile(fullPath, buffer)
 
+          const url = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
+
           await tx.attachment.create({
             data: {
               visitResultId: createdResult.id,
-              url: `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/'),
+              url,
               fileName: file.name || safeName,
               fileType: file.type || 'application/octet-stream',
             },
@@ -207,7 +349,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           await tx.leadAttachment.create({
             data: {
               leadId: visit.leadId,
-              url: `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/'),
+              url,
               fileName: file.name || safeName,
               fileType: file.type || 'application/octet-stream',
               category: getLeadAttachmentCategory(file.type || 'application/octet-stream'),
@@ -269,7 +411,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       {
         success: true,
         data: result,
-        message: 'Visit result submitted successfully',
+        message:
+          resultType === 'SUPPORT'
+            ? 'Support visit data submitted successfully'
+            : 'Visit result submitted successfully',
       },
       { status: 201 },
     )
@@ -281,6 +426,37 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message === 'RESULT_EXISTS') {
       return NextResponse.json(
         { success: false, error: 'Visit result already exists for this visit' },
+        { status: 409 },
+      )
+    }
+
+    if (error instanceof Error && error.message === 'LEAD_SUMMARY_REQUIRED') {
+      return NextResponse.json({ success: false, error: 'Summary is required' }, { status: 400 })
+    }
+
+    if (error instanceof Error && error.message === 'SUPPORT_FIELDS_REQUIRED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'supportClientName, supportProjectArea and supportProjectStatus are required',
+        },
+        { status: 400 },
+      )
+    }
+
+    if (error instanceof Error && error.message === 'SUPPORT_RESULT_EXISTS') {
+      return NextResponse.json(
+        { success: false, error: 'Support data already submitted for this visit' },
+        { status: 409 },
+      )
+    }
+
+    if (error instanceof Error && error.message === 'SUPPORT_PENDING') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Visit cannot be completed until all support members submit their support data.',
+        },
         { status: 409 },
       )
     }
