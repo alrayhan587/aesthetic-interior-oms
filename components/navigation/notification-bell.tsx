@@ -88,6 +88,7 @@ export function NotificationBell() {
   const visibleUnreadCountRef = useRef(0)
   const wasHiddenRef = useRef(false)
   const unreadCountRef = useRef(0)
+  const originalTitleRef = useRef<string | null>(null)
 
   const playNotificationSound = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -154,6 +155,24 @@ export function NotificationBell() {
 
   useEffect(() => {
     unreadCountRef.current = unreadCount
+  }, [unreadCount])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!originalTitleRef.current) {
+      originalTitleRef.current = document.title
+    }
+    const baseTitle = originalTitleRef.current
+    if (unreadCount > 0) {
+      document.title = `(${unreadCount}) ${baseTitle}`
+    } else {
+      document.title = baseTitle
+    }
+    return () => {
+      if (originalTitleRef.current) {
+        document.title = originalTitleRef.current
+      }
+    }
   }, [unreadCount])
 
   useEffect(() => {
