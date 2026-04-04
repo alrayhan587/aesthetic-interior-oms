@@ -281,7 +281,7 @@ export function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative">
           {unreadCount > 0 ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
           {unreadCount > 0 ? (
-            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-4 px-1 text-center">
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-destructive text-white text-[10px] leading-4 px-1 text-center">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           ) : null}

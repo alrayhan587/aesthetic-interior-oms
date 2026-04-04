@@ -192,6 +192,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         throw new Error('NOT_ASSIGNED')
       }
 
+      if (resultType === 'SUPPORT' && !supportAssignment) {
+        throw new Error('NOT_ASSIGNED')
+      }
+
       if (shouldSubmitSupport && supportAssignment) {
         if (!supportClientName || !supportProjectArea || !supportProjectStatus) {
           throw new Error('SUPPORT_FIELDS_REQUIRED')
@@ -207,12 +211,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           select: { id: true },
         })
 
-        if (existingSupportResult) {
-          throw new Error('SUPPORT_RESULT_EXISTS')
-        }
-
-        const createdSupportResult = await tx.visitSupportResult.create({
-          data: {
+        const supportResult = await tx.visitSupportResult.upsert({
+          where: {
+            visitId_supportUserId: {
+              visitId: visit.id,
+              supportUserId: authResult.actorUserId,
+            },
+          },
+          create: {
             visitId: visit.id,
             supportAssignmentId: supportAssignment.id,
             supportUserId: authResult.actorUserId,
@@ -220,6 +226,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
             projectArea: supportProjectArea,
             projectStatus: supportProjectStatus,
             extraConcern: supportExtraConcern,
+          },
+          update: {
+            supportAssignmentId: supportAssignment.id,
+            clientName: supportClientName,
+            projectArea: supportProjectArea,
+            projectStatus: supportProjectStatus,
+            extraConcern: supportExtraConcern,
+            completedAt: new Date(),
           },
         })
 
@@ -240,7 +254,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
             await tx.supportAttachment.create({
               data: {
-                supportResultId: createdSupportResult.id,
+                supportResultId: supportResult.id,
                 url,
                 fileName: file.name || safeName,
                 fileType: file.type || 'application/octet-stream',
@@ -264,34 +278,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
           leadId: visit.leadId,
           userId: authResult.actorUserId,
           type: ActivityType.NOTE,
-          description: `Support visit data submitted for visit ${visit.id}.`,
+          description: existingSupportResult
+            ? `Support visit data updated for visit ${visit.id}.`
+            : `Support visit data submitted for visit ${visit.id}.`,
         })
 
-        return tx.visitSupportResult.findUnique({
-          where: { id: createdSupportResult.id },
+        const savedSupportResult = await tx.visitSupportResult.findUnique({
+          where: { id: supportResult.id },
           include: {
             files: { orderBy: { createdAt: 'desc' } },
             supportUser: { select: { id: true, fullName: true, email: true } },
           },
         })
+
+        return {
+          kind: 'SUPPORT' as const,
+          updated: Boolean(existingSupportResult),
+          payload: savedSupportResult,
+        }
       }
 
-      if (!summary) {
-        throw new Error('LEAD_SUMMARY_REQUIRED')
-      }
-      if (visit.result) {
-        throw new Error('RESULT_EXISTS')
-      }
       if (isVisitTeam && !isAdmin && !isAssignedLeader) {
         throw new Error('NOT_ASSIGNED')
+      }
+      if (!summary) {
+        throw new Error('LEAD_SUMMARY_REQUIRED')
       }
       const pendingSupportCount = visit.supportAssignments.filter((item) => !item.result).length
       if (pendingSupportCount > 0) {
         throw new Error('SUPPORT_PENDING')
       }
 
-      const createdResult = await tx.visitResult.create({
-        data: {
+      const hadLeadResult = Boolean(visit.result)
+      const savedResult = await tx.visitResult.upsert({
+        where: { visitId },
+        create: {
           visitId,
           summary,
           clientMood,
@@ -301,6 +322,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
           budgetRange,
           timelineUrgency,
           stylePreference,
+        },
+        update: {
+          summary,
+          clientMood,
+          clientPotentiality,
+          projectType,
+          clientPersonality,
+          budgetRange,
+          timelineUrgency,
+          stylePreference,
+          completedAt: new Date(),
         },
       })
 
@@ -339,7 +371,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
           await tx.attachment.create({
             data: {
-              visitResultId: createdResult.id,
+              visitResultId: savedResult.id,
               url,
               fileName: file.name || safeName,
               fileType: file.type || 'application/octet-stream',
@@ -381,17 +413,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
         leadId: visit.leadId,
         userId: authResult.actorUserId,
         type: ActivityType.NOTE,
-        description: `Visit ${visit.id} marked completed with a submitted visit result.`,
+        description: hadLeadResult
+          ? `Visit result updated for visit ${visit.id}.`
+          : `Visit ${visit.id} marked completed with a submitted visit result.`,
       })
 
-      await autoCompletePendingFollowups(tx, {
-        leadId: visit.leadId,
-        userId: authResult.actorUserId,
-        action: 'visit completed',
-      })
+      if (!hadLeadResult) {
+        await autoCompletePendingFollowups(tx, {
+          leadId: visit.leadId,
+          userId: authResult.actorUserId,
+          action: 'visit completed',
+        })
+      }
 
-      return tx.visitResult.findUnique({
-        where: { id: createdResult.id },
+      const leadResult = await tx.visitResult.findUnique({
+        where: { id: savedResult.id },
         include: {
           files: {
             orderBy: { createdAt: 'desc' },
@@ -405,29 +441,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
           },
         },
       })
+
+      return {
+        kind: 'LEAD' as const,
+        updated: hadLeadResult,
+        payload: leadResult,
+      }
     })
 
     return NextResponse.json(
       {
         success: true,
-        data: result,
+        data: result.payload,
         message:
-          resultType === 'SUPPORT'
-            ? 'Support visit data submitted successfully'
-            : 'Visit result submitted successfully',
+          result.kind === 'SUPPORT'
+            ? result.updated
+              ? 'Support visit data updated successfully'
+              : 'Support visit data submitted successfully'
+            : result.updated
+              ? 'Visit result updated successfully'
+              : 'Visit result submitted successfully',
       },
-      { status: 201 },
+      { status: result.updated ? 200 : 201 },
     )
   } catch (error) {
     if (error instanceof Error && error.message === 'VISIT_NOT_FOUND') {
       return NextResponse.json({ success: false, error: 'Visit schedule not found' }, { status: 404 })
-    }
-
-    if (error instanceof Error && error.message === 'RESULT_EXISTS') {
-      return NextResponse.json(
-        { success: false, error: 'Visit result already exists for this visit' },
-        { status: 409 },
-      )
     }
 
     if (error instanceof Error && error.message === 'LEAD_SUMMARY_REQUIRED') {
@@ -441,13 +480,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
           error: 'supportClientName, supportProjectArea and supportProjectStatus are required',
         },
         { status: 400 },
-      )
-    }
-
-    if (error instanceof Error && error.message === 'SUPPORT_RESULT_EXISTS') {
-      return NextResponse.json(
-        { success: false, error: 'Support data already submitted for this visit' },
-        { status: 409 },
       )
     }
 

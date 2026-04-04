@@ -174,6 +174,11 @@ export default function VisitTodayPage() {
     if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
     return visit.assignedTo?.id === currentUserId
   }
+  const canRequestVisitUpdate = (visit: VisitRecord) => {
+    if (!currentUserId) return false
+    if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
+    return getVisitRole(visit) === 'LEAD'
+  }
 
   const todayVisits = useMemo(() => {
     return visits
@@ -285,6 +290,8 @@ export default function VisitTodayPage() {
                     size="sm"
                     variant="outline"
                     onClick={() => openRequestDialog(visit, 'RESCHEDULE')}
+                    disabled={!canRequestVisitUpdate(visit)}
+                    title={!canRequestVisitUpdate(visit) ? 'Only assigned lead can reschedule or cancel this visit.' : undefined}
                   >
                     Reschedule
                   </Button>
@@ -293,6 +300,8 @@ export default function VisitTodayPage() {
                     variant="outline"
                     onClick={() => openRequestDialog(visit, 'CANCEL')}
                     className="text-destructive hover:text-destructive"
+                    disabled={!canRequestVisitUpdate(visit)}
+                    title={!canRequestVisitUpdate(visit) ? 'Only assigned lead can reschedule or cancel this visit.' : undefined}
                   >
                     Cancel
                   </Button>
@@ -352,6 +361,7 @@ export default function VisitTodayPage() {
   )
 
   const openRequestDialog = (visit: VisitRecord, type: 'RESCHEDULE' | 'CANCEL') => {
+    if (!canRequestVisitUpdate(visit)) return
     setSelectedVisit(visit)
     setRequestType(type)
     setRequestReason('')
@@ -386,6 +396,10 @@ export default function VisitTodayPage() {
 
   const handleSendRequest = async () => {
     if (!selectedVisit) return
+    if (!canRequestVisitUpdate(selectedVisit)) {
+      setRequestError('Only assigned lead can reschedule or cancel this visit.')
+      return
+    }
     if (!requestReason.trim()) {
       setRequestError('Please add a reason.')
       return

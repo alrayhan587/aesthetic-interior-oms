@@ -117,6 +117,7 @@ type VisitSupportMemberOption = {
   fullName: string
   email: string
 }
+type VisitResultRole = 'LEAD' | 'SUPPORT' | 'NONE'
 
 interface LeadActionsPanelProps {
   leadId: string
@@ -230,10 +231,23 @@ export function LeadActionsPanel({
   const [visitResultSummary, setVisitResultSummary] = useState('')
   const [visitResultClientMood, setVisitResultClientMood] = useState('')
   const [visitResultProjectStatus, setVisitResultProjectStatus] = useState('')
+  const [visitResultClientPotentiality, setVisitResultClientPotentiality] = useState('')
+  const [visitResultProjectType, setVisitResultProjectType] = useState('')
+  const [visitResultClientPersonality, setVisitResultClientPersonality] = useState('')
+  const [visitResultBudgetRange, setVisitResultBudgetRange] = useState('')
+  const [visitResultTimelineUrgency, setVisitResultTimelineUrgency] = useState('')
+  const [visitResultStylePreference, setVisitResultStylePreference] = useState('')
+  const [visitResultSupportClientName, setVisitResultSupportClientName] = useState('')
+  const [visitResultSupportProjectArea, setVisitResultSupportProjectArea] = useState('')
+  const [visitResultSupportProjectStatus, setVisitResultSupportProjectStatus] = useState('')
+  const [visitResultSupportExtraConcern, setVisitResultSupportExtraConcern] = useState('')
+  const [visitResultRole, setVisitResultRole] = useState<VisitResultRole>('NONE')
   const [visitResultNote, setVisitResultNote] = useState('')
   const [visitResultFiles, setVisitResultFiles] = useState<File[]>([])
   const [visitResultError, setVisitResultError] = useState<string | null>(null)
   const [submittingVisitResult, setSubmittingVisitResult] = useState(false)
+  const [loadingVisitResultData, setLoadingVisitResultData] = useState(false)
+  const [isVisitResultUpdate, setIsVisitResultUpdate] = useState(false)
   const [localVisitStageLock, setLocalVisitStageLock] = useState(false)
   const [supportDialogOpen, setSupportDialogOpen] = useState(false)
   const [supportDialogVisitId, setSupportDialogVisitId] = useState('')
@@ -400,20 +414,56 @@ export function LeadActionsPanel({
     refreshLeadVisits()
   }, [refreshLeadVisits])
 
+  const getVisitResultRole = useCallback(
+    (visit: LeadVisitRecord): VisitResultRole => {
+      if (!currentUserId) return 'NONE'
+      if (visit.assignedTo?.id === currentUserId) return 'LEAD'
+      const isSupport = (visit.supportAssignments ?? []).some(
+        (item) => item.supportUserId === currentUserId,
+      )
+      return isSupport ? 'SUPPORT' : 'NONE'
+    },
+    [currentUserId],
+  )
+
   const visitResultCandidates = useMemo(
     () =>
       leadVisits.filter(
-        (visit) =>
-          !visit.result &&
-          (visit.status === 'SCHEDULED' || visit.status === 'RESCHEDULED'),
+        (visit) => {
+          if (
+            visit.status !== 'SCHEDULED' &&
+            visit.status !== 'RESCHEDULED' &&
+            visit.status !== 'COMPLETED'
+          ) {
+            return false
+          }
+          const role = getVisitResultRole(visit)
+          if (role === 'LEAD') return true
+          if (role === 'SUPPORT') {
+            return true
+          }
+          return false
+        },
       ),
-    [leadVisits],
+    [leadVisits, getVisitResultRole, currentUserId],
   )
 
   const selectedSupportVisit = useMemo(
     () => leadVisits.find((visit) => visit.id === supportDialogVisitId) ?? null,
     [leadVisits, supportDialogVisitId],
   )
+  const selectedVisitResult = useMemo(
+    () => leadVisits.find((visit) => visit.id === visitResultVisitId) ?? null,
+    [leadVisits, visitResultVisitId],
+  )
+
+  useEffect(() => {
+    if (!selectedVisitResult) {
+      setVisitResultRole('NONE')
+      return
+    }
+    setVisitResultRole(getVisitResultRole(selectedVisitResult))
+  }, [selectedVisitResult, getVisitResultRole])
 
   const canManageSupportForVisit = useCallback(
     (visit: LeadVisitRecord) => {
@@ -489,12 +539,47 @@ export function LeadActionsPanel({
 
   const resetVisitResultForm = useCallback(() => {
     setVisitResultVisitId('')
+    setVisitResultRole('NONE')
     setVisitResultSummary('')
     setVisitResultClientMood('')
     setVisitResultProjectStatus('')
+    setVisitResultClientPotentiality('')
+    setVisitResultProjectType('')
+    setVisitResultClientPersonality('')
+    setVisitResultBudgetRange('')
+    setVisitResultTimelineUrgency('')
+    setVisitResultStylePreference('')
+    setVisitResultSupportClientName('')
+    setVisitResultSupportProjectArea('')
+    setVisitResultSupportProjectStatus('')
+    setVisitResultSupportExtraConcern('')
     setVisitResultNote('')
     setVisitResultFiles([])
     setVisitResultError(null)
+    setLoadingVisitResultData(false)
+    setIsVisitResultUpdate(false)
+  }, [])
+
+  const clearLeadVisitResultFields = useCallback(() => {
+    setVisitResultSummary('')
+    setVisitResultClientMood('')
+    setVisitResultProjectStatus('')
+    setVisitResultClientPotentiality('')
+    setVisitResultProjectType('')
+    setVisitResultClientPersonality('')
+    setVisitResultBudgetRange('')
+    setVisitResultTimelineUrgency('')
+    setVisitResultStylePreference('')
+    setVisitResultNote('')
+    setVisitResultFiles([])
+  }, [])
+
+  const clearSupportVisitResultFields = useCallback(() => {
+    setVisitResultSupportClientName('')
+    setVisitResultSupportProjectArea('')
+    setVisitResultSupportProjectStatus('')
+    setVisitResultSupportExtraConcern('')
+    setVisitResultFiles([])
   }, [])
 
   const handleRejectVisitRequest = async (visitId: string, requestId: string) => {
@@ -919,29 +1004,156 @@ export function LeadActionsPanel({
     }
   }
 
+  useEffect(() => {
+    if (!visitResultOpen || !visitResultVisitId || visitResultRole === 'NONE') return
+
+    let cancelled = false
+    setVisitResultError(null)
+    setLoadingVisitResultData(true)
+    setIsVisitResultUpdate(false)
+
+    if (visitResultRole === 'SUPPORT') {
+      clearSupportVisitResultFields()
+    } else {
+      clearLeadVisitResultFields()
+    }
+
+    const loadVisitResultData = async () => {
+      try {
+        const response = await fetch(`/api/visit-schedule/${visitResultVisitId}/result`)
+        const payload = await response.json()
+
+        if (!response.ok || !payload.success) {
+          if (response.status === 404) return
+          throw new Error(payload.error || 'Failed to load existing visit result.')
+        }
+        if (cancelled) return
+
+        if (visitResultRole === 'SUPPORT') {
+          const supportResults = Array.isArray(payload.data?.supportResults)
+            ? payload.data.supportResults
+            : []
+          const existingSupportResult = supportResults.find(
+            (item: { supportUser?: { id?: string | null } | null }) =>
+              item.supportUser?.id === currentUserId,
+          )
+
+          setIsVisitResultUpdate(Boolean(existingSupportResult))
+          setVisitResultSupportClientName(existingSupportResult?.clientName ?? '')
+          setVisitResultSupportProjectArea(existingSupportResult?.projectArea ?? '')
+          setVisitResultSupportProjectStatus(existingSupportResult?.projectStatus ?? '')
+          setVisitResultSupportExtraConcern(existingSupportResult?.extraConcern ?? '')
+          return
+        }
+
+        const leadResult = payload.data?.leadResult ?? null
+        setIsVisitResultUpdate(Boolean(leadResult))
+        setVisitResultSummary(leadResult?.summary ?? '')
+        setVisitResultClientMood(leadResult?.clientMood ?? '')
+        setVisitResultClientPotentiality(leadResult?.clientPotentiality ?? '')
+        setVisitResultProjectType(leadResult?.projectType ?? '')
+        setVisitResultClientPersonality(leadResult?.clientPersonality ?? '')
+        setVisitResultBudgetRange(leadResult?.budgetRange ?? '')
+        setVisitResultTimelineUrgency(leadResult?.timelineUrgency ?? '')
+        setVisitResultStylePreference(leadResult?.stylePreference ?? '')
+      } catch (error) {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'Failed to load existing visit result.'
+        setVisitResultError(message)
+      } finally {
+        if (!cancelled) {
+          setLoadingVisitResultData(false)
+        }
+      }
+    }
+
+    void loadVisitResultData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    visitResultOpen,
+    visitResultVisitId,
+    visitResultRole,
+    currentUserId,
+    clearLeadVisitResultFields,
+    clearSupportVisitResultFields,
+  ])
+
   const handleSubmitVisitResult = async () => {
     if (!visitResultVisitId) {
       setVisitResultError('Please select a visit.')
       return
     }
-    if (!visitResultSummary.trim()) {
+    if (visitResultRole === 'NONE') {
+      setVisitResultError('You can only submit data for visits assigned to you.')
+      return
+    }
+    const pendingSupportCount =
+      visitResultRole === 'LEAD'
+        ? (selectedVisitResult?.supportAssignments ?? []).filter((item) => !item.result).length
+        : 0
+    if (pendingSupportCount > 0) {
+      setVisitResultError('Visit cannot be completed until all support members submit their support data.')
+      return
+    }
+    if (visitResultRole === 'LEAD' && !visitResultSummary.trim()) {
       setVisitResultError('Please add a visit summary.')
       return
+    }
+    if (visitResultRole === 'SUPPORT') {
+      if (
+        !visitResultSupportClientName.trim() ||
+        !visitResultSupportProjectArea.trim() ||
+        !visitResultSupportProjectStatus.trim()
+      ) {
+        setVisitResultError('Client Name, Project Area, and Project Status are required for support.')
+        return
+      }
     }
 
     setSubmittingVisitResult(true)
     setVisitResultError(null)
     try {
       const formData = new FormData()
-      formData.append('summary', visitResultSummary.trim())
-      if (visitResultClientMood.trim()) {
-        formData.append('clientMood', visitResultClientMood.trim())
-      }
-      if (visitResultProjectStatus) {
-        formData.append('projectStatus', visitResultProjectStatus)
-      }
-      if (visitResultNote.trim()) {
-        formData.append('note', visitResultNote.trim())
+      formData.append('resultType', visitResultRole)
+      if (visitResultRole === 'LEAD') {
+        formData.append('summary', visitResultSummary.trim())
+        if (visitResultClientMood.trim()) {
+          formData.append('clientMood', visitResultClientMood.trim())
+        }
+        if (visitResultProjectStatus) {
+          formData.append('projectStatus', visitResultProjectStatus)
+        }
+        if (visitResultClientPotentiality) {
+          formData.append('clientPotentiality', visitResultClientPotentiality)
+        }
+        if (visitResultProjectType) {
+          formData.append('projectType', visitResultProjectType)
+        }
+        if (visitResultClientPersonality) {
+          formData.append('clientPersonality', visitResultClientPersonality)
+        }
+        if (visitResultBudgetRange.trim()) {
+          formData.append('budgetRange', visitResultBudgetRange.trim())
+        }
+        if (visitResultTimelineUrgency) {
+          formData.append('timelineUrgency', visitResultTimelineUrgency)
+        }
+        if (visitResultStylePreference) {
+          formData.append('stylePreference', visitResultStylePreference)
+        }
+        if (visitResultNote.trim()) {
+          formData.append('note', visitResultNote.trim())
+        }
+      } else {
+        formData.append('supportClientName', visitResultSupportClientName.trim())
+        formData.append('supportProjectArea', visitResultSupportProjectArea.trim())
+        formData.append('supportProjectStatus', visitResultSupportProjectStatus.trim())
+        if (visitResultSupportExtraConcern.trim()) {
+          formData.append('supportExtraConcern', visitResultSupportExtraConcern.trim())
+        }
       }
       visitResultFiles.forEach((file) => {
         formData.append('files', file)
@@ -956,11 +1168,21 @@ export function LeadActionsPanel({
         throw new Error(payload.error || 'Failed to submit visit result.')
       }
 
-      toast.success('Visit result submitted and lead moved to Visit Completed.')
+      toast.success(
+        visitResultRole === 'SUPPORT'
+          ? isVisitResultUpdate
+            ? 'Support visit data updated.'
+            : 'Support visit data submitted.'
+          : isVisitResultUpdate
+            ? 'Visit result updated.'
+            : 'Visit result submitted and lead moved to Visit Completed.',
+      )
       setVisitResultOpen(false)
       resetVisitResultForm()
-      onStageChange('VISIT_COMPLETED')
-      onSubStatusChange(null)
+      if (visitResultRole === 'LEAD' && !isVisitResultUpdate) {
+        onStageChange('VISIT_COMPLETED')
+        onSubStatusChange(null)
+      }
       onLeadRefresh?.()
       refreshLeadVisits()
       onFollowupRefresh?.()
@@ -1880,9 +2102,15 @@ export function LeadActionsPanel({
       <Dialog open={visitResultOpen} onOpenChange={handleVisitResultOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add visit result</DialogTitle>
+            <DialogTitle>{isVisitResultUpdate ? 'Update visit result' : 'Add visit result'}</DialogTitle>
             <DialogDescription>
-              Submit the on-site outcome. This will mark the lead as Visit Completed.
+              {visitResultRole === 'SUPPORT'
+                ? isVisitResultUpdate
+                  ? 'Update your support data for this visit.'
+                  : 'Submit support data for this visit.'
+                : isVisitResultUpdate
+                  ? 'Update the on-site outcome for this visit.'
+                  : 'Submit the on-site outcome. This will mark the lead as Visit Completed.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1913,54 +2141,192 @@ export function LeadActionsPanel({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Summary</Label>
-              <Textarea
-                value={visitResultSummary}
-                onChange={(event) => setVisitResultSummary(event.target.value)}
-                rows={4}
-                placeholder="Write visit outcome summary..."
-              />
-            </div>
+            {loadingVisitResultData ? (
+              <div className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm text-muted-foreground">
+                Loading existing visit result...
+              </div>
+            ) : null}
 
-            <div className="space-y-2">
-              <Label>Client mood (optional)</Label>
-              <Tabs
-                value={visitResultClientMood}
-                onValueChange={setVisitResultClientMood}
-                className="w-full"
-              >
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="HAPPY">Happy</TabsTrigger>
-                  <TabsTrigger value="NEUTRAL">Neutral</TabsTrigger>
-                  <TabsTrigger value="CONCERNED">Concerned</TabsTrigger>
-                  <TabsTrigger value="UNSURE">Unsure</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+            {visitResultRole === 'LEAD' &&
+            selectedVisitResult &&
+            (selectedVisitResult.supportAssignments ?? []).some((item) => !item.result) ? (
+              <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                This visit cannot be completed yet. Support members must submit their support data first.
+              </div>
+            ) : null}
 
-            <div className="space-y-2">
-              <Label>Project Status (optional)</Label>
-              <Select value={visitResultProjectStatus} onValueChange={setVisitResultProjectStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
-                  <SelectItem value="READY">Ready</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {visitResultRole === 'SUPPORT' ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Client Name</Label>
+                  <Input
+                    value={visitResultSupportClientName}
+                    onChange={(event) => setVisitResultSupportClientName(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Project Area</Label>
+                  <Input
+                    value={visitResultSupportProjectArea}
+                    onChange={(event) => setVisitResultSupportProjectArea(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Project Status</Label>
+                  <Input
+                    value={visitResultSupportProjectStatus}
+                    onChange={(event) => setVisitResultSupportProjectStatus(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Extra Concern (optional)</Label>
+                  <Textarea
+                    value={visitResultSupportExtraConcern}
+                    onChange={(event) => setVisitResultSupportExtraConcern(event.target.value)}
+                    rows={2}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Summary</Label>
+                  <Textarea
+                    value={visitResultSummary}
+                    onChange={(event) => setVisitResultSummary(event.target.value)}
+                    rows={4}
+                    placeholder="Write visit outcome summary..."
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label>Note (optional)</Label>
-              <Textarea
-                value={visitResultNote}
-                onChange={(event) => setVisitResultNote(event.target.value)}
-                rows={3}
-                placeholder="Add note for the lead timeline..."
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label>Client mood (optional)</Label>
+                  <Tabs
+                    value={visitResultClientMood}
+                    onValueChange={setVisitResultClientMood}
+                    className="w-full"
+                  >
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="HAPPY">Happy</TabsTrigger>
+                      <TabsTrigger value="NEUTRAL">Neutral</TabsTrigger>
+                      <TabsTrigger value="CONCERNED">Concerned</TabsTrigger>
+                      <TabsTrigger value="UNSURE">Unsure</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Potentiality / Hotness</Label>
+                    <select
+                      value={visitResultClientPotentiality}
+                      onChange={(event) => setVisitResultClientPotentiality(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="HOT">Hot (Immediate)</option>
+                      <option value="WARM">Warm (3-6 months)</option>
+                      <option value="COLD">Cold (Long-term)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Project Type</Label>
+                    <select
+                      value={visitResultProjectType}
+                      onChange={(event) => setVisitResultProjectType(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="DUPLEX">Duplex</option>
+                      <option value="APARTMENT">Apartment</option>
+                      <option value="TRIPLEX">Triplex</option>
+                      <option value="VILLA">Villa</option>
+                      <option value="OFFICE">Office</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Client Personality</Label>
+                    <select
+                      value={visitResultClientPersonality}
+                      onChange={(event) => setVisitResultClientPersonality(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="ANALYTICAL">
+                        Analytical (Compliant/Thinker): Methodical, logical, and detail-oriented.
+                      </option>
+                      <option value="DRIVER">
+                        Driver (Dominant/Assertive): Results-oriented, efficient, and direct.
+                      </option>
+                      <option value="AMIABLE">
+                        Amiable (Supporter): Easy-going, patient, and people-oriented.
+                      </option>
+                      <option value="EXPRESSIVE">
+                        Expressive (Influencer): Enthusiastic, creative, and fast-paced.
+                      </option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Budget Range</Label>
+                    <Input
+                      value={visitResultBudgetRange}
+                      onChange={(event) => setVisitResultBudgetRange(event.target.value)}
+                      placeholder="e.g. 20L - 35L"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Timeline</Label>
+                    <select
+                      value={visitResultTimelineUrgency}
+                      onChange={(event) => setVisitResultTimelineUrgency(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="IMMEDIATE">Immediate</option>
+                      <option value="THREE_TO_SIX_MONTHS">3-6 months</option>
+                      <option value="MORE_THAN_SIX_MONTHS">&gt; 6 months</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Style Preference</Label>
+                    <select
+                      value={visitResultStylePreference}
+                      onChange={(event) => setVisitResultStylePreference(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="MODERN">Modern</option>
+                      <option value="TRADITIONAL">Traditional</option>
+                      <option value="MINIMALIST">Minimalist</option>
+                      <option value="LUXURY">Luxury</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Project Status (optional)</Label>
+                  <Select value={visitResultProjectStatus} onValueChange={setVisitResultProjectStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
+                      <SelectItem value="READY">Ready</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Note (optional)</Label>
+                  <Textarea
+                    value={visitResultNote}
+                    onChange={(event) => setVisitResultNote(event.target.value)}
+                    rows={3}
+                    placeholder="Add note for the lead timeline..."
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label>Attachments (optional)</Label>
@@ -1982,11 +2348,25 @@ export function LeadActionsPanel({
               onClick={handleSubmitVisitResult}
               disabled={
                 submittingVisitResult ||
+                loadingVisitResultData ||
                 visitResultCandidates.length === 0 ||
-                !visitResultVisitId
+                !visitResultVisitId ||
+                visitResultRole === 'NONE' ||
+                (visitResultRole === 'LEAD' &&
+                  Boolean(selectedVisitResult?.supportAssignments?.some((item) => !item.result)))
               }
             >
-              {submittingVisitResult ? 'Saving...' : 'Submit Visit Result'}
+              {submittingVisitResult
+                ? 'Saving...'
+                : loadingVisitResultData
+                  ? 'Loading...'
+                : visitResultRole === 'SUPPORT'
+                  ? isVisitResultUpdate
+                    ? 'Update Support Data'
+                    : 'Submit Support Data'
+                  : isVisitResultUpdate
+                    ? 'Update Visit Result'
+                    : 'Submit Visit Result'}
             </Button>
           </DialogFooter>
         </DialogContent>
