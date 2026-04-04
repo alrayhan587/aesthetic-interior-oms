@@ -82,6 +82,20 @@ type WhatsAppSettingsResponse = {
   message?: string
 }
 
+type WhatsAppStatusResponse = {
+  success: boolean
+  data?: {
+    checkedAt: string
+    config: {
+      verifyTokenConfigured: boolean
+      appSecretConfigured: boolean
+      wawpSecretConfigured: boolean
+    }
+    control: WhatsAppControl
+  }
+  error?: string
+}
+
 type SyncResponse = {
   success: boolean
   data?: {
@@ -126,6 +140,7 @@ export function IntegrationSettings() {
   const [batchLimit, setBatchLimit] = useState(20)
   const [whatsAppEnabled, setWhatsAppEnabled] = useState(true)
   const [whatsAppSaving, setWhatsAppSaving] = useState(false)
+  const [checkingWhatsApp, setCheckingWhatsApp] = useState(false)
 
   const hydrateForm = useCallback((state: SyncControl) => {
     setEnabled(state.enabled)
@@ -303,6 +318,43 @@ export function IntegrationSettings() {
       setWhatsAppStatusError(error instanceof Error ? error.message : 'Failed to save WhatsApp settings')
     } finally {
       setWhatsAppSaving(false)
+    }
+  }
+
+  const checkWhatsAppStatus = async () => {
+    setCheckingWhatsApp(true)
+    setWhatsAppStatusError(null)
+    setWhatsAppStatusMessage(null)
+
+    try {
+      const response = await fetch('/api/whatsapp/status', { cache: 'no-store' })
+      const payload = (await response.json()) as WhatsAppStatusResponse
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error ?? 'Failed to check WhatsApp status')
+      }
+
+      const control = payload.data.control
+      const config = payload.data.config
+      const isConfigured = config.verifyTokenConfigured || config.wawpSecretConfigured
+      const isRunning = control.enabled && isConfigured
+
+      setWhatsAppControl(control)
+      setWhatsAppConfig(config)
+      setWhatsAppEnabled(control.enabled)
+
+      if (isRunning) {
+        setWhatsAppStatusMessage(
+          `WhatsApp is running. Last webhook: ${formatDate(control.lastWebhookAt)} (${control.lastWebhookStatus ?? 'N/A'}).`,
+        )
+      } else if (!control.enabled) {
+        setWhatsAppStatusError('WhatsApp is not running: ingestion is disabled.')
+      } else {
+        setWhatsAppStatusError('WhatsApp is not running: webhook security/config is incomplete.')
+      }
+    } catch (error) {
+      setWhatsAppStatusError(error instanceof Error ? error.message : 'Failed to check WhatsApp status')
+    } finally {
+      setCheckingWhatsApp(false)
     }
   }
 
@@ -511,9 +563,13 @@ export function IntegrationSettings() {
               {whatsAppSaving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save WhatsApp Settings
             </Button>
-            <Button variant="outline" onClick={() => void loadWhatsAppSettings()} className="gap-2">
-              <CheckCircle2 className="size-4" />
+            <Button variant="outline" onClick={() => void loadWhatsAppSettings()} disabled={checkingWhatsApp} className="gap-2">
+              {checkingWhatsApp ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
               Refresh WhatsApp Health
+            </Button>
+            <Button variant="outline" onClick={() => void checkWhatsAppStatus()} disabled={checkingWhatsApp} className="gap-2">
+              {checkingWhatsApp ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              Check WhatsApp Status
             </Button>
           </div>
 

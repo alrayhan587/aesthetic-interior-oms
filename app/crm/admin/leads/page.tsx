@@ -39,6 +39,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import LeadCreateModal from '@/components/crm/junior/LeadCreateModal'
+import { LeadImportModal } from '@/components/crm/admin/lead-import-modal'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { LeadDateRangeFilter, type LeadDatePreset } from '@/components/crm/shared/lead-date-range-filter'
 
@@ -620,7 +621,8 @@ export default function LeadsPage() {
       />
       <main className="mx-auto max-w-[1440px] px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">
         <div className="space-y-6">
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <LeadImportModal onImported={refreshLeads} />
             <LeadCreateModal onCreated={refreshLeads} />
           </div>
 
