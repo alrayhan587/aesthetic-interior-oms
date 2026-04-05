@@ -1,6 +1,5 @@
 import { randomUUID } from 'crypto'
-import { mkdir, writeFile } from 'fs/promises'
-import path from 'path'
+import { head, put } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
 import { ActivityType, LeadStage, ProjectStatus } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
@@ -38,6 +37,35 @@ function toOptionalString(value: unknown): string | null {
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+async function uploadFileToBlob(
+  keyPrefix: string,
+  file: File,
+): Promise<{ url: string; fileName: string; fileType: string }> {
+  const safeName = sanitizeFileName(file.name || 'attachment')
+  const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
+  const fileType = file.type || 'application/octet-stream'
+  const blob = await put(`${keyPrefix}/${storedFileName}`, file, {
+    access: 'private',
+    contentType: fileType,
+  })
+
+  return {
+    url: blob.downloadUrl || blob.url,
+    fileName: file.name || safeName,
+    fileType,
+  }
+}
+
+async function resolveAttachmentReadUrl(url: string): Promise<string> {
+  if (!url.includes('.private.blob.vercel-storage.com')) return url
+  try {
+    const blobMeta = await head(url)
+    return blobMeta.downloadUrl || url
+  } catch {
+    return url
+  }
 }
 
 function getLeadAttachmentCategory(fileType: string): 'MEDIA' | 'FILE' {
@@ -97,11 +125,35 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Visit result not found' }, { status: 404 })
     }
 
+    const leadResultWithReadableUrls = result
+      ? {
+          ...result,
+          files: await Promise.all(
+            result.files.map(async (item) => ({
+              ...item,
+              url: await resolveAttachmentReadUrl(item.url),
+            })),
+          ),
+        }
+      : null
+
+    const supportResultsWithReadableUrls = await Promise.all(
+      supportResults.map(async (supportResult) => ({
+        ...supportResult,
+        files: await Promise.all(
+          supportResult.files.map(async (item) => ({
+            ...item,
+            url: await resolveAttachmentReadUrl(item.url),
+          })),
+        ),
+      })),
+    )
+
     return NextResponse.json({
       success: true,
       data: {
-        leadResult: result,
-        supportResults,
+        leadResult: leadResultWithReadableUrls,
+        supportResults: supportResultsWithReadableUrls,
       },
     })
   } catch (error) {
@@ -280,36 +332,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
 
         if (files.length > 0) {
-          const relativeDir = path.join('uploads', 'visit-support-results', visitId)
-          const uploadDir = path.join(process.cwd(), 'public', relativeDir)
-          await mkdir(uploadDir, { recursive: true })
-
           for (const file of files) {
-            const safeName = sanitizeFileName(file.name || 'attachment')
-            const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
-            const fullPath = path.join(uploadDir, storedFileName)
-            const arrayBuffer = await file.arrayBuffer()
-            const buffer = Buffer.from(arrayBuffer)
-            await writeFile(fullPath, buffer)
-
-            const url = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
+            const uploaded = await uploadFileToBlob(`visit-support-results/${visitId}`, file)
 
             await tx.supportAttachment.create({
               data: {
                 supportResultId: supportResult.id,
-                url,
-                fileName: file.name || safeName,
-                fileType: file.type || 'application/octet-stream',
+                url: uploaded.url,
+                fileName: uploaded.fileName,
+                fileType: uploaded.fileType,
               },
             })
 
             await tx.leadAttachment.create({
               data: {
                 leadId: visit.leadId,
-                url,
-                fileName: file.name || safeName,
-                fileType: file.type || 'application/octet-stream',
-                category: getLeadAttachmentCategory(file.type || 'application/octet-stream'),
+                url: uploaded.url,
+                fileName: uploaded.fileName,
+                fileType: uploaded.fileType,
+                category: getLeadAttachmentCategory(uploaded.fileType),
                 sizeBytes: file.size,
               },
             })
@@ -397,36 +438,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (files.length > 0) {
-        const relativeDir = path.join('uploads', 'visit-results', visitId)
-        const uploadDir = path.join(process.cwd(), 'public', relativeDir)
-        await mkdir(uploadDir, { recursive: true })
-
         for (const file of files) {
-          const safeName = sanitizeFileName(file.name || 'attachment')
-          const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
-          const fullPath = path.join(uploadDir, storedFileName)
-          const arrayBuffer = await file.arrayBuffer()
-          const buffer = Buffer.from(arrayBuffer)
-          await writeFile(fullPath, buffer)
-
-          const url = `/${relativeDir}/${storedFileName}`.replace(/\\/g, '/')
+          const uploaded = await uploadFileToBlob(`visit-results/${visitId}`, file)
 
           await tx.attachment.create({
             data: {
               visitResultId: savedResult.id,
-              url,
-              fileName: file.name || safeName,
-              fileType: file.type || 'application/octet-stream',
+              url: uploaded.url,
+              fileName: uploaded.fileName,
+              fileType: uploaded.fileType,
             },
           })
 
           await tx.leadAttachment.create({
             data: {
               leadId: visit.leadId,
-              url,
-              fileName: file.name || safeName,
-              fileType: file.type || 'application/octet-stream',
-              category: getLeadAttachmentCategory(file.type || 'application/octet-stream'),
+              url: uploaded.url,
+              fileName: uploaded.fileName,
+              fileType: uploaded.fileType,
+              category: getLeadAttachmentCategory(uploaded.fileType),
               sizeBytes: file.size,
             },
           })
@@ -539,6 +569,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { success: false, error: 'You can only submit results for visits assigned to you' },
         { status: 403 },
+      )
+    }
+
+    if (error instanceof Error && error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Blob storage is not configured. Set BLOB_READ_WRITE_TOKEN in environment variables.',
+        },
+        { status: 503 },
       )
     }
 
