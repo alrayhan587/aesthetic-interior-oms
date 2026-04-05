@@ -6,6 +6,7 @@ import { requireDatabaseRoles } from '@/lib/authz';
 import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 import { isFacebookConfigured } from '@/lib/facebook';
 import { maybeRunFacebookFallbackSync, runFacebookSyncWithControl } from '@/lib/facebook-sync-control';
+import { maybeRunInstagramFallbackSync } from '@/lib/instagram-sync-control';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -162,6 +163,11 @@ function toPositiveInt(value: string | null, fallback: number): number {
   return parsed;
 }
 
+function toBooleanParam(value: string | null): boolean {
+  const normalized = toOptionalString(value)?.toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 function parseDateAtStartOfDayUtc(value: string | null): Date | null {
   const normalized = toOptionalString(value);
   if (!normalized) return null;
@@ -212,6 +218,8 @@ export async function GET(request: NextRequest) {
     const offset = toPositiveInt(searchParams.get('offset'), 0);
     const stageParam = toLeadStageParam(searchParams.get('stage'));
     const searchParam = toOptionalString(searchParams.get('search'));
+    const sourceParam = toOptionalString(searchParams.get('source'));
+    const unassignedOnly = toBooleanParam(searchParams.get('unassigned'));
     const createdFrom = parseDateAtStartOfDayUtc(searchParams.get('createdFrom'));
     const createdTo = parseDateAtEndOfDayUtc(searchParams.get('createdTo'));
     const hasCreatedFromParam = Boolean(toOptionalString(searchParams.get('createdFrom')));
@@ -242,6 +250,16 @@ export async function GET(request: NextRequest) {
     const where: Prisma.LeadWhereInput = {
       ...baseWhere,
       ...(stageParam ? { stage: stageParam } : {}),
+      ...(sourceParam ? { source: { equals: sourceParam, mode: 'insensitive' } } : {}),
+      ...(unassignedOnly
+        ? {
+            assignments: {
+              none: {
+                department: LeadAssignmentDepartment.JR_CRM,
+              },
+            },
+          }
+        : {}),
       ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
       ...(searchParam
         ? {
@@ -262,6 +280,8 @@ export async function GET(request: NextRequest) {
       offset === 0 &&
       !searchParam &&
       !stageParam &&
+      !sourceParam &&
+      !unassignedOnly &&
       !hasCreatedDateFilter &&
       isFacebookConfigured();
 
@@ -269,6 +289,8 @@ export async function GET(request: NextRequest) {
       offset === 0 &&
       !searchParam &&
       !stageParam &&
+      !sourceParam &&
+      !unassignedOnly &&
       !hasCreatedDateFilter;
 
     if (shouldRunFallbackFacebookSync) {
@@ -276,6 +298,11 @@ export async function GET(request: NextRequest) {
         await maybeRunFacebookFallbackSync();
       } catch (syncError) {
         console.error('[GET /api/lead] Facebook fallback sync failed:', syncError);
+      }
+      try {
+        await maybeRunInstagramFallbackSync();
+      } catch (syncError) {
+        console.error('[GET /api/lead] Instagram fallback sync failed:', syncError);
       }
     }
 
@@ -318,6 +345,16 @@ export async function GET(request: NextRequest) {
           by: ['stage'],
           where: {
             ...baseWhere,
+            ...(sourceParam ? { source: { equals: sourceParam, mode: 'insensitive' } } : {}),
+            ...(unassignedOnly
+              ? {
+                  assignments: {
+                    none: {
+                      department: LeadAssignmentDepartment.JR_CRM,
+                    },
+                  },
+                }
+              : {}),
             ...(createdAtWhere ? { created_at: createdAtWhere } : {}),
           },
           _count: { stage: true },

@@ -4,6 +4,7 @@ import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType, Pr
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { findVisitConflict, isFutureDate } from '@/lib/visit-guards';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -174,9 +175,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (scheduledAtRaw && (!parsedScheduledAt || Number.isNaN(parsedScheduledAt.getTime()))) {
       return NextResponse.json({ success: false, error: 'scheduledAt must be a valid ISO date-time' }, { status: 400 });
     }
+    if (parsedScheduledAt && !isFutureDate(parsedScheduledAt)) {
+      return NextResponse.json({ success: false, error: 'scheduledAt must be in the future' }, { status: 400 });
+    }
 
     if (body.status !== undefined && !statusInput) {
       return NextResponse.json({ success: false, error: 'Invalid visit status' }, { status: 400 });
+    }
+    if (statusInput === VisitStatus.COMPLETED) {
+      return NextResponse.json(
+        { success: false, error: 'Use visit result submission endpoint to complete a visit' },
+        { status: 400 },
+      );
     }
     if (statusInput === VisitStatus.RESCHEDULED && !parsedScheduledAt) {
       return NextResponse.json(
@@ -237,6 +247,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
       if (isVisitTeam && !isAdmin && existing.assignedToId !== actorUserId) {
         throw new Error('NOT_ASSIGNED');
+      }
+
+      const effectiveAssigneeId = visitTeamUserId ?? existing.assignedToId;
+      const effectiveScheduledAt = parsedScheduledAt ?? existing.scheduledAt;
+      const keepsActiveStatus = statusInput !== VisitStatus.CANCELLED;
+      if (effectiveAssigneeId && effectiveScheduledAt && keepsActiveStatus) {
+        const conflict = await findVisitConflict(tx, {
+          assignedToId: effectiveAssigneeId,
+          scheduledAt: effectiveScheduledAt,
+          excludeVisitId: existing.id,
+        });
+        if (conflict) {
+          throw new Error('VISIT_CONFLICT');
+        }
       }
 
       const visit = await tx.visit.update({
@@ -358,6 +382,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (error instanceof Error && error.message === 'NOT_ASSIGNED') {
       return NextResponse.json({ success: false, error: 'You can only update visits assigned to you' }, { status: 403 });
+    }
+    if (error instanceof Error && error.message === 'VISIT_CONFLICT') {
+      return NextResponse.json(
+        { success: false, error: 'Selected visit team member already has a nearby scheduled visit' },
+        { status: 409 },
+      );
     }
 
     console.error('[visit-schedule/:id][PATCH] Error:', error);

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma'
 import { ActivityType, VisitUpdateRequestStatus, VisitUpdateRequestType } from '@/generated/prisma/client'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { logActivity } from '@/lib/activity-log-service'
+import { findVisitConflict, isFutureDate } from '@/lib/visit-guards'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
 
@@ -109,6 +110,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
           { status: 400 },
         )
       }
+      if (!isFutureDate(requestedScheduleAt)) {
+        return NextResponse.json(
+          { success: false, error: 'requestedScheduleAt must be in the future' },
+          { status: 400 },
+        )
+      }
     }
 
     const visit = await prisma.visit.findUnique({
@@ -150,6 +157,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const created = await prisma.$transaction(async (tx) => {
+      if (type === VisitUpdateRequestType.RESCHEDULE && requestedScheduleAt && visit.assignedToId) {
+        const conflict = await findVisitConflict(tx, {
+          assignedToId: visit.assignedToId,
+          scheduledAt: requestedScheduleAt,
+          excludeVisitId: visitId,
+        })
+        if (conflict) {
+          throw new Error('VISIT_CONFLICT')
+        }
+      }
+
       const newRequest = await tx.visitUpdateRequest.create({
         data: {
           visitId,
@@ -178,6 +196,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       { status: 201 },
     )
   } catch (error) {
+    if (error instanceof Error && error.message === 'VISIT_CONFLICT') {
+      return NextResponse.json(
+        { success: false, error: 'Assigned visit team member already has a nearby scheduled visit' },
+        { status: 409 },
+      )
+    }
     console.error('[visit-schedule/:id/update-request][POST] Error:', error)
     return NextResponse.json({ success: false, error: 'Failed to create visit update request' }, { status: 500 })
   }

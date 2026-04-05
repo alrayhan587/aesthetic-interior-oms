@@ -9,6 +9,16 @@ import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
+const MAX_UPLOAD_FILES = 10
+const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'video/mp4',
+  'video/quicktime',
+])
 
 async function resolveVisitId(context: RouteContext): Promise<string | null> {
   const resolvedParams = await context.params
@@ -43,6 +53,12 @@ function toProjectStatus(value: unknown): ProjectStatus | null {
   return Object.values(ProjectStatus).includes(normalized as ProjectStatus)
     ? (normalized as ProjectStatus)
     : null
+}
+
+function isAllowedUploadType(fileType: string): boolean {
+  if (!fileType) return false
+  if (fileType.startsWith('image/')) return true
+  return ALLOWED_UPLOAD_MIME_TYPES.has(fileType)
 }
 
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -154,6 +170,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const files = formData
       .getAll('files')
       .filter((entry): entry is File => entry instanceof File && entry.size > 0)
+    if (files.length > MAX_UPLOAD_FILES) {
+      return NextResponse.json(
+        { success: false, error: `A maximum of ${MAX_UPLOAD_FILES} files is allowed` },
+        { status: 400 },
+      )
+    }
+    for (const file of files) {
+      if (file.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `File "${file.name}" exceeds the ${Math.floor(MAX_UPLOAD_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`,
+          },
+          { status: 400 },
+        )
+      }
+      if (!isAllowedUploadType(file.type || '')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `File type "${file.type || 'unknown'}" is not allowed`,
+          },
+          { status: 400 },
+        )
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const visit = await tx.visit.findUnique({

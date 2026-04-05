@@ -45,6 +45,8 @@ import { LeadDateRangeFilter, type LeadDatePreset } from '@/components/crm/share
 const PAGE_SIZE = 20
 const stages = ['NEW', 'NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_RESCHEDULED', 'VISIT_COMPLETED', 'VISIT_CANCELLED', 'CLOSED']
 const stageGridStages = ['NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_RESCHEDULED', 'VISIT_COMPLETED', 'VISIT_CANCELLED', 'CLOSED']
+const sourceFilterOptions = ['ALL', 'WhatsApp', 'Facebook', 'Instagram', 'Website', 'Manual', 'Referral']
+const assignmentFilterOptions = ['ALL', 'UNASSIGNED']
 
 type ViewMode = 'list' | 'card'
 
@@ -253,6 +255,8 @@ export default function LeadsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('ALL')
+  const [sourceFilter, setSourceFilter] = useState('ALL')
+  const [assignmentFilter, setAssignmentFilter] = useState<'ALL' | 'UNASSIGNED'>('ALL')
   const [datePreset, setDatePreset] = useState<LeadDatePreset>('TODAY')
   const [createdFrom, setCreatedFrom] = useState(defaultRange.from)
   const [createdTo, setCreatedTo] = useState(defaultRange.to)
@@ -312,7 +316,7 @@ export default function LeadsPage() {
 
   const fetchLeads = useCallback(async (offset: number, replace: boolean) => {
     try {
-      const filterKey = `${search}|${stageFilter}|${createdFrom}|${createdTo}`
+      const filterKey = `${search}|${stageFilter}|${sourceFilter}|${assignmentFilter}|${createdFrom}|${createdTo}`
       const requestKey = `${filterKey}|${offset}|${replace ? 'replace' : 'append'}`
 
       if (inFlightKeyRef.current === requestKey) {
@@ -353,6 +357,14 @@ export default function LeadsPage() {
 
       if (stageFilter !== 'ALL') {
         params.set('stage', stageFilter)
+      }
+
+      if (sourceFilter !== 'ALL') {
+        params.set('source', sourceFilter)
+      }
+
+      if (assignmentFilter === 'UNASSIGNED') {
+        params.set('unassigned', '1')
       }
 
       if (createdFrom) {
@@ -416,7 +428,7 @@ export default function LeadsPage() {
       setLoadingInitial(false)
       setLoadingMore(false)
     }
-  }, [createdFrom, createdTo, search, stageFilter])
+  }, [assignmentFilter, createdFrom, createdTo, search, sourceFilter, stageFilter])
 
   useEffect(() => {
     fetchLeads(0, true)
@@ -671,9 +683,43 @@ export default function LeadsPage() {
               onCreatedToChange={setCreatedTo}
               onReset={() => applyDatePreset('THIS_MONTH')}
             />
+            <Select value={assignmentFilter} onValueChange={(value) => setAssignmentFilter(value as 'ALL' | 'UNASSIGNED')}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Assignment" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignmentFilterOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option === 'ALL' ? 'All Leads' : 'Unassigned'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Source" />
+              </SelectTrigger>
+              <SelectContent>
+                {sourceFilterOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option === 'ALL' ? 'All Sources' : option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {stageFilter !== 'ALL' ? (
               <Button variant="outline" onClick={() => setStageFilter('ALL')}>
                 Clear Stage ({stageFilter.replace(/_/g, ' ')})
+              </Button>
+            ) : null}
+            {sourceFilter !== 'ALL' ? (
+              <Button variant="outline" onClick={() => setSourceFilter('ALL')}>
+                Clear Source ({sourceFilter})
+              </Button>
+            ) : null}
+            {assignmentFilter !== 'ALL' ? (
+              <Button variant="outline" onClick={() => setAssignmentFilter('ALL')}>
+                Clear Assignment (Unassigned)
               </Button>
             ) : null}
             <Button

@@ -1,14 +1,14 @@
 import 'server-only'
 
 import prisma from '@/lib/prisma'
-import { isFacebookConfigured, syncFacebookConversationsIncremental } from '@/lib/facebook'
+import { isInstagramConfigured, syncInstagramConversationsIncremental } from '@/lib/instagram'
 
 const SETTINGS_ROW_ID = 'default'
-const SYNC_LOCK_ID = 92738165
+const SYNC_LOCK_ID = 92738166
 
-export type FacebookSyncTrigger = 'MANUAL' | 'SCHEDULED_FALLBACK'
+export type InstagramSyncTrigger = 'MANUAL' | 'SCHEDULED_FALLBACK'
 
-export type FacebookSyncControlState = {
+export type InstagramSyncControlState = {
   enabled: boolean
   fallbackEnabled: boolean
   fallbackIntervalMinutes: number
@@ -25,14 +25,14 @@ export type FacebookSyncControlState = {
   nextScheduledAt: string | null
 }
 
-type UpdateFacebookSyncControlInput = {
+type UpdateInstagramSyncControlInput = {
   enabled?: boolean
   fallbackEnabled?: boolean
   fallbackIntervalMinutes?: number
   batchLimit?: number
 }
 
-type RunFacebookSyncResult = {
+type RunInstagramSyncResult = {
   ran: boolean
   reason?: string
   fetchedConversations?: number
@@ -65,7 +65,7 @@ function serializeControlRow(row: {
   incrementalCursor: string | null
   incrementalWatermark: Date | null
   jrCrmRoundRobinOffset: number
-}): FacebookSyncControlState {
+}): InstagramSyncControlState {
   const nextScheduledAt =
     row.fallbackEnabled && row.lastSyncAt
       ? new Date(row.lastSyncAt.getTime() + row.fallbackIntervalMinutes * 60_000).toISOString()
@@ -90,7 +90,7 @@ function serializeControlRow(row: {
 }
 
 async function ensureControlRow() {
-  return prisma.facebookSyncControl.upsert({
+  return prisma.instagramSyncControl.upsert({
     where: { id: SETTINGS_ROW_ID },
     create: {
       id: SETTINGS_ROW_ID,
@@ -116,14 +116,14 @@ async function releaseSyncLock() {
   `
 }
 
-export async function getFacebookSyncControlState(): Promise<FacebookSyncControlState> {
+export async function getInstagramSyncControlState(): Promise<InstagramSyncControlState> {
   const row = await ensureControlRow()
   return serializeControlRow(row)
 }
 
-export async function updateFacebookSyncControlState(
-  input: UpdateFacebookSyncControlInput,
-): Promise<FacebookSyncControlState> {
+export async function updateInstagramSyncControlState(
+  input: UpdateInstagramSyncControlInput,
+): Promise<InstagramSyncControlState> {
   await ensureControlRow()
 
   const data: {
@@ -149,7 +149,7 @@ export async function updateFacebookSyncControlState(
     data.batchLimit = clampBatchLimit(input.batchLimit)
   }
 
-  const updated = await prisma.facebookSyncControl.update({
+  const updated = await prisma.instagramSyncControl.update({
     where: { id: SETTINGS_ROW_ID },
     data,
   })
@@ -157,8 +157,8 @@ export async function updateFacebookSyncControlState(
   return serializeControlRow(updated)
 }
 
-export async function recordFacebookSyncResult(input: {
-  trigger: FacebookSyncTrigger
+export async function recordInstagramSyncResult(input: {
+  trigger: InstagramSyncTrigger
   status: 'SUCCESS' | 'FAILED'
   fetchedConversations?: number
   createdLeads?: number
@@ -169,7 +169,7 @@ export async function recordFacebookSyncResult(input: {
 }) {
   await ensureControlRow()
 
-  await prisma.facebookSyncControl.update({
+  await prisma.instagramSyncControl.update({
     where: { id: SETTINGS_ROW_ID },
     data: {
       lastSyncAt: new Date(),
@@ -195,19 +195,18 @@ export async function recordFacebookSyncResult(input: {
   })
 }
 
-async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFacebookSyncResult> {
+async function runIncrementalSync(trigger: InstagramSyncTrigger): Promise<RunInstagramSyncResult> {
   const settings = await ensureControlRow()
 
   if (!settings.enabled) {
     return { ran: false, reason: 'sync_disabled' }
   }
 
-  if (!isFacebookConfigured()) {
-    return { ran: false, reason: 'facebook_not_configured' }
+  if (!isInstagramConfigured()) {
+    return { ran: false, reason: 'instagram_not_configured' }
   }
 
-  // Always prioritize newest conversations from page 1, then continue backfill pages.
-  const latestResult = await syncFacebookConversationsIncremental({
+  const latestResult = await syncInstagramConversationsIncremental({
     limit: settings.batchLimit,
     afterCursor: null,
     watermarkIso: settings.incrementalWatermark?.toISOString() ?? null,
@@ -221,7 +220,7 @@ async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFace
   let nextRoundRobinOffset = latestResult.nextJrCrmRoundRobinOffset
 
   if (backfillStartCursor) {
-    const backfillResult = await syncFacebookConversationsIncremental({
+    const backfillResult = await syncInstagramConversationsIncremental({
       limit: settings.batchLimit,
       afterCursor: backfillStartCursor,
       watermarkIso: null,
@@ -234,7 +233,7 @@ async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFace
     nextRoundRobinOffset = backfillResult.nextJrCrmRoundRobinOffset
   }
 
-  await recordFacebookSyncResult({
+  await recordInstagramSyncResult({
     trigger,
     status: 'SUCCESS',
     fetchedConversations: latestResult.fetchedConversations + backfillFetched,
@@ -253,7 +252,7 @@ async function runIncrementalSync(trigger: FacebookSyncTrigger): Promise<RunFace
   }
 }
 
-export async function runFacebookSyncWithControl(trigger: FacebookSyncTrigger): Promise<RunFacebookSyncResult> {
+export async function runInstagramSyncWithControl(trigger: InstagramSyncTrigger): Promise<RunInstagramSyncResult> {
   const acquired = await tryAcquireSyncLock()
   if (!acquired) {
     return { ran: false, reason: 'sync_lock_busy' }
@@ -266,7 +265,7 @@ export async function runFacebookSyncWithControl(trigger: FacebookSyncTrigger): 
   }
 }
 
-export async function maybeRunFacebookFallbackSync(): Promise<RunFacebookSyncResult> {
+export async function maybeRunInstagramFallbackSync(): Promise<RunInstagramSyncResult> {
   const settings = await ensureControlRow()
 
   if (!settings.enabled) {
@@ -277,8 +276,8 @@ export async function maybeRunFacebookFallbackSync(): Promise<RunFacebookSyncRes
     return { ran: false, reason: 'fallback_disabled' }
   }
 
-  if (!isFacebookConfigured()) {
-    return { ran: false, reason: 'facebook_not_configured' }
+  if (!isInstagramConfigured()) {
+    return { ran: false, reason: 'instagram_not_configured' }
   }
 
   const now = Date.now()
@@ -298,7 +297,7 @@ export async function maybeRunFacebookFallbackSync(): Promise<RunFacebookSyncRes
     return await runIncrementalSync('SCHEDULED_FALLBACK')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown sync failure'
-    await recordFacebookSyncResult({
+    await recordInstagramSyncResult({
       trigger: 'SCHEDULED_FALLBACK',
       status: 'FAILED',
       error: message,

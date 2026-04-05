@@ -1,6 +1,7 @@
 import 'server-only'
 
 import prisma from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma/client'
 
 const SETTINGS_ROW_ID = 'default'
 
@@ -52,6 +53,62 @@ export type WhatsAppRecordResultInput = {
   skippedExistingPhone: number
   skippedNoPhone: number
   skippedDuplicateMessage: number
+  source?: 'META' | 'WAWP' | 'UNKNOWN'
+}
+
+export type WhatsAppWebhookEventLog = {
+  id: string
+  status: string
+  source: string | null
+  processedMessages: number
+  createdLeads: number
+  skippedExistingPhone: number
+  skippedNoPhone: number
+  skippedDuplicateMessage: number
+  error: string | null
+  createdAt: string
+}
+
+function getWebhookEventDelegate():
+  | {
+      create: (args: {
+        data: {
+          status: string
+          source?: string | null
+          processedMessages?: number
+          createdLeads?: number
+          skippedExistingPhone?: number
+          skippedNoPhone?: number
+          skippedDuplicateMessage?: number
+          error?: string | null
+        }
+      }) => Promise<unknown>
+      findMany: (args: {
+        orderBy: { createdAt: 'desc' }
+        take: number
+      }) => Promise<Array<{
+        id: string
+        status: string
+        source: string | null
+        processedMessages: number
+        createdLeads: number
+        skippedExistingPhone: number
+        skippedNoPhone: number
+        skippedDuplicateMessage: number
+        error: string | null
+        createdAt: Date
+      }>>
+    }
+  | null {
+  const candidate = (prisma as unknown as { whatsAppWebhookEvent?: unknown }).whatsAppWebhookEvent
+  if (!candidate || typeof candidate !== 'object') return null
+
+  const record = candidate as {
+    create?: unknown
+    findMany?: unknown
+  }
+  if (typeof record.create !== 'function' || typeof record.findMany !== 'function') return null
+  return record as ReturnType<typeof getWebhookEventDelegate> extends infer T ? Exclude<T, null> : never
 }
 
 function serialize(row: ControlRow): WhatsAppControlState {
@@ -120,9 +177,34 @@ export async function recordWhatsAppWebhookResult(input: WhatsAppRecordResultInp
       totalSkippedDuplicateMessage: { increment: input.skippedDuplicateMessage },
     },
   })
+
+  const delegate = getWebhookEventDelegate()
+  if (!delegate) return
+
+  try {
+    await delegate.create({
+      data: {
+        status: 'SUCCESS',
+        source: input.source ?? null,
+        processedMessages: input.processedMessages,
+        createdLeads: input.createdLeads,
+        skippedExistingPhone: input.skippedExistingPhone,
+        skippedNoPhone: input.skippedNoPhone,
+        skippedDuplicateMessage: input.skippedDuplicateMessage,
+      },
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+      return
+    }
+    throw error
+  }
 }
 
-export async function recordWhatsAppWebhookError(errorMessage: string): Promise<void> {
+export async function recordWhatsAppWebhookError(
+  errorMessage: string,
+  source: 'META' | 'WAWP' | 'UNKNOWN' = 'UNKNOWN',
+): Promise<void> {
   await ensureWhatsAppControlRow()
   await prisma.whatsAppWebhookControl.update({
     where: { id: SETTINGS_ROW_ID },
@@ -133,6 +215,55 @@ export async function recordWhatsAppWebhookError(errorMessage: string): Promise<
       totalWebhookEvents: { increment: 1 },
     },
   })
+
+  const delegate = getWebhookEventDelegate()
+  if (!delegate) return
+
+  try {
+    await delegate.create({
+      data: {
+        status: 'FAILED',
+        source,
+        error: errorMessage.slice(0, 2000),
+      },
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+      return
+    }
+    throw error
+  }
+}
+
+export async function getRecentWhatsAppWebhookEvents(limit = 20): Promise<WhatsAppWebhookEventLog[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 100) : 20
+  const delegate = getWebhookEventDelegate()
+  if (!delegate) return []
+  let rows: Awaited<ReturnType<typeof delegate.findMany>>
+  try {
+    rows = await delegate.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: safeLimit,
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
+      return []
+    }
+    throw error
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    source: row.source,
+    processedMessages: row.processedMessages,
+    createdLeads: row.createdLeads,
+    skippedExistingPhone: row.skippedExistingPhone,
+    skippedNoPhone: row.skippedNoPhone,
+    skippedDuplicateMessage: row.skippedDuplicateMessage,
+    error: row.error,
+    createdAt: row.createdAt.toISOString(),
+  }))
 }
 
 export async function getAndAdvanceWhatsAppRoundRobinOffset(agentCount: number): Promise<number> {

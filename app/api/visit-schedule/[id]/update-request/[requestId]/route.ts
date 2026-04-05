@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma'
 import { ActivityType, LeadStage, VisitStatus, VisitUpdateRequestStatus, VisitUpdateRequestType } from '@/generated/prisma/client'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service'
+import { findVisitConflict, isFutureDate } from '@/lib/visit-guards'
 
 type RouteContext = {
   params:
@@ -81,6 +82,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           select: {
             id: true,
             leadId: true,
+            assignedToId: true,
             lead: {
               select: {
                 stage: true,
@@ -136,15 +138,29 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
 
         if (existing.type === VisitUpdateRequestType.RESCHEDULE) {
+          const resolvedScheduleAt = scheduledAt ?? existing.requestedScheduleAt
+          if (!resolvedScheduleAt || Number.isNaN(resolvedScheduleAt.getTime())) {
+            throw new Error('RESCHEDULE_DATE_REQUIRED')
+          }
+          if (!isFutureDate(resolvedScheduleAt)) {
+            throw new Error('RESCHEDULE_MUST_BE_FUTURE')
+          }
+          if (existing.visit.assignedToId) {
+            const conflict = await findVisitConflict(tx, {
+              assignedToId: existing.visit.assignedToId,
+              scheduledAt: resolvedScheduleAt,
+              excludeVisitId: visitId,
+            })
+            if (conflict) {
+              throw new Error('VISIT_CONFLICT')
+            }
+          }
+
           await tx.visit.update({
             where: { id: visitId },
             data: {
               status: VisitStatus.RESCHEDULED,
-              ...(scheduledAt
-                ? { scheduledAt }
-                : existing.requestedScheduleAt
-                  ? { scheduledAt: existing.requestedScheduleAt }
-                  : {}),
+              scheduledAt: resolvedScheduleAt,
             },
           })
           if (existing.visit.lead.stage !== LeadStage.VISIT_RESCHEDULED) {
@@ -180,6 +196,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       message: action === 'APPROVE' ? 'Request approved and visit updated' : 'Request rejected',
     })
   } catch (error) {
+    if (error instanceof Error && error.message === 'RESCHEDULE_DATE_REQUIRED') {
+      return NextResponse.json(
+        { success: false, error: 'A valid reschedule date is required to approve this request' },
+        { status: 400 },
+      )
+    }
+    if (error instanceof Error && error.message === 'RESCHEDULE_MUST_BE_FUTURE') {
+      return NextResponse.json(
+        { success: false, error: 'Reschedule date must be in the future' },
+        { status: 400 },
+      )
+    }
+    if (error instanceof Error && error.message === 'VISIT_CONFLICT') {
+      return NextResponse.json(
+        { success: false, error: 'Assigned visit team member already has a nearby scheduled visit' },
+        { status: 409 },
+      )
+    }
     console.error('[visit-schedule/:id/update-request/:requestId][PATCH] Error:', error)
     return NextResponse.json({ success: false, error: 'Failed to resolve visit update request' }, { status: 500 })
   }

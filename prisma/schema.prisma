@@ -347,6 +347,25 @@ model FacebookSyncControl {
   updatedAt               DateTime @updatedAt
 }
 
+model InstagramSyncControl {
+  id                      String   @id @default("default")
+  enabled                 Boolean  @default(true)
+  fallbackEnabled         Boolean  @default(true)
+  fallbackIntervalMinutes Int      @default(15)
+  batchLimit              Int      @default(20)
+  lastSyncAt              DateTime?
+  lastSyncStatus          String?
+  lastSyncFetched         Int?
+  lastSyncCreated         Int?
+  lastSyncError           String?
+  lastSyncTrigger         String?
+  incrementalCursor       String?
+  incrementalWatermark    DateTime?
+  jrCrmRoundRobinOffset   Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
 model WhatsAppWebhookControl {
   id                          String   @id @default("default")
   enabled                     Boolean  @default(true)
@@ -374,6 +393,21 @@ model WhatsAppProcessedMessage {
   messageId String   @unique
   phone     String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model WhatsAppWebhookEvent {
+  id                     String   @id @default(cuid())
+  status                 String
+  source                 String?
+  processedMessages      Int      @default(0)
+  createdLeads           Int      @default(0)
+  skippedExistingPhone   Int      @default(0)
+  skippedNoPhone         Int      @default(0)
+  skippedDuplicateMessage Int     @default(0)
+  error                  String?
+  createdAt              DateTime @default(now())
 
   @@index([createdAt])
 }

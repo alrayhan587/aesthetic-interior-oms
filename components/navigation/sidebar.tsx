@@ -70,7 +70,10 @@ const navigationGroups: Record<string, NavGroup[]> = {
       id: 'admin-settings',
       label: 'Settings',
       defaultOpen: false,
-      items: [{ icon: Settings, label: 'Settings', href: '/crm/admin/settings' }],
+      items: [
+        { icon: Settings, label: 'Settings', href: '/crm/admin/settings' },
+        { icon: Settings, label: 'WhatsApp Monitor', href: '/crm/admin/whatsapp-monitor' },
+      ],
     },
   ],
   'Visit Team': [

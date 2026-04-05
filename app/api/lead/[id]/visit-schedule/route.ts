@@ -14,6 +14,7 @@ import {
 } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { findVisitConflict, isFutureDate } from '@/lib/visit-guards';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -213,6 +214,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
+    if (!isFutureDate(parsedScheduledAt)) {
+      return NextResponse.json(
+        { success: false, error: 'scheduledAt must be in the future' },
+        { status: 400 },
+      );
+    }
 
     if (hasValue(body.projectSqft) && (projectSqft === null || projectSqft <= 0)) {
       return NextResponse.json(
@@ -265,6 +272,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // console.log('[POST] Starting transaction to create visit...');
     const updatedLead = await prisma.$transaction(async (tx) => {
+      const conflict = await findVisitConflict(tx, {
+        assignedToId: visitTeamUserId,
+        scheduledAt: parsedScheduledAt,
+      });
+      if (conflict) {
+        throw new Error('VISIT_CONFLICT');
+      }
+
       // console.log('[POST] Transaction started');
       const leadAfterStageUpdate = await tx.lead.update({
         where: { id: leadId },
@@ -418,6 +433,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     console.error('[lead/:id/visit-schedule][POST] Error:', error);
     console.error('[lead/:id/visit-schedule][POST] Error type:', error instanceof Error ? error.message : 'Unknown error');
     if (error instanceof Error) {
+      if (error.message === 'VISIT_CONFLICT') {
+        return NextResponse.json(
+          { success: false, error: 'Selected visit team member already has a nearby scheduled visit' },
+          { status: 409 },
+        );
+      }
       console.error('[lead/:id/visit-schedule][POST] Stack trace:', error.stack);
     }
     return NextResponse.json(

@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let source: 'META' | 'WAWP' | 'UNKNOWN' = 'UNKNOWN'
   try {
     const control = await getWhatsAppControlState()
     if (!control.enabled) {
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
     const isWawpPayload = 'event' in payload && typeof (payload as { event?: unknown }).event === 'string'
 
     if (isMetaPayload) {
+      source = 'META'
       const signatureHeader = request.headers.get('x-hub-signature-256')
       const signatureValid = verifyMetaSignature(rawBody, signatureHeader)
       if (!signatureValid) {
@@ -115,6 +117,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Invalid signature' }, { status: 401 })
       }
     } else if (isWawpPayload) {
+      source = 'WAWP'
       const wawpSecretValid = verifyWawpSecret(request)
       if (!wawpSecretValid) {
         console.warn('[POST /api/webhooks/whatsapp] WAWP secret verification failed')
@@ -125,7 +128,10 @@ export async function POST(request: NextRequest) {
     const ingestResult = isWawpPayload
       ? await ingestWawpWebhook(payload as Parameters<typeof ingestWawpWebhook>[0])
       : await ingestWhatsAppWebhook(payload as Parameters<typeof ingestWhatsAppWebhook>[0])
-    await recordWhatsAppWebhookResult(ingestResult)
+    await recordWhatsAppWebhookResult({
+      ...ingestResult,
+      source,
+    })
 
     return NextResponse.json(
       {
@@ -137,7 +143,7 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('[POST /api/webhooks/whatsapp] error:', error)
-    await recordWhatsAppWebhookError(error instanceof Error ? error.message : 'Unknown webhook error')
+    await recordWhatsAppWebhookError(error instanceof Error ? error.message : 'Unknown webhook error', source)
     return NextResponse.json({ success: false, error: 'Failed to process whatsapp webhook' }, { status: 500 })
   }
 }

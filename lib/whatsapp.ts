@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType } from '@/generated/prisma/client'
 import { getAndAdvanceWhatsAppRoundRobinOffset } from '@/lib/whatsapp-control'
 import { Prisma } from '@/generated/prisma/client'
+import { buildPhoneLookupVariants, normalizePhoneSmart } from '@/lib/phone-normalize'
 
 type WhatsAppContact = {
   wa_id?: string
@@ -43,6 +44,26 @@ type WhatsAppWebhookPayload = {
 type WawpMessagePayload = {
   id?: string
   from?: string
+  author?: string
+  participant?: string
+  senderName?: string
+  pushName?: string
+  notifyName?: string
+  fromName?: string
+  sender?: {
+    id?: string
+    phone?: string
+    number?: string
+    name?: string
+    pushName?: string
+  }
+  contact?: {
+    id?: string
+    phone?: string
+    number?: string
+    name?: string
+    pushName?: string
+  }
   fromMe?: boolean
   body?: string
   type?: string
@@ -52,6 +73,12 @@ type WawpWebhookPayload = {
   id?: string
   event?: string
   session?: string
+  from?: string
+  author?: string
+  participant?: string
+  senderName?: string
+  pushName?: string
+  fromName?: string
   payload?: WawpMessagePayload
 }
 
@@ -111,22 +138,69 @@ export function verifyMetaSignature(rawBody: string, signatureHeader: string | n
   return timingSafeEqual(providedBuffer, expectedBuffer)
 }
 
-function normalizePhone(value: string | undefined): string | null {
+function normalizeWawpPhoneCandidate(value: string | undefined): string | null {
   if (!value) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/@g\.us$/i.test(trimmed)) return null
 
-  const hasPlus = value.trim().startsWith('+')
-  const digits = value.replace(/\D/g, '')
-  if (!digits) return null
+  const fromRaw = normalizePhoneSmart(trimmed, { preferBangladesh: true })
+  if (fromRaw) return fromRaw
 
-  return hasPlus ? `+${digits}` : `+${digits}`
+  const atIndex = trimmed.indexOf('@')
+  if (atIndex > 0) {
+    const jidUser = trimmed.slice(0, atIndex)
+    return normalizePhoneSmart(jidUser, { preferBangladesh: true })
+  }
+
+  return normalizePhoneSmart(trimmed, { preferBangladesh: true })
 }
 
-function normalizeWawpFromToPhone(from: string | undefined): string | null {
-  if (!from) return null
-  const jid = from.trim().toLowerCase()
-  const atIndex = jid.indexOf('@')
-  const raw = atIndex > 0 ? jid.slice(0, atIndex) : jid
-  return normalizePhone(raw)
+function getWawpPhone(payload: WawpWebhookPayload, message: WawpMessagePayload): string | null {
+  const candidates = [
+    message.author,
+    message.participant,
+    message.sender?.phone,
+    message.sender?.number,
+    message.sender?.id,
+    message.contact?.phone,
+    message.contact?.number,
+    message.contact?.id,
+    message.from,
+    payload.author,
+    payload.participant,
+    payload.from,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeWawpPhoneCandidate(candidate)
+    if (normalized) return normalized
+  }
+
+  return null
+}
+
+function getWawpLeadName(payload: WawpWebhookPayload, message: WawpMessagePayload, phone: string): string {
+  const nameCandidates = [
+    message.pushName,
+    message.notifyName,
+    message.senderName,
+    message.fromName,
+    message.sender?.name,
+    message.sender?.pushName,
+    message.contact?.name,
+    message.contact?.pushName,
+    payload.pushName,
+    payload.senderName,
+    payload.fromName,
+  ]
+
+  for (const candidate of nameCandidates) {
+    const normalized = typeof candidate === 'string' ? candidate.trim() : ''
+    if (normalized) return normalized
+  }
+
+  return `WhatsApp User ${phone.slice(-6)}`
 }
 
 async function getActiveJrCrmAgents(): Promise<JrCrmAgent[]> {
@@ -279,12 +353,13 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
     }
 
     const rawPhone = message.from ?? contact?.wa_id
-    const phone = normalizePhone(rawPhone)
+    const phone = normalizePhoneSmart(rawPhone, { preferBangladesh: true })
 
     if (!phone) {
       result.skippedNoPhone += 1
       continue
     }
+    const phoneLookupCandidates = buildPhoneLookupVariants(phone)
 
     const leadName = getLeadName(contact, phone)
     const preview = getMessagePreview(message)
@@ -306,7 +381,7 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
         }
 
         const existingLead = await tx.lead.findFirst({
-          where: { phone },
+          where: { phone: { in: phoneLookupCandidates } },
           select: { id: true },
         })
         if (existingLead) {
@@ -431,14 +506,15 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
     return result
   }
 
-  const phone = normalizeWawpFromToPhone(message.from)
+  const phone = getWawpPhone(payload, message)
   if (!phone) {
     result.skippedNoPhone += 1
     return result
   }
+  const phoneLookupCandidates = buildPhoneLookupVariants(phone)
 
   const jrCrmAgents = await getActiveJrCrmAgents()
-  const leadName = `WhatsApp User ${phone.slice(-6)}`
+  const leadName = getWawpLeadName(payload, message, phone)
   const body = message.body?.trim()
   const preview = body && body.length > 0 ? body.slice(0, 500) : '[message received]'
 
@@ -459,7 +535,7 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
       }
 
       const existingLead = await tx.lead.findFirst({
-        where: { phone },
+        where: { phone: { in: phoneLookupCandidates } },
         select: { id: true },
       })
       if (existingLead) {

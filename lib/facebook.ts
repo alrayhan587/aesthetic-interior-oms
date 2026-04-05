@@ -2,6 +2,7 @@ import 'server-only'
 
 import prisma from '@/lib/prisma'
 import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType } from '@/generated/prisma/client'
+import { buildPhoneLookupVariants, normalizePhoneSmart } from '@/lib/phone-normalize'
 
 type FacebookConversation = {
   id: string
@@ -145,40 +146,6 @@ function extractAssignedNameFromMessage(message: string): string | null {
     const candidate = match?.[1]?.trim()
     if (candidate && candidate.length > 1) {
       return candidate
-    }
-  }
-
-  return null
-}
-
-function extractPhoneFromMessage(message: string): string | null {
-  if (!message.trim()) return null
-
-  const matches = message.match(/(?:\+?\d[\d\s()\-]{8,}\d)/g) ?? []
-  for (const raw of matches) {
-    const compact = raw.replace(/[\s()\-]/g, '')
-
-    // Bangladesh international format: +8801XXXXXXXXX
-    if (compact.startsWith('+880')) {
-      const localCore = compact.slice(4)
-      if (/^1[3-9]\d{8}$/.test(localCore)) {
-        return `+880${localCore}`
-      }
-      continue
-    }
-
-    // Bangladesh international format without plus: 8801XXXXXXXXX
-    if (compact.startsWith('880')) {
-      const localCore = compact.slice(3)
-      if (/^1[3-9]\d{8}$/.test(localCore)) {
-        return `+880${localCore}`
-      }
-      continue
-    }
-
-    // Bangladesh local format: 01XXXXXXXXX
-    if (/^01[3-9]\d{8}$/.test(compact)) {
-      return compact
     }
   }
 
@@ -348,7 +315,7 @@ function findAgentByAssignedMessages(agents: JrCrmAgent[], messages: string[]): 
 
 function extractPhoneFromMessages(messages: string[]): string | null {
   for (const message of messages) {
-    const phone = extractPhoneFromMessage(message)
+    const phone = normalizePhoneSmart(message, { preferBangladesh: true })
     if (phone) return phone
   }
   return null
@@ -374,6 +341,7 @@ async function importConversationToLead(
   const lastMessage = messages[0] ?? ''
   const detectedAgent = findAgentByAssignedMessages(options.jrCrmAgents, messages)
   const detectedPhone = extractPhoneFromMessages(messages)
+  const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
 
   // Business rule: ignore Facebook conversations that do not contain a phone number.
   // No lead creation, no updates, no assignment/history writes for these conversations.
@@ -400,7 +368,7 @@ async function importConversationToLead(
     if (detectedPhone && !existing.phone) {
       const existingByPhone = await prisma.lead.findFirst({
         where: {
-          phone: detectedPhone,
+          phone: { in: phoneLookupCandidates },
           id: { not: existing.id },
         },
         select: { id: true },
@@ -455,7 +423,7 @@ async function importConversationToLead(
   }
 
   const existingByPhone = await prisma.lead.findFirst({
-    where: { phone: detectedPhone },
+    where: { phone: { in: phoneLookupCandidates } },
     select: { id: true },
   })
   if (existingByPhone) {
