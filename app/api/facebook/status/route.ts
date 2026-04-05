@@ -4,14 +4,26 @@ import {
   checkFacebookGraphConnection,
   getFacebookConfigStatus,
 } from '@/lib/facebook'
-import { getFacebookSyncControlState, runFacebookSyncWithControl } from '@/lib/facebook-sync-control'
+import {
+  FacebookSyncLane,
+  getFacebookSyncControlState,
+  runFacebookSyncWithControl,
+} from '@/lib/facebook-sync-control'
 
 export const runtime = 'nodejs'
 export const preferredRegion = 'sin1'
 
+function parseLane(value: string | null): FacebookSyncLane {
+  if (value === 'LATEST' || value === 'BACKFILL' || value === 'BOTH') {
+    return value
+  }
+  return 'BOTH'
+}
+
 export async function GET(request: NextRequest) {
   const runSync = request.nextUrl.searchParams.get('sync') === '1'
-  console.info(`[GET /api/facebook/status] started run_sync=${runSync}`)
+  const lane = parseLane(request.nextUrl.searchParams.get('lane'))
+  console.info(`[GET /api/facebook/status] started run_sync=${runSync} lane=${lane}`)
 
   const authResult = await requireDatabaseRoles([])
   if (!authResult.ok) {
@@ -36,10 +48,10 @@ export async function GET(request: NextRequest) {
   let syncError: string | null = null
   if (runSync && config.configured) {
     try {
-      console.info('[GET /api/facebook/status] running sync via query param')
-      syncResult = await runFacebookSyncWithControl('MANUAL')
+      console.info(`[GET /api/facebook/status] running sync via query param lane=${lane}`)
+      syncResult = await runFacebookSyncWithControl('MANUAL', lane)
       console.info(
-        `[GET /api/facebook/status] sync completed fetched=${syncResult.fetchedConversations} created=${syncResult.createdLeads}`,
+        `[GET /api/facebook/status] sync completed lane=${lane} fetched=${syncResult.fetchedConversations} created=${syncResult.createdLeads}`,
       )
     } catch (error) {
       syncError = error instanceof Error ? error.message : 'Failed to run Facebook sync'

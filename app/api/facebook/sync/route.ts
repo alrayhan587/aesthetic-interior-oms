@@ -1,9 +1,24 @@
 import { NextResponse } from 'next/server'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { getFacebookConfigStatus } from '@/lib/facebook'
-import { recordFacebookSyncResult, runFacebookSyncWithControl } from '@/lib/facebook-sync-control'
+import {
+  FacebookSyncLane,
+  recordFacebookSyncResult,
+  runFacebookSyncWithControl,
+} from '@/lib/facebook-sync-control'
 
-export async function POST() {
+type SyncRequestBody = {
+  lane?: unknown
+}
+
+function parseLane(value: unknown): FacebookSyncLane {
+  if (value === 'LATEST' || value === 'BACKFILL' || value === 'BOTH') {
+    return value
+  }
+  return 'BOTH'
+}
+
+export async function POST(request: Request) {
   console.info('[POST /api/facebook/sync] started')
   const authResult = await requireDatabaseRoles([])
   if (!authResult.ok) {
@@ -20,8 +35,16 @@ export async function POST() {
     )
   }
 
+  let lane: FacebookSyncLane = 'BOTH'
   try {
-    const result = await runFacebookSyncWithControl('MANUAL')
+    const body = (await request.json()) as SyncRequestBody
+    lane = parseLane(body?.lane)
+  } catch {
+    lane = 'BOTH'
+  }
+
+  try {
+    const result = await runFacebookSyncWithControl('MANUAL', lane)
     if (!result.ran) {
       return NextResponse.json(
         {
@@ -32,12 +55,12 @@ export async function POST() {
       )
     }
     console.info(
-      `[POST /api/facebook/sync] sync completed fetched=${result.fetchedConversations} created=${result.createdLeads}`,
+      `[POST /api/facebook/sync] sync completed lane=${lane} fetched=${result.fetchedConversations} created=${result.createdLeads}`,
     )
     return NextResponse.json({
       success: true,
       data: result,
-      message: 'Facebook conversations synced to leads',
+      message: `Facebook ${lane.toLowerCase()} sync completed`,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to sync Facebook conversations'

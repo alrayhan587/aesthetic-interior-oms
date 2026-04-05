@@ -22,6 +22,7 @@ import { LeadActivityTab } from '@/components/crm/junior/lead-activity-tab'
 import { LeadFollowupsTab } from '@/components/crm/junior/lead-followups-tab'
 import { LeadActionsPanel } from '@/components/crm/junior/lead-actions-panel'
 import { fetchMeCached } from '@/lib/client-me'
+import { FacebookMessagesDialog } from '@/components/crm/shared/facebook-messages-dialog'
 
 type LeadDetails = {
   id: string
@@ -590,6 +591,7 @@ export default function LeadDetailPage() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
+        <FacebookMessagesDialog leadId={leadId} source={lead.source} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">

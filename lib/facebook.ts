@@ -37,6 +37,18 @@ type FacebookConversationResponse = {
   }
 }
 
+type FacebookMessageResponse = {
+  data?: Array<{
+    id?: string
+    message?: string
+    created_time?: string
+    from?: {
+      id?: string
+      name?: string
+    }
+  }>
+}
+
 type FacebookPageProfile = {
   id?: string
   name?: string
@@ -91,6 +103,17 @@ const FB_DEFAULT_LIMIT = 20
 const FB_LOG_PREFIX = '[facebook-lib]'
 const FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT = 50
 
+export type FacebookConversationMessage = {
+  id: string
+  message: string
+  createdAt: string
+  from: {
+    id: string | null
+    name: string | null
+  }
+  senderType: 'PAGE' | 'CLIENT' | 'UNKNOWN'
+}
+
 function clampMessageLookbackLimit(value: number): number {
   if (!Number.isFinite(value)) return FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT
   return Math.max(10, Math.min(100, Math.trunc(value)))
@@ -126,6 +149,17 @@ export function getFacebookConfigStatus() {
 
 function conversationMarker(conversationId: string): string {
   return `FB_CONVERSATION_ID:${conversationId}`
+}
+
+function getFacebookConversationIdFromRemarksInternal(remarks: string | null | undefined): string | null {
+  if (!remarks) return null
+  const marker = remarks.match(/FB_CONVERSATION_ID:([a-zA-Z0-9:_-]+)/)
+  const conversationId = marker?.[1]?.trim()
+  return conversationId && conversationId.length > 0 ? conversationId : null
+}
+
+export function extractFacebookConversationIdFromRemarks(remarks: string | null | undefined): string | null {
+  return getFacebookConversationIdFromRemarksInternal(remarks)
 }
 
 function normalizeForNameMatch(value: string): string {
@@ -255,6 +289,44 @@ export async function checkFacebookGraphConnection() {
       error: error instanceof Error ? error.message : 'Unknown Graph API error',
     }
   }
+}
+
+export async function fetchFacebookConversationMessagesById(
+  conversationId: string,
+  limit = 50,
+): Promise<FacebookConversationMessage[]> {
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 200) : 50
+  const trimmedConversationId = conversationId.trim()
+  if (!trimmedConversationId) return []
+
+  const { pageId } = getFacebookConfig()
+  const payload = await graphGet<FacebookMessageResponse>(`/${trimmedConversationId}/messages`, {
+    fields: 'id,message,created_time,from{id,name}',
+    limit: String(safeLimit),
+  })
+
+  const rows = Array.isArray(payload.data) ? payload.data : []
+  return rows
+    .map((item) => {
+      const fromId = item.from?.id?.trim() || null
+      const senderType: FacebookConversationMessage['senderType'] =
+        fromId && pageId && fromId === pageId ? 'PAGE' : fromId ? 'CLIENT' : 'UNKNOWN'
+      return {
+        id: item.id?.trim() || `fb-msg-${Math.random().toString(36).slice(2)}`,
+        message: item.message?.trim() || '',
+        createdAt: item.created_time?.trim() || '',
+        from: {
+          id: fromId,
+          name: item.from?.name?.trim() || null,
+        },
+        senderType,
+      }
+    })
+    .sort((a, b) => {
+      const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return aMs - bMs
+    })
 }
 
 function extractCustomerName(conversation: FacebookConversation, pageId: string): string | null {
@@ -588,11 +660,18 @@ export async function syncFacebookConversationsIncremental(
   }
 
   const { conversations, nextCursor } = await fetchFacebookConversationPage({ limit, afterCursor })
+  const newestFirstConversations = conversations
+    .slice()
+    .sort((a, b) => {
+      const aMs = a.updated_time ? new Date(a.updated_time).getTime() : 0
+      const bMs = b.updated_time ? new Date(b.updated_time).getTime() : 0
+      return bMs - aMs
+    })
   let createdLeads = 0
   let maxUpdatedMs = watermarkMs
   const createdSignals: FacebookCreatedLeadSignal[] = []
 
-  for (const conversation of conversations) {
+  for (const conversation of newestFirstConversations) {
     const updatedMs = conversation.updated_time ? new Date(conversation.updated_time).getTime() : null
     const isValidUpdatedMs = updatedMs !== null && !Number.isNaN(updatedMs)
 
@@ -626,11 +705,11 @@ export async function syncFacebookConversationsIncremental(
 
   const maxUpdatedTimeIso = maxUpdatedMs === null ? null : new Date(maxUpdatedMs).toISOString()
   console.info(
-    `${FB_LOG_PREFIX} sync_incremental completed fetched=${conversations.length} created=${createdLeads} next_cursor=${nextCursor ?? 'null'} max_updated=${maxUpdatedTimeIso ?? 'null'} rr_offset=${jrCrmRoundRobinOffset}`,
+    `${FB_LOG_PREFIX} sync_incremental completed fetched=${newestFirstConversations.length} created=${createdLeads} next_cursor=${nextCursor ?? 'null'} max_updated=${maxUpdatedTimeIso ?? 'null'} rr_offset=${jrCrmRoundRobinOffset}`,
   )
 
   return {
-    fetchedConversations: conversations.length,
+    fetchedConversations: newestFirstConversations.length,
     createdLeads,
     nextCursor,
     maxUpdatedTimeIso,

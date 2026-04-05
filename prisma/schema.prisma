@@ -331,6 +331,12 @@ model Notification {
 model FacebookSyncControl {
   id                      String   @id @default("default")
   enabled                 Boolean  @default(true)
+  latestEnabled           Boolean  @default(true)
+  latestIntervalMinutes   Int      @default(2)
+  latestBatchLimit        Int      @default(20)
+  backfillEnabled         Boolean  @default(true)
+  backfillIntervalMinutes Int      @default(15)
+  backfillBatchLimit      Int      @default(20)
   fallbackEnabled         Boolean  @default(true)
   fallbackIntervalMinutes Int      @default(15)
   batchLimit              Int      @default(20)
@@ -340,6 +346,18 @@ model FacebookSyncControl {
   lastSyncCreated         Int?
   lastSyncError           String?
   lastSyncTrigger         String?
+  lastLatestSyncAt        DateTime?
+  lastLatestSyncStatus    String?
+  lastLatestSyncFetched   Int?
+  lastLatestSyncCreated   Int?
+  lastLatestSyncError     String?
+  lastBackfillSyncAt      DateTime?
+  lastBackfillSyncStatus  String?
+  lastBackfillSyncFetched Int?
+  lastBackfillSyncCreated Int?
+  lastBackfillSyncError   String?
+  latestWatermark         DateTime?
+  backfillCursor          String?
   incrementalCursor       String?
   incrementalWatermark    DateTime?
   jrCrmRoundRobinOffset   Int      @default(0)

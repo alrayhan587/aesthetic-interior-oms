@@ -8,6 +8,12 @@ import {
 
 type UpdateBody = {
   enabled?: unknown
+  latestEnabled?: unknown
+  latestIntervalMinutes?: unknown
+  latestBatchLimit?: unknown
+  backfillEnabled?: unknown
+  backfillIntervalMinutes?: unknown
+  backfillBatchLimit?: unknown
   fallbackEnabled?: unknown
   fallbackIntervalMinutes?: unknown
   batchLimit?: unknown
@@ -61,6 +67,12 @@ export async function PATCH(request: NextRequest) {
 
   const updated = await updateFacebookSyncControlState({
     enabled: toOptionalBoolean(body.enabled),
+    latestEnabled: toOptionalBoolean(body.latestEnabled),
+    latestIntervalMinutes: toOptionalNumber(body.latestIntervalMinutes),
+    latestBatchLimit: toOptionalNumber(body.latestBatchLimit),
+    backfillEnabled: toOptionalBoolean(body.backfillEnabled),
+    backfillIntervalMinutes: toOptionalNumber(body.backfillIntervalMinutes),
+    backfillBatchLimit: toOptionalNumber(body.backfillBatchLimit),
     fallbackEnabled: toOptionalBoolean(body.fallbackEnabled),
     fallbackIntervalMinutes: toOptionalNumber(body.fallbackIntervalMinutes),
     batchLimit: toOptionalNumber(body.batchLimit),

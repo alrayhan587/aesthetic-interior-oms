@@ -17,6 +17,12 @@ import { AlertCircle, CheckCircle2, RefreshCw, Save, Settings } from 'lucide-rea
 
 type SyncControl = {
   enabled: boolean
+  latestEnabled: boolean
+  latestIntervalMinutes: number
+  latestBatchLimit: number
+  backfillEnabled: boolean
+  backfillIntervalMinutes: number
+  backfillBatchLimit: number
   fallbackEnabled: boolean
   fallbackIntervalMinutes: number
   batchLimit: number
@@ -26,10 +32,24 @@ type SyncControl = {
   lastSyncCreated: number | null
   lastSyncError: string | null
   lastSyncTrigger: string | null
+  lastLatestSyncAt: string | null
+  lastLatestSyncStatus: string | null
+  lastLatestSyncFetched: number | null
+  lastLatestSyncCreated: number | null
+  lastLatestSyncError: string | null
+  lastBackfillSyncAt: string | null
+  lastBackfillSyncStatus: string | null
+  lastBackfillSyncFetched: number | null
+  lastBackfillSyncCreated: number | null
+  lastBackfillSyncError: string | null
+  latestWatermark: string | null
+  backfillCursor: string | null
   incrementalCursor: string | null
   incrementalWatermark: string | null
   jrCrmRoundRobinOffset: number
   nextScheduledAt: string | null
+  nextLatestScheduledAt: string | null
+  nextBackfillScheduledAt: string | null
 }
 
 type FacebookConfig = {
@@ -116,6 +136,7 @@ type WhatsAppStatusResponse = {
 type SyncResponse = {
   success: boolean
   data?: {
+    lane?: 'LATEST' | 'BACKFILL' | 'BOTH'
     fetchedConversations?: number
     createdLeads?: number
     ran?: boolean
@@ -159,6 +180,12 @@ export function IntegrationSettings() {
   >(null)
 
   const [enabled, setEnabled] = useState(true)
+  const [latestEnabled, setLatestEnabled] = useState(true)
+  const [latestIntervalMinutes, setLatestIntervalMinutes] = useState(2)
+  const [latestBatchLimit, setLatestBatchLimit] = useState(20)
+  const [backfillEnabled, setBackfillEnabled] = useState(true)
+  const [backfillIntervalMinutes, setBackfillIntervalMinutes] = useState(15)
+  const [backfillBatchLimit, setBackfillBatchLimit] = useState(20)
   const [fallbackEnabled, setFallbackEnabled] = useState(true)
   const [fallbackIntervalMinutes, setFallbackIntervalMinutes] = useState(15)
   const [batchLimit, setBatchLimit] = useState(20)
@@ -172,6 +199,12 @@ export function IntegrationSettings() {
 
   const hydrateForm = useCallback((state: SyncControl) => {
     setEnabled(state.enabled)
+    setLatestEnabled(state.latestEnabled)
+    setLatestIntervalMinutes(state.latestIntervalMinutes)
+    setLatestBatchLimit(state.latestBatchLimit)
+    setBackfillEnabled(state.backfillEnabled)
+    setBackfillIntervalMinutes(state.backfillIntervalMinutes)
+    setBackfillBatchLimit(state.backfillBatchLimit)
     setFallbackEnabled(state.fallbackEnabled)
     setFallbackIntervalMinutes(state.fallbackIntervalMinutes)
     setBatchLimit(state.batchLimit)
@@ -251,11 +284,29 @@ export function IntegrationSettings() {
     if (!syncControl) return false
     return (
       enabled !== syncControl.enabled ||
+      latestEnabled !== syncControl.latestEnabled ||
+      latestIntervalMinutes !== syncControl.latestIntervalMinutes ||
+      latestBatchLimit !== syncControl.latestBatchLimit ||
+      backfillEnabled !== syncControl.backfillEnabled ||
+      backfillIntervalMinutes !== syncControl.backfillIntervalMinutes ||
+      backfillBatchLimit !== syncControl.backfillBatchLimit ||
       fallbackEnabled !== syncControl.fallbackEnabled ||
       fallbackIntervalMinutes !== syncControl.fallbackIntervalMinutes ||
       batchLimit !== syncControl.batchLimit
     )
-  }, [batchLimit, enabled, fallbackEnabled, fallbackIntervalMinutes, syncControl])
+  }, [
+    backfillBatchLimit,
+    backfillEnabled,
+    backfillIntervalMinutes,
+    batchLimit,
+    enabled,
+    fallbackEnabled,
+    fallbackIntervalMinutes,
+    latestBatchLimit,
+    latestEnabled,
+    latestIntervalMinutes,
+    syncControl,
+  ])
 
   const hasUnsavedWhatsAppChanges = useMemo(() => {
     if (!whatsAppControl) return false
@@ -289,6 +340,12 @@ export function IntegrationSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled,
+          latestEnabled,
+          latestIntervalMinutes,
+          latestBatchLimit,
+          backfillEnabled,
+          backfillIntervalMinutes,
+          backfillBatchLimit,
           fallbackEnabled,
           fallbackIntervalMinutes,
           batchLimit,
@@ -303,7 +360,7 @@ export function IntegrationSettings() {
       setConfig(payload.data.facebookConfig)
       setSyncControl(payload.data.syncControl)
       hydrateForm(payload.data.syncControl)
-      setStatusMessage('Facebook sync settings saved.')
+      setStatusMessage('Facebook sync lane settings saved.')
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : 'Failed to save settings')
     } finally {
@@ -311,13 +368,17 @@ export function IntegrationSettings() {
     }
   }
 
-  const runSyncNow = async () => {
+  const runSyncNow = async (lane: 'LATEST' | 'BACKFILL' | 'BOTH' = 'BOTH') => {
     setSyncingNow(true)
     setStatusMessage(null)
     setStatusError(null)
 
     try {
-      const response = await fetch('/api/facebook/sync', { method: 'POST' })
+      const response = await fetch('/api/facebook/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lane }),
+      })
       const payload = (await response.json()) as SyncResponse
       if (!response.ok || !payload.success) {
         throw new Error(payload.error ?? 'Failed to run sync')
@@ -325,7 +386,7 @@ export function IntegrationSettings() {
 
       await loadSettings()
       setStatusMessage(
-        `Sync completed. Created ${payload.data?.createdLeads ?? 0} leads from ${payload.data?.fetchedConversations ?? 0} conversations.`,
+        `${lane} sync completed. Created ${payload.data?.createdLeads ?? 0} leads from ${payload.data?.fetchedConversations ?? 0} conversations.`,
       )
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : 'Failed to run sync')
@@ -542,35 +603,56 @@ export function IntegrationSettings() {
         <CardContent className="space-y-5">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-lg border border-border p-4">
-              <p className="text-xs text-muted-foreground">Last Sync</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.lastSyncAt)}</p>
+              <p className="text-xs text-muted-foreground">Latest Lane</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.lastLatestSyncAt)}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Status: {syncControl.lastSyncStatus ?? 'N/A'} | Trigger: {syncControl.lastSyncTrigger ?? 'N/A'}
+                Status: {syncControl.lastLatestSyncStatus ?? 'N/A'}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Last fetched: {syncControl.lastSyncFetched ?? 0} | Last created: {syncControl.lastSyncCreated ?? 0}
+                Last fetched: {syncControl.lastLatestSyncFetched ?? 0} | Last created: {syncControl.lastLatestSyncCreated ?? 0}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Watermark: {formatDate(syncControl.incrementalWatermark)}
+                Next latest window: {formatDate(syncControl.nextLatestScheduledAt)}
               </p>
             </div>
 
             <div className="rounded-lg border border-border p-4">
-              <p className="text-xs text-muted-foreground">Next Fallback Window</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.nextScheduledAt)}</p>
+              <p className="text-xs text-muted-foreground">Backfill Lane</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.lastBackfillSyncAt)}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Graph API: {config.graphVersion} | Page ID configured: {config.pageIdConfigured ? 'Yes' : 'No'}
+                Status: {syncControl.lastBackfillSyncStatus ?? 'N/A'}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Token configured: {config.tokenConfigured ? 'Yes' : 'No'}
+                Last fetched: {syncControl.lastBackfillSyncFetched ?? 0} | Last created: {syncControl.lastBackfillSyncCreated ?? 0}
               </p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                Cursor: {syncControl.incrementalCursor ?? 'none'}
+                Next backfill window: {formatDate(syncControl.nextBackfillScheduledAt)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                JR CRM round-robin pointer: {syncControl.jrCrmRoundRobinOffset}
+                Cursor: {syncControl.backfillCursor ?? syncControl.incrementalCursor ?? 'none'}
               </p>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border p-4">
+            <p className="text-xs text-muted-foreground">Global Status</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.lastSyncAt)}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Status: {syncControl.lastSyncStatus ?? 'N/A'} | Trigger: {syncControl.lastSyncTrigger ?? 'N/A'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Last fetched: {syncControl.lastSyncFetched ?? 0} | Last created: {syncControl.lastSyncCreated ?? 0}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Latest watermark: {formatDate(syncControl.latestWatermark ?? syncControl.incrementalWatermark)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Fallback window: {formatDate(syncControl.nextScheduledAt)} | Graph API: {config.graphVersion} | Page ID configured:{' '}
+              {config.pageIdConfigured ? 'Yes' : 'No'} | Token configured: {config.tokenConfigured ? 'Yes' : 'No'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              JR CRM round-robin pointer: {syncControl.jrCrmRoundRobinOffset}
+            </p>
           </div>
 
           {syncControl.lastSyncError && (
@@ -586,6 +668,94 @@ export function IntegrationSettings() {
                 <p className="text-xs text-muted-foreground">Master switch. If disabled, manual and fallback sync are both paused.</p>
               </div>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Latest lane</p>
+                <p className="text-xs text-muted-foreground">
+                  Prioritizes newest conversations with watermark-based sync.
+                </p>
+              </div>
+              <Switch checked={latestEnabled} onCheckedChange={setLatestEnabled} disabled={!enabled} />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Latest lane interval</p>
+                <Select
+                  value={String(latestIntervalMinutes)}
+                  onValueChange={(value) => setLatestIntervalMinutes(Number(value))}
+                  disabled={!enabled || !latestEnabled}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select interval" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVAL_OPTIONS.map((minutes) => (
+                      <SelectItem key={minutes} value={String(minutes)}>
+                        {minutes} minutes
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Latest batch size (5-100)</p>
+                <Input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={latestBatchLimit}
+                  onChange={(event) => setLatestBatchLimit(Number(event.target.value))}
+                  disabled={!enabled || !latestEnabled}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Backfill lane</p>
+                <p className="text-xs text-muted-foreground">
+                  Continues old/batch history import using pagination cursor.
+                </p>
+              </div>
+              <Switch checked={backfillEnabled} onCheckedChange={setBackfillEnabled} disabled={!enabled} />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Backfill lane interval</p>
+                <Select
+                  value={String(backfillIntervalMinutes)}
+                  onValueChange={(value) => setBackfillIntervalMinutes(Number(value))}
+                  disabled={!enabled || !backfillEnabled}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select interval" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVAL_OPTIONS.map((minutes) => (
+                      <SelectItem key={minutes} value={String(minutes)}>
+                        {minutes} minutes
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Backfill batch size (5-100)</p>
+                <Input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={backfillBatchLimit}
+                  onChange={(event) => setBackfillBatchLimit(Number(event.target.value))}
+                  disabled={!enabled || !backfillEnabled}
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3">
@@ -637,9 +807,32 @@ export function IntegrationSettings() {
                 {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
                 Save Settings
               </Button>
-              <Button variant="outline" onClick={runSyncNow} disabled={syncingNow || !config.configured} className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => runSyncNow('LATEST')}
+                disabled={syncingNow || !config.configured || !enabled || !latestEnabled}
+                className="gap-2"
+              >
                 {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
-                Sync Now
+                Run Latest Now
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runSyncNow('BACKFILL')}
+                disabled={syncingNow || !config.configured || !enabled || !backfillEnabled}
+                className="gap-2"
+              >
+                {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
+                Run Backfill Now
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runSyncNow('BOTH')}
+                disabled={syncingNow || !config.configured || !enabled}
+                className="gap-2"
+              >
+                {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
+                Run Both Now
               </Button>
               <Button variant="outline" onClick={checkConnection} disabled={checking} className="gap-2">
                 {checking ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
