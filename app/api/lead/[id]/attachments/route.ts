@@ -117,15 +117,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
     const fileType = fileEntry.type || 'application/octet-stream'
     const blob = await put(`leads/${leadId}/${storedFileName}`, fileEntry, {
-      access: 'private',
+      access: 'public',
       contentType: fileType,
     })
 
     const attachment = await prisma.leadAttachment.create({
       data: {
         leadId,
-        // Store a browser-openable URL for private blobs.
-        url: blob.downloadUrl || blob.url,
+        // Store a browser-openable URL.
+        url: blob.url,
         fileName: fileEntry.name || safeName,
         fileType,
         category: getCategory(fileType),

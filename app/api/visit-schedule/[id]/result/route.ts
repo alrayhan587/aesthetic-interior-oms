@@ -47,12 +47,12 @@ async function uploadFileToBlob(
   const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
   const fileType = file.type || 'application/octet-stream'
   const blob = await put(`${keyPrefix}/${storedFileName}`, file, {
-    access: 'private',
+    access: 'public',
     contentType: fileType,
   })
 
   return {
-    url: blob.downloadUrl || blob.url,
+    url: blob.url,
     fileName: file.name || safeName,
     fileType,
   }
