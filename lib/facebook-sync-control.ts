@@ -363,8 +363,9 @@ async function runIncrementalSync(
             lastLatestSyncFetched: latestResult.fetchedConversations,
             lastLatestSyncCreated: latestResult.createdLeads,
             lastLatestSyncError: null,
+            // Keep the previous watermark so monitor can display only the last fetched window.
+            incrementalWatermark: settings.latestWatermark ?? settings.incrementalWatermark ?? null,
             latestWatermark: latestResult.watermarkIso ? new Date(latestResult.watermarkIso) : null,
-            incrementalWatermark: latestResult.watermarkIso ? new Date(latestResult.watermarkIso) : null,
           }
         : {}),
       jrCrmRoundRobinOffset: latestResult.nextRoundRobinOffset,

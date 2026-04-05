@@ -71,28 +71,50 @@ export function normalizePhoneSmart(
   value: string | null | undefined,
   options: NormalizePhoneOptions = {},
 ): string | null {
-  if (!value) return null
+  const all = extractNormalizedPhonesSmart(value, options)
+  return all[0] ?? null
+}
+
+export function extractNormalizedPhonesSmart(
+  value: string | null | undefined,
+  options: NormalizePhoneOptions = {},
+): string[] {
+  if (!value) return []
   const trimmed = value.trim()
-  if (!trimmed) return null
+  if (!trimmed) return []
 
   const candidates = extractPhoneLikeCandidates(trimmed)
+  const seen = new Set<string>()
+  const numbers: string[] = []
   for (const candidate of candidates) {
     const normalized = normalizeDigitsOnly(candidate, options)
-    if (normalized) return normalized
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized)
+      numbers.push(normalized)
+    }
   }
 
-  return null
+  return numbers
+}
+
+export function formatPhoneForStorage(value: string | null | undefined): string | null {
+  const normalized = normalizePhoneSmart(value, { preferBangladesh: true })
+  if (!normalized) return null
+  const digits = normalized.replace(/\D/g, '')
+  return digits.length > 0 ? digits : null
 }
 
 export function buildPhoneLookupVariants(phone: string): string[] {
   const normalized = normalizePhoneSmart(phone, { preferBangladesh: true })
   if (!normalized) return []
 
-  const digits = normalized.replace(/\D/g, '')
-  const variants = new Set<string>([normalized, digits])
+  const digits = formatPhoneForStorage(normalized)
+  if (!digits) return [normalized]
+  const variants = new Set<string>([normalized, digits, `+${digits}`])
 
   if (/^8801[3-9]\d{8}$/.test(digits)) {
     variants.add(`01${digits.slice(3)}`)
+    variants.add(`+880${digits.slice(3)}`)
   }
 
   return Array.from(variants)

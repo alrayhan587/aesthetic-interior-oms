@@ -2,7 +2,11 @@ import 'server-only'
 
 import prisma from '@/lib/prisma'
 import { ActivityType, LeadAssignmentDepartment, LeadStage } from '@/generated/prisma/client'
-import { buildPhoneLookupVariants, normalizePhoneSmart } from '@/lib/phone-normalize'
+import {
+  buildPhoneLookupVariants,
+  extractNormalizedPhonesSmart,
+  formatPhoneForStorage,
+} from '@/lib/phone-normalize'
 
 type InstagramConversation = {
   id: string
@@ -121,12 +125,29 @@ function getConversationMessages(conversation: InstagramConversation): string[] 
     .filter((item) => item.length > 0)
 }
 
-function extractPhoneFromMessages(messages: string[]): string | null {
+function extractPhonesFromMessages(messages: string[]): string[] {
+  const seen = new Set<string>()
+  const phones: string[] = []
   for (const message of messages) {
-    const phone = normalizePhoneSmart(message, { preferBangladesh: true })
-    if (phone) return phone
+    const extracted = extractNormalizedPhonesSmart(message, { preferBangladesh: true })
+    for (const phone of extracted) {
+      if (!seen.has(phone)) {
+        seen.add(phone)
+        phones.push(phone)
+      }
+    }
   }
-  return null
+  return phones
+}
+
+function buildLookupCandidatesFromPhones(phones: string[]): string[] {
+  const variants = new Set<string>()
+  for (const phone of phones) {
+    for (const item of buildPhoneLookupVariants(phone)) {
+      variants.add(item)
+    }
+  }
+  return Array.from(variants)
 }
 
 function extractCustomerName(conversation: InstagramConversation, entityId: string): string | null {
@@ -251,8 +272,9 @@ async function importConversationToLead(
 
   const messages = getConversationMessages(conversation)
   const lastMessage = messages[0] ?? ''
-  const detectedPhone = extractPhoneFromMessages(messages)
-  const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
+  const detectedPhones = extractPhonesFromMessages(messages)
+  const detectedPrimaryPhone = detectedPhones[0] ?? null
+  const phoneLookupCandidates = buildLookupCandidatesFromPhones(detectedPhones)
 
   const marker = conversationMarker(conversation.id)
   const existing = await prisma.lead.findFirst({
@@ -264,7 +286,7 @@ async function importConversationToLead(
   })
 
   if (existing) {
-    if (detectedPhone && !existing.phone) {
+    if (detectedPrimaryPhone && !existing.phone) {
       const existingByPhone = await prisma.lead.findFirst({
         where: {
           phone: { in: phoneLookupCandidates },
@@ -276,7 +298,7 @@ async function importConversationToLead(
         await prisma.lead.update({
           where: { id: existing.id },
           data: {
-            phone: detectedPhone,
+            phone: formatPhoneForStorage(detectedPrimaryPhone),
             stage: LeadStage.NUMBER_COLLECTED,
           },
         })
@@ -290,7 +312,7 @@ async function importConversationToLead(
     extractCustomerName(conversation, entityId) ??
     `Instagram User ${conversation.id.slice(-6)}`
 
-  if (detectedPhone) {
+  if (detectedPrimaryPhone) {
     const existingByPhone = await prisma.lead.findFirst({
       where: { phone: { in: phoneLookupCandidates } },
       select: { id: true },
@@ -308,19 +330,22 @@ async function importConversationToLead(
     usedRoundRobin = true
   }
 
-  const stage = detectedPhone ? LeadStage.NUMBER_COLLECTED : LeadStage.NEW
+  const stage = detectedPrimaryPhone ? LeadStage.NUMBER_COLLECTED : LeadStage.NEW
+  const storedPrimaryPhone = formatPhoneForStorage(detectedPrimaryPhone)
+  const detectedPhonesRemark =
+    detectedPhones.length > 0 ? `\nDetected phones: ${detectedPhones.map((p) => formatPhoneForStorage(p) ?? p).join(', ')}` : ''
 
   await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
       data: {
         name: customerName,
         source: 'Instagram',
-        phone: detectedPhone,
+        phone: storedPrimaryPhone,
         stage,
         assignedTo: assignee?.id ?? null,
         remarks: lastMessage
-          ? `${marker}\nImported from Instagram.\nLast message: ${lastMessage}`
-          : `${marker}\nImported from Instagram conversation.`,
+          ? `${marker}\nImported from Instagram.\nLast message: ${lastMessage}${detectedPhonesRemark}`
+          : `${marker}\nImported from Instagram conversation.${detectedPhonesRemark}`,
       },
       select: { id: true },
     })

@@ -2,7 +2,11 @@ import 'server-only'
 
 import prisma from '@/lib/prisma'
 import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType } from '@/generated/prisma/client'
-import { buildPhoneLookupVariants, normalizePhoneSmart } from '@/lib/phone-normalize'
+import {
+  buildPhoneLookupVariants,
+  extractNormalizedPhonesSmart,
+  formatPhoneForStorage,
+} from '@/lib/phone-normalize'
 
 type FacebookConversation = {
   id: string
@@ -408,32 +412,51 @@ function findAgentByAssignedMessages(agents: JrCrmAgent[], messages: string[]): 
   return null
 }
 
-function extractPhoneFromMessages(messages: string[]): string | null {
+function extractPhonesFromMessages(messages: string[]): string[] {
+  const seen = new Set<string>()
+  const phones: string[] = []
   for (const message of messages) {
-    const phone = normalizePhoneSmart(message, { preferBangladesh: true })
-    if (phone) return phone
+    const extracted = extractNormalizedPhonesSmart(message, { preferBangladesh: true })
+    for (const phone of extracted) {
+      if (!seen.has(phone)) {
+        seen.add(phone)
+        phones.push(phone)
+      }
+    }
   }
-  return null
+  return phones
+}
+
+function buildLookupCandidatesFromPhones(phones: string[]): string[] {
+  const variants = new Set<string>()
+  for (const phone of phones) {
+    for (const item of buildPhoneLookupVariants(phone)) {
+      variants.add(item)
+    }
+  }
+  return Array.from(variants)
 }
 
 async function extractPhoneFromConversation(
   conversation: FacebookConversation,
-): Promise<{ phone: string | null; source: 'embedded' | 'expanded' | 'none' }> {
+  options: { includeExpandedScan?: boolean } = {},
+): Promise<{ phones: string[]; source: 'embedded' | 'expanded' | 'none' }> {
   const embeddedMessages = getConversationMessages(conversation)
-  const embeddedPhone = extractPhoneFromMessages(embeddedMessages)
-  if (embeddedPhone) return { phone: embeddedPhone, source: 'embedded' }
+  const embeddedPhones = extractPhonesFromMessages(embeddedMessages)
+  if (embeddedPhones.length > 0) return { phones: embeddedPhones, source: 'embedded' }
 
-  if (!conversation.id) return { phone: null, source: 'none' }
+  if (!conversation.id) return { phones: [], source: 'none' }
+  if (options.includeExpandedScan === false) return { phones: [], source: 'none' }
 
   try {
     const expanded = await fetchFacebookConversationMessagesById(conversation.id, getConversationPhoneScanLimit())
-    const expandedPhone = extractPhoneFromMessages(expanded.map((item) => item.message))
-    if (expandedPhone) return { phone: expandedPhone, source: 'expanded' }
+    const expandedPhones = extractPhonesFromMessages(expanded.map((item) => item.message))
+    if (expandedPhones.length > 0) return { phones: expandedPhones, source: 'expanded' }
   } catch (error) {
     console.warn(`${FB_LOG_PREFIX} extract_phone expanded_scan_failed conversation_id=${conversation.id}`, error)
   }
 
-  return { phone: null, source: 'none' }
+  return { phones: [], source: 'none' }
 }
 
 async function importConversationToLead(
@@ -456,12 +479,13 @@ async function importConversationToLead(
   const lastMessage = messages[0] ?? ''
   const detectedAgent = findAgentByAssignedMessages(options.jrCrmAgents, messages)
   const phoneResolution = await extractPhoneFromConversation(conversation)
-  const detectedPhone = phoneResolution.phone
-  const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
+  const detectedPhones = phoneResolution.phones
+  const detectedPrimaryPhone = detectedPhones[0] ?? null
+  const phoneLookupCandidates = buildLookupCandidatesFromPhones(detectedPhones)
 
   // Business rule: ignore Facebook conversations that do not contain a phone number.
   // No lead creation, no updates, no assignment/history writes for these conversations.
-  if (!detectedPhone) {
+  if (!detectedPrimaryPhone) {
     return { created: false, usedRoundRobin: false, signal: null }
   }
 
@@ -481,7 +505,7 @@ async function importConversationToLead(
       assignedTo?: string
     } = {}
 
-    if (detectedPhone && !existing.phone) {
+    if (detectedPrimaryPhone && !existing.phone) {
       const existingByPhone = await prisma.lead.findFirst({
         where: {
           phone: { in: phoneLookupCandidates },
@@ -491,7 +515,7 @@ async function importConversationToLead(
       })
 
       if (!existingByPhone) {
-        updates.phone = detectedPhone
+        updates.phone = formatPhoneForStorage(detectedPrimaryPhone) ?? detectedPrimaryPhone
         updates.stage = LeadStage.NUMBER_COLLECTED
       }
     }
@@ -546,11 +570,11 @@ async function importConversationToLead(
     return { created: false, usedRoundRobin: false, signal: null }
   }
 
-  const leadPhone: string = detectedPhone
+  const leadPhone: string = formatPhoneForStorage(detectedPrimaryPhone) ?? detectedPrimaryPhone
   const stage: LeadStage = LeadStage.NUMBER_COLLECTED
 
   const assignmentFromMessage = detectedAgent ? `\nAssigned by Meta message to: ${detectedAgent.fullName}` : ''
-  const phoneMarker = `\nDetected phone: ${leadPhone}`
+  const phoneMarker = `\nDetected phones: ${detectedPhones.map((item) => formatPhoneForStorage(item) ?? item).join(', ')}`
 
   const createdLead = await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
@@ -763,15 +787,23 @@ export async function syncFacebookConversationsIncremental(
 
 export async function fetchFacebookLatestMonitor(
   limit = 100,
-  options: { watermarkIso?: string | null } = {},
+  options: {
+    fromWatermarkIso?: string | null
+    toWatermarkIso?: string | null
+    includeExpandedPhoneScan?: boolean
+  } = {},
 ): Promise<FacebookLatestMonitorItem[]> {
   const { pageId } = getFacebookConfig()
   if (!pageId || !isFacebookConfigured()) {
     return []
   }
 
-  const watermark = options.watermarkIso ? new Date(options.watermarkIso) : null
-  const watermarkMs = watermark && !Number.isNaN(watermark.getTime()) ? watermark.getTime() : null
+  const fromWatermark = options.fromWatermarkIso ? new Date(options.fromWatermarkIso) : null
+  const toWatermark = options.toWatermarkIso ? new Date(options.toWatermarkIso) : null
+  const fromWatermarkMs =
+    fromWatermark && !Number.isNaN(fromWatermark.getTime()) ? fromWatermark.getTime() : null
+  const toWatermarkMs =
+    toWatermark && !Number.isNaN(toWatermark.getTime()) ? toWatermark.getTime() : null
   const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 100) : 100
   const { conversations } = await fetchFacebookConversationPage({ limit: safeLimit, afterCursor: null })
 
@@ -786,51 +818,31 @@ export async function fetchFacebookLatestMonitor(
 
   const rows: FacebookLatestMonitorItem[] = []
   for (const conversation of newestFirstConversations) {
-    const phoneResolution = await extractPhoneFromConversation(conversation)
-    const detectedPhone = phoneResolution.phone
-    const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
+    const phoneResolution = await extractPhoneFromConversation(conversation, {
+      includeExpandedScan: options.includeExpandedPhoneScan ?? false,
+    })
+    const detectedPhones = phoneResolution.phones
+    const detectedPrimaryPhone = detectedPhones[0] ?? null
     const customerName =
       extractCustomerName(conversation, pageId) ??
       `Facebook User ${conversation.id?.slice(-6) ?? 'unknown'}`
 
-    const marker = conversation.id ? conversationMarker(conversation.id) : null
     const updatedMs = conversation.updated_time ? new Date(conversation.updated_time).getTime() : null
     const isValidUpdatedMs = updatedMs !== null && !Number.isNaN(updatedMs)
-    const isNewerThanWatermark =
-      watermarkMs === null || (isValidUpdatedMs && updatedMs > watermarkMs)
-
-    const existingConversationLead = marker
-      ? await prisma.lead.findFirst({
-          where: {
-            source: { equals: 'Facebook', mode: 'insensitive' },
-            remarks: { contains: marker },
-          },
-          select: { id: true },
-        })
-      : null
-
-    const existingPhoneLead =
-      detectedPhone && phoneLookupCandidates.length > 0
-        ? await prisma.lead.findFirst({
-            where: { phone: { in: phoneLookupCandidates } },
-            select: { id: true },
-          })
-        : null
+    const isAfterFromWatermark =
+      fromWatermarkMs === null || (isValidUpdatedMs && updatedMs > fromWatermarkMs)
+    const isBeforeOrAtToWatermark =
+      toWatermarkMs === null || (isValidUpdatedMs && updatedMs <= toWatermarkMs)
+    const isInLastFetchedWindow = isAfterFromWatermark && isBeforeOrAtToWatermark
 
     let selectionReason: FacebookLatestMonitorItem['selectionReason'] = 'selected_for_import'
     let selectedForImport = true
 
-    if (!detectedPhone) {
+    if (!detectedPrimaryPhone) {
       selectionReason = 'skipped_no_phone'
       selectedForImport = false
-    } else if (!isNewerThanWatermark) {
+    } else if (!isInLastFetchedWindow) {
       selectionReason = 'skipped_old_or_already_seen'
-      selectedForImport = false
-    } else if (existingConversationLead) {
-      selectionReason = 'skipped_existing_conversation'
-      selectedForImport = false
-    } else if (existingPhoneLead) {
-      selectionReason = 'skipped_existing_phone'
       selectedForImport = false
     }
 
@@ -838,8 +850,8 @@ export async function fetchFacebookLatestMonitor(
       conversationId: conversation.id,
       customerName,
       updatedTime: conversation.updated_time ?? null,
-      hasPhoneNumber: Boolean(detectedPhone),
-      detectedPhone,
+      hasPhoneNumber: Boolean(detectedPrimaryPhone),
+      detectedPhone: detectedPrimaryPhone ? formatPhoneForStorage(detectedPrimaryPhone) ?? detectedPrimaryPhone : null,
       selectedForImport,
       selectionReason,
       phoneSource: phoneResolution.source,

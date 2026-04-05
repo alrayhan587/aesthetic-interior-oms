@@ -153,6 +153,25 @@ interface LeadActionsPanelProps {
   onLeadRefresh?: () => void
 }
 
+function toHourPrecisionLocalDateTime(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2}T\d{2})(?::\d{2})?/)
+  if (!match?.[1]) return trimmed
+  return `${match[1]}:00`
+}
+
+function formatDateToLocalHourInput(date: Date): string {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const hh = String(date.getHours()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}T${hh}:00`
+}
+
+const dateTimeInputClassName =
+  'dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80 dark:[&::-webkit-calendar-picker-indicator]:invert dark:[&::-webkit-calendar-picker-indicator]:brightness-200'
+
 export function LeadActionsPanel({
   leadId,
   leadLocation,
@@ -658,12 +677,7 @@ export function LeadActionsPanel({
       if (requestedScheduleAt) {
         const d = new Date(requestedScheduleAt)
         if (!Number.isNaN(d.getTime())) {
-          const yyyy = d.getFullYear()
-          const mm = String(d.getMonth() + 1).padStart(2, '0')
-          const dd = String(d.getDate()).padStart(2, '0')
-          const hh = String(d.getHours()).padStart(2, '0')
-          const min = String(d.getMinutes()).padStart(2, '0')
-          setResolveScheduledAt(`${yyyy}-${mm}-${dd}T${hh}:${min}`)
+          setResolveScheduledAt(formatDateToLocalHourInput(d))
         } else {
           setResolveScheduledAt('')
         }
@@ -1606,7 +1620,9 @@ export function LeadActionsPanel({
                       <Input
                         type="datetime-local"
                         value={visitScheduledAt}
-                        onChange={(event) => setVisitScheduledAt(event.target.value)}
+                        step={3600}
+                        className={dateTimeInputClassName}
+                        onChange={(event) => setVisitScheduledAt(toHourPrecisionLocalDateTime(event.target.value))}
                       />
                     </div>
 
@@ -2106,7 +2122,9 @@ export function LeadActionsPanel({
                 <Input
                   type="datetime-local"
                   value={resolveScheduledAt}
-                  onChange={(event) => setResolveScheduledAt(event.target.value)}
+                  step={3600}
+                  className={dateTimeInputClassName}
+                  onChange={(event) => setResolveScheduledAt(toHourPrecisionLocalDateTime(event.target.value))}
                 />
               </div>
             ) : null}
@@ -2450,7 +2468,9 @@ export function LeadActionsPanel({
               <Input
                 type="datetime-local"
                 value={visitScheduledAt}
-                onChange={(event) => setVisitScheduledAt(event.target.value)}
+                step={3600}
+                className={dateTimeInputClassName}
+                onChange={(event) => setVisitScheduledAt(toHourPrecisionLocalDateTime(event.target.value))}
               />
             </div>
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -247,20 +248,66 @@ function getLifetimeRange(): { from: string; to: string } {
   }
 }
 
+function isLeadDatePreset(value: string | null): value is LeadDatePreset {
+  return (
+    value === 'TODAY' ||
+    value === 'PREVIOUS_DAY' ||
+    value === 'THIS_MONTH' ||
+    value === 'LAST_7_DAYS' ||
+    value === 'LAST_MONTH' ||
+    value === 'LIFETIME' ||
+    value === 'CUSTOM'
+  )
+}
+
+function getRangeForPreset(preset: LeadDatePreset): { from: string; to: string } {
+  if (preset === 'TODAY') return getTodayRange()
+  if (preset === 'PREVIOUS_DAY') return getPreviousDayRange()
+  if (preset === 'LAST_7_DAYS') return getLast7DaysRange()
+  if (preset === 'LAST_MONTH') return getLastMonthRange()
+  if (preset === 'LIFETIME') return getLifetimeRange()
+  return getThisMonthRange()
+}
+
 export default function LeadsPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const defaultRange = useMemo(() => getTodayRange(), [])
+  const initialFilters = useMemo(() => {
+    const rawPreset = searchParams.get('preset')
+    const preset: LeadDatePreset = isLeadDatePreset(rawPreset) ? rawPreset : 'TODAY'
+    const fallbackRange = preset === 'CUSTOM' ? defaultRange : getRangeForPreset(preset)
+    const from = searchParams.get('from')?.trim() || fallbackRange.from
+    const to = searchParams.get('to')?.trim() || fallbackRange.to
+    const rawStage = searchParams.get('stage')?.trim() || 'ALL'
+    const rawSource = searchParams.get('source')?.trim() || 'ALL'
+    const rawAssignment = searchParams.get('assignment')?.trim() || 'ALL'
+    const rawView = searchParams.get('view')?.trim() || 'list'
+
+    return {
+      search: searchParams.get('q')?.trim() || '',
+      stage: stages.includes(rawStage) || rawStage === 'ALL' ? rawStage : 'ALL',
+      source: sourceFilterOptions.includes(rawSource) ? rawSource : 'ALL',
+      assignment: rawAssignment === 'UNASSIGNED' ? ('UNASSIGNED' as const) : ('ALL' as const),
+      preset,
+      createdFrom: from,
+      createdTo: to,
+      view: rawView === 'card' ? ('card' as const) : ('list' as const),
+    }
+  }, [defaultRange, searchParams])
   const [leads, setLeads] = useState<LeadSummary[]>([])
   const [loadingInitial, setLoadingInitial] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [stageFilter, setStageFilter] = useState('ALL')
-  const [sourceFilter, setSourceFilter] = useState('ALL')
-  const [assignmentFilter, setAssignmentFilter] = useState<'ALL' | 'UNASSIGNED'>('ALL')
-  const [datePreset, setDatePreset] = useState<LeadDatePreset>('TODAY')
-  const [createdFrom, setCreatedFrom] = useState(defaultRange.from)
-  const [createdTo, setCreatedTo] = useState(defaultRange.to)
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [searchInput, setSearchInput] = useState(initialFilters.search)
+  const [search, setSearch] = useState(initialFilters.search)
+  const [stageFilter, setStageFilter] = useState(initialFilters.stage)
+  const [sourceFilter, setSourceFilter] = useState(initialFilters.source)
+  const [assignmentFilter, setAssignmentFilter] = useState<'ALL' | 'UNASSIGNED'>(initialFilters.assignment)
+  const [datePreset, setDatePreset] = useState<LeadDatePreset>(initialFilters.preset)
+  const [createdFrom, setCreatedFrom] = useState(initialFilters.createdFrom)
+  const [createdTo, setCreatedTo] = useState(initialFilters.createdTo)
+  const [viewMode, setViewMode] = useState<ViewMode>(initialFilters.view)
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({})
   const [totalCount, setTotalCount] = useState(0)
   const [nextOffset, setNextOffset] = useState<number | null>(0)
@@ -282,9 +329,40 @@ export default function LeadsPage() {
   const inFlightKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
+    if (searchParams.get('view')) return
     const mediaQuery = window.matchMedia('(max-width: 1024px)')
     setViewMode(mediaQuery.matches ? 'card' : 'list')
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('q', search)
+    if (stageFilter !== 'ALL') params.set('stage', stageFilter)
+    if (sourceFilter !== 'ALL') params.set('source', sourceFilter)
+    if (assignmentFilter !== 'ALL') params.set('assignment', assignmentFilter)
+    params.set('preset', datePreset)
+    if (createdFrom) params.set('from', createdFrom)
+    if (createdTo) params.set('to', createdTo)
+    if (viewMode !== 'list') params.set('view', viewMode)
+
+    const nextQuery = params.toString()
+    const currentQuery = searchParams.toString()
+    if (nextQuery === currentQuery) return
+
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false })
+  }, [
+    assignmentFilter,
+    createdFrom,
+    createdTo,
+    datePreset,
+    pathname,
+    router,
+    search,
+    searchParams,
+    sourceFilter,
+    stageFilter,
+    viewMode,
+  ])
 
   useEffect(() => {
     const loadMe = async () => {

@@ -6,7 +6,12 @@ import prisma from '@/lib/prisma'
 import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType } from '@/generated/prisma/client'
 import { getAndAdvanceWhatsAppRoundRobinOffset } from '@/lib/whatsapp-control'
 import { Prisma } from '@/generated/prisma/client'
-import { buildPhoneLookupVariants, normalizePhoneSmart } from '@/lib/phone-normalize'
+import {
+  buildPhoneLookupVariants,
+  extractNormalizedPhonesSmart,
+  formatPhoneForStorage,
+  normalizePhoneSmart,
+} from '@/lib/phone-normalize'
 
 type WhatsAppContact = {
   wa_id?: string
@@ -288,6 +293,11 @@ function getMessagePreview(message: WhatsAppMessage): string {
   return type ? `[${type} message]` : '[message received]'
 }
 
+function extractPhonesFromTextBody(body: string | null | undefined): string[] {
+  if (!body) return []
+  return extractNormalizedPhonesSmart(body, { preferBangladesh: true })
+}
+
 function getLeadName(contact: WhatsAppContact | undefined, normalizedPhone: string): string {
   const contactName = contact?.profile?.name?.trim()
   if (contactName) return contactName
@@ -360,6 +370,11 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
       continue
     }
     const phoneLookupCandidates = buildPhoneLookupVariants(phone)
+    const storedPrimaryPhone = formatPhoneForStorage(phone) ?? phone
+    const detectedFromBody = extractPhonesFromTextBody(message.text?.body)
+    const detectedPhones = Array.from(
+      new Set([phone, ...detectedFromBody].map((item) => formatPhoneForStorage(item) ?? item)),
+    )
 
     const leadName = getLeadName(contact, phone)
     const preview = getMessagePreview(message)
@@ -386,7 +401,7 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
         })
         if (existingLead) {
           await tx.whatsAppProcessedMessage.create({
-            data: { messageId, phone },
+            data: { messageId, phone: storedPrimaryPhone },
           })
           return { created: false as const, reason: 'existing_phone' as const, signal: null }
         }
@@ -394,11 +409,11 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
         const lead = await tx.lead.create({
           data: {
             name: leadName,
-            phone,
+            phone: storedPrimaryPhone,
             source: 'WhatsApp',
             stage: LeadStage.NUMBER_COLLECTED,
             assignedTo: assignee?.id ?? null,
-            remarks: `WA_MESSAGE_ID:${messageId}\nImported from WhatsApp webhook.\nLast message: ${preview}`,
+            remarks: `WA_MESSAGE_ID:${messageId}\nImported from WhatsApp webhook.\nDetected phones: ${detectedPhones.join(', ')}\nLast message: ${preview}`,
           },
           select: { id: true },
         })
@@ -406,7 +421,7 @@ export async function ingestWhatsAppWebhook(payload: WhatsAppWebhookPayload): Pr
         await tx.whatsAppProcessedMessage.create({
           data: {
             messageId,
-            phone,
+            phone: storedPrimaryPhone,
           },
         })
 
@@ -512,11 +527,16 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
     return result
   }
   const phoneLookupCandidates = buildPhoneLookupVariants(phone)
+  const storedPrimaryPhone = formatPhoneForStorage(phone) ?? phone
 
   const jrCrmAgents = await getActiveJrCrmAgents()
   const leadName = getWawpLeadName(payload, message, phone)
   const body = message.body?.trim()
   const preview = body && body.length > 0 ? body.slice(0, 500) : '[message received]'
+  const detectedFromBody = extractPhonesFromTextBody(body)
+  const detectedPhones = Array.from(
+    new Set([phone, ...detectedFromBody].map((item) => formatPhoneForStorage(item) ?? item)),
+  )
 
   let assignee: JrCrmAgent | null = null
   if (jrCrmAgents.length > 0) {
@@ -540,7 +560,7 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
       })
       if (existingLead) {
         await tx.whatsAppProcessedMessage.create({
-          data: { messageId, phone },
+          data: { messageId, phone: storedPrimaryPhone },
         })
         return { created: false as const, reason: 'existing_phone' as const, signal: null }
       }
@@ -548,11 +568,11 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
       const lead = await tx.lead.create({
         data: {
           name: leadName,
-          phone,
+          phone: storedPrimaryPhone,
           source: 'WhatsApp',
           stage: LeadStage.NUMBER_COLLECTED,
           assignedTo: assignee?.id ?? null,
-          remarks: `WA_MESSAGE_ID:${messageId}\nImported from WAWP webhook.\nLast message: ${preview}`,
+          remarks: `WA_MESSAGE_ID:${messageId}\nImported from WAWP webhook.\nDetected phones: ${detectedPhones.join(', ')}\nLast message: ${preview}`,
         },
         select: { id: true },
       })
@@ -560,7 +580,7 @@ export async function ingestWawpWebhook(payload: WawpWebhookPayload): Promise<In
       await tx.whatsAppProcessedMessage.create({
         data: {
           messageId,
-          phone,
+          phone: storedPrimaryPhone,
         },
       })
 

@@ -62,9 +62,15 @@ export async function GET(request: NextRequest) {
 
   console.info('[GET /api/facebook/status] completed')
   const syncControl = await getFacebookSyncControlState()
-  const monitor = await fetchFacebookLatestMonitor(100, {
-    watermarkIso: syncControl.latestWatermark ?? syncControl.incrementalWatermark,
-  }).catch(() => [])
+  const monitorLimit = Math.min(Math.max(syncControl.lastLatestSyncFetched ?? 0, 0), 100)
+  const monitor =
+    monitorLimit > 0
+      ? await fetchFacebookLatestMonitor(monitorLimit, {
+          fromWatermarkIso: syncControl.incrementalWatermark,
+          toWatermarkIso: syncControl.latestWatermark,
+          includeExpandedPhoneScan: false,
+        }).catch(() => [])
+      : []
   return NextResponse.json({
     success: true,
     data: {

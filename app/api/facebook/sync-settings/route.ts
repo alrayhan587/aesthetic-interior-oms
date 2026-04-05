@@ -36,9 +36,15 @@ export async function GET() {
     getFacebookSyncControlState(),
     Promise.resolve(getFacebookConfigStatus()),
   ])
-  const monitor = await fetchFacebookLatestMonitor(100, {
-    watermarkIso: syncControl.latestWatermark ?? syncControl.incrementalWatermark,
-  }).catch(() => [])
+  const monitorLimit = Math.min(Math.max(syncControl.lastLatestSyncFetched ?? 0, 0), 100)
+  const monitor =
+    monitorLimit > 0
+      ? await fetchFacebookLatestMonitor(monitorLimit, {
+          fromWatermarkIso: syncControl.incrementalWatermark,
+          toWatermarkIso: syncControl.latestWatermark,
+          includeExpandedPhoneScan: false,
+        }).catch(() => [])
+      : []
 
   return NextResponse.json({
     success: true,
@@ -76,9 +82,15 @@ export async function PATCH(request: NextRequest) {
     batchLimit: toOptionalNumber(body.batchLimit),
   })
 
-  const monitor = await fetchFacebookLatestMonitor(100, {
-    watermarkIso: updated.latestWatermark ?? updated.incrementalWatermark,
-  }).catch(() => [])
+  const monitorLimit = Math.min(Math.max(updated.lastLatestSyncFetched ?? 0, 0), 100)
+  const monitor =
+    monitorLimit > 0
+      ? await fetchFacebookLatestMonitor(monitorLimit, {
+          fromWatermarkIso: updated.incrementalWatermark,
+          toWatermarkIso: updated.latestWatermark,
+          includeExpandedPhoneScan: false,
+        }).catch(() => [])
+      : []
 
   return NextResponse.json({
     success: true,
