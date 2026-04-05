@@ -20,9 +20,6 @@ type SyncControl = {
   latestEnabled: boolean
   latestIntervalMinutes: number
   latestBatchLimit: number
-  backfillEnabled: boolean
-  backfillIntervalMinutes: number
-  backfillBatchLimit: number
   fallbackEnabled: boolean
   fallbackIntervalMinutes: number
   batchLimit: number
@@ -37,19 +34,28 @@ type SyncControl = {
   lastLatestSyncFetched: number | null
   lastLatestSyncCreated: number | null
   lastLatestSyncError: string | null
-  lastBackfillSyncAt: string | null
-  lastBackfillSyncStatus: string | null
-  lastBackfillSyncFetched: number | null
-  lastBackfillSyncCreated: number | null
-  lastBackfillSyncError: string | null
   latestWatermark: string | null
-  backfillCursor: string | null
   incrementalCursor: string | null
   incrementalWatermark: string | null
   jrCrmRoundRobinOffset: number
   nextScheduledAt: string | null
   nextLatestScheduledAt: string | null
-  nextBackfillScheduledAt: string | null
+}
+
+type FacebookMonitorItem = {
+  conversationId: string
+  customerName: string
+  updatedTime: string | null
+  hasPhoneNumber: boolean
+  detectedPhone: string | null
+  selectedForImport: boolean
+  selectionReason:
+    | 'selected_for_import'
+    | 'skipped_no_phone'
+    | 'skipped_old_or_already_seen'
+    | 'skipped_existing_conversation'
+    | 'skipped_existing_phone'
+  phoneSource: 'embedded' | 'expanded' | 'none'
 }
 
 type FacebookConfig = {
@@ -73,6 +79,7 @@ type SettingsResponse = {
   data?: {
     syncControl: SyncControl
     facebookConfig: FacebookConfig
+    monitor?: FacebookMonitorItem[]
   }
   error?: string
 }
@@ -136,7 +143,7 @@ type WhatsAppStatusResponse = {
 type SyncResponse = {
   success: boolean
   data?: {
-    lane?: 'LATEST' | 'BACKFILL' | 'BOTH'
+    lane?: 'LATEST'
     fetchedConversations?: number
     createdLeads?: number
     ran?: boolean
@@ -153,6 +160,23 @@ function formatDate(value: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown'
   return date.toLocaleString()
+}
+
+function formatSelectionReason(reason: FacebookMonitorItem['selectionReason']): string {
+  switch (reason) {
+    case 'selected_for_import':
+      return 'Selected: latest + has number + not duplicate'
+    case 'skipped_no_phone':
+      return 'Skipped: no number detected'
+    case 'skipped_old_or_already_seen':
+      return 'Skipped: older than latest watermark'
+    case 'skipped_existing_conversation':
+      return 'Skipped: already imported from this conversation'
+    case 'skipped_existing_phone':
+      return 'Skipped: phone already exists in CRM'
+    default:
+      return 'Skipped'
+  }
 }
 
 export function IntegrationSettings() {
@@ -172,6 +196,7 @@ export function IntegrationSettings() {
 
   const [config, setConfig] = useState<FacebookConfig | null>(null)
   const [syncControl, setSyncControl] = useState<SyncControl | null>(null)
+  const [facebookMonitor, setFacebookMonitor] = useState<FacebookMonitorItem[]>([])
   const [instagramConfig, setInstagramConfig] = useState<InstagramConfig | null>(null)
   const [instagramSyncControl, setInstagramSyncControl] = useState<SyncControl | null>(null)
   const [whatsAppControl, setWhatsAppControl] = useState<WhatsAppControl | null>(null)
@@ -183,9 +208,6 @@ export function IntegrationSettings() {
   const [latestEnabled, setLatestEnabled] = useState(true)
   const [latestIntervalMinutes, setLatestIntervalMinutes] = useState(2)
   const [latestBatchLimit, setLatestBatchLimit] = useState(20)
-  const [backfillEnabled, setBackfillEnabled] = useState(true)
-  const [backfillIntervalMinutes, setBackfillIntervalMinutes] = useState(15)
-  const [backfillBatchLimit, setBackfillBatchLimit] = useState(20)
   const [fallbackEnabled, setFallbackEnabled] = useState(true)
   const [fallbackIntervalMinutes, setFallbackIntervalMinutes] = useState(15)
   const [batchLimit, setBatchLimit] = useState(20)
@@ -202,9 +224,6 @@ export function IntegrationSettings() {
     setLatestEnabled(state.latestEnabled)
     setLatestIntervalMinutes(state.latestIntervalMinutes)
     setLatestBatchLimit(state.latestBatchLimit)
-    setBackfillEnabled(state.backfillEnabled)
-    setBackfillIntervalMinutes(state.backfillIntervalMinutes)
-    setBackfillBatchLimit(state.backfillBatchLimit)
     setFallbackEnabled(state.fallbackEnabled)
     setFallbackIntervalMinutes(state.fallbackIntervalMinutes)
     setBatchLimit(state.batchLimit)
@@ -231,6 +250,7 @@ export function IntegrationSettings() {
 
       setConfig(payload.data.facebookConfig)
       setSyncControl(payload.data.syncControl)
+      setFacebookMonitor(payload.data.monitor ?? [])
       hydrateForm(payload.data.syncControl)
     } catch (error) {
       setStatusError(error instanceof Error ? error.message : 'Failed to load settings')
@@ -287,17 +307,11 @@ export function IntegrationSettings() {
       latestEnabled !== syncControl.latestEnabled ||
       latestIntervalMinutes !== syncControl.latestIntervalMinutes ||
       latestBatchLimit !== syncControl.latestBatchLimit ||
-      backfillEnabled !== syncControl.backfillEnabled ||
-      backfillIntervalMinutes !== syncControl.backfillIntervalMinutes ||
-      backfillBatchLimit !== syncControl.backfillBatchLimit ||
       fallbackEnabled !== syncControl.fallbackEnabled ||
       fallbackIntervalMinutes !== syncControl.fallbackIntervalMinutes ||
       batchLimit !== syncControl.batchLimit
     )
   }, [
-    backfillBatchLimit,
-    backfillEnabled,
-    backfillIntervalMinutes,
     batchLimit,
     enabled,
     fallbackEnabled,
@@ -343,9 +357,6 @@ export function IntegrationSettings() {
           latestEnabled,
           latestIntervalMinutes,
           latestBatchLimit,
-          backfillEnabled,
-          backfillIntervalMinutes,
-          backfillBatchLimit,
           fallbackEnabled,
           fallbackIntervalMinutes,
           batchLimit,
@@ -359,6 +370,7 @@ export function IntegrationSettings() {
 
       setConfig(payload.data.facebookConfig)
       setSyncControl(payload.data.syncControl)
+      setFacebookMonitor(payload.data.monitor ?? [])
       hydrateForm(payload.data.syncControl)
       setStatusMessage('Facebook sync lane settings saved.')
     } catch (error) {
@@ -368,7 +380,7 @@ export function IntegrationSettings() {
     }
   }
 
-  const runSyncNow = async (lane: 'LATEST' | 'BACKFILL' | 'BOTH' = 'BOTH') => {
+  const runSyncNow = async (lane: 'LATEST' = 'LATEST') => {
     setSyncingNow(true)
     setStatusMessage(null)
     setStatusError(null)
@@ -617,19 +629,32 @@ export function IntegrationSettings() {
             </div>
 
             <div className="rounded-lg border border-border p-4">
-              <p className="text-xs text-muted-foreground">Backfill Lane</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{formatDate(syncControl.lastBackfillSyncAt)}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Status: {syncControl.lastBackfillSyncStatus ?? 'N/A'}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Last fetched: {syncControl.lastBackfillSyncFetched ?? 0} | Last created: {syncControl.lastBackfillSyncCreated ?? 0}
-              </p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                Next backfill window: {formatDate(syncControl.nextBackfillScheduledAt)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Cursor: {syncControl.backfillCursor ?? syncControl.incrementalCursor ?? 'none'}
+              <p className="text-xs text-muted-foreground">Monitor (Last 100 Fetched)</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{facebookMonitor.length} conversations</p>
+              <p className="mt-2 text-xs text-muted-foreground">Name, number check, selected status, and reason</p>
+              <div className="mt-2 max-h-44 overflow-auto rounded border border-border/70 p-2">
+                {facebookMonitor.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No fetched data yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {facebookMonitor.map((item) => (
+                      <div key={item.conversationId} className="rounded border border-border/60 p-2 text-xs">
+                        <p className="truncate text-foreground">{item.customerName}</p>
+                        <p className="mt-1 text-muted-foreground">
+                          Number: {item.hasPhoneNumber ? `Yes (${item.detectedPhone ?? 'detected'})` : 'No'} | Source scan:{' '}
+                          {item.phoneSource}
+                        </p>
+                        <p className={item.selectedForImport ? 'mt-1 text-green-700' : 'mt-1 text-red-700'}>
+                          {item.selectedForImport ? 'Selected for import' : 'Not selected'}
+                        </p>
+                        <p className="mt-1 text-muted-foreground">{formatSelectionReason(item.selectionReason)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 truncate text-xs text-muted-foreground">
+                Most recent fetched time: {formatDate(facebookMonitor[0]?.updatedTime ?? null)}
               </p>
             </div>
           </div>
@@ -716,50 +741,6 @@ export function IntegrationSettings() {
 
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-foreground">Enable Backfill lane</p>
-                <p className="text-xs text-muted-foreground">
-                  Continues old/batch history import using pagination cursor.
-                </p>
-              </div>
-              <Switch checked={backfillEnabled} onCheckedChange={setBackfillEnabled} disabled={!enabled} />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Backfill lane interval</p>
-                <Select
-                  value={String(backfillIntervalMinutes)}
-                  onValueChange={(value) => setBackfillIntervalMinutes(Number(value))}
-                  disabled={!enabled || !backfillEnabled}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select interval" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {INTERVAL_OPTIONS.map((minutes) => (
-                      <SelectItem key={minutes} value={String(minutes)}>
-                        {minutes} minutes
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Backfill batch size (5-100)</p>
-                <Input
-                  type="number"
-                  min={5}
-                  max={100}
-                  value={backfillBatchLimit}
-                  onChange={(event) => setBackfillBatchLimit(Number(event.target.value))}
-                  disabled={!enabled || !backfillEnabled}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <div>
                 <p className="text-sm font-medium text-foreground">Enable safe fallback sync</p>
                 <p className="text-xs text-muted-foreground">
                   Runs when app traffic hits lead APIs and imports missed conversations if webhook flow misses anything.
@@ -815,24 +796,6 @@ export function IntegrationSettings() {
               >
                 {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
                 Run Latest Now
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => runSyncNow('BACKFILL')}
-                disabled={syncingNow || !config.configured || !enabled || !backfillEnabled}
-                className="gap-2"
-              >
-                {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
-                Run Backfill Now
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => runSyncNow('BOTH')}
-                disabled={syncingNow || !config.configured || !enabled}
-                className="gap-2"
-              >
-                {syncingNow ? <RefreshCw className="size-4 animate-spin" /> : <Settings className="size-4" />}
-                Run Both Now
               </Button>
               <Button variant="outline" onClick={checkConnection} disabled={checking} className="gap-2">
                 {checking ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}

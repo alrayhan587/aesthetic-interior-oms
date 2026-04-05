@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireDatabaseRoles } from '@/lib/authz'
 import {
   checkFacebookGraphConnection,
+  fetchFacebookLatestMonitor,
   getFacebookConfigStatus,
 } from '@/lib/facebook'
 import {
@@ -14,10 +15,8 @@ export const runtime = 'nodejs'
 export const preferredRegion = 'sin1'
 
 function parseLane(value: string | null): FacebookSyncLane {
-  if (value === 'LATEST' || value === 'BACKFILL' || value === 'BOTH') {
-    return value
-  }
-  return 'BOTH'
+  void value
+  return 'LATEST'
 }
 
 export async function GET(request: NextRequest) {
@@ -63,6 +62,9 @@ export async function GET(request: NextRequest) {
 
   console.info('[GET /api/facebook/status] completed')
   const syncControl = await getFacebookSyncControlState()
+  const monitor = await fetchFacebookLatestMonitor(100, {
+    watermarkIso: syncControl.latestWatermark ?? syncControl.incrementalWatermark,
+  }).catch(() => [])
   return NextResponse.json({
     success: true,
     data: {
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
       },
       graphConnection,
       syncControl,
+      monitor,
       syncResult,
       syncError,
       webhookPath: '/api/webhooks/facebook',

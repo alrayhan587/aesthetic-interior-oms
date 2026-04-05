@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireDatabaseRoles } from '@/lib/authz'
-import { getFacebookConfigStatus } from '@/lib/facebook'
+import { fetchFacebookLatestMonitor, getFacebookConfigStatus } from '@/lib/facebook'
 import {
   getFacebookSyncControlState,
   updateFacebookSyncControlState,
@@ -11,9 +11,6 @@ type UpdateBody = {
   latestEnabled?: unknown
   latestIntervalMinutes?: unknown
   latestBatchLimit?: unknown
-  backfillEnabled?: unknown
-  backfillIntervalMinutes?: unknown
-  backfillBatchLimit?: unknown
   fallbackEnabled?: unknown
   fallbackIntervalMinutes?: unknown
   batchLimit?: unknown
@@ -39,12 +36,16 @@ export async function GET() {
     getFacebookSyncControlState(),
     Promise.resolve(getFacebookConfigStatus()),
   ])
+  const monitor = await fetchFacebookLatestMonitor(100, {
+    watermarkIso: syncControl.latestWatermark ?? syncControl.incrementalWatermark,
+  }).catch(() => [])
 
   return NextResponse.json({
     success: true,
     data: {
       syncControl,
       facebookConfig,
+      monitor,
     },
   })
 }
@@ -70,19 +71,21 @@ export async function PATCH(request: NextRequest) {
     latestEnabled: toOptionalBoolean(body.latestEnabled),
     latestIntervalMinutes: toOptionalNumber(body.latestIntervalMinutes),
     latestBatchLimit: toOptionalNumber(body.latestBatchLimit),
-    backfillEnabled: toOptionalBoolean(body.backfillEnabled),
-    backfillIntervalMinutes: toOptionalNumber(body.backfillIntervalMinutes),
-    backfillBatchLimit: toOptionalNumber(body.backfillBatchLimit),
     fallbackEnabled: toOptionalBoolean(body.fallbackEnabled),
     fallbackIntervalMinutes: toOptionalNumber(body.fallbackIntervalMinutes),
     batchLimit: toOptionalNumber(body.batchLimit),
   })
+
+  const monitor = await fetchFacebookLatestMonitor(100, {
+    watermarkIso: updated.latestWatermark ?? updated.incrementalWatermark,
+  }).catch(() => [])
 
   return NextResponse.json({
     success: true,
     data: {
       syncControl: updated,
       facebookConfig: getFacebookConfigStatus(),
+      monitor,
     },
     message: 'Facebook sync settings updated',
   })

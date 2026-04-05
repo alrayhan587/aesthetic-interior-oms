@@ -144,10 +144,7 @@ function serializeControlRow(row: {
     row.latestEnabled && row.lastLatestSyncAt
       ? new Date(row.lastLatestSyncAt.getTime() + row.latestIntervalMinutes * 60_000).toISOString()
       : null
-  const nextBackfillScheduledAt =
-    row.backfillEnabled && row.lastBackfillSyncAt
-      ? new Date(row.lastBackfillSyncAt.getTime() + row.backfillIntervalMinutes * 60_000).toISOString()
-      : null
+  const nextBackfillScheduledAt = null
 
   return {
     enabled: row.enabled,
@@ -196,7 +193,7 @@ async function ensureControlRow() {
       latestEnabled: true,
       latestIntervalMinutes: 2,
       latestBatchLimit: 20,
-      backfillEnabled: true,
+      backfillEnabled: false,
       backfillIntervalMinutes: 15,
       backfillBatchLimit: 20,
       fallbackEnabled: true,
@@ -235,9 +232,6 @@ export async function updateFacebookSyncControlState(
     latestEnabled?: boolean
     latestIntervalMinutes?: number
     latestBatchLimit?: number
-    backfillEnabled?: boolean
-    backfillIntervalMinutes?: number
-    backfillBatchLimit?: number
     fallbackEnabled?: boolean
     fallbackIntervalMinutes?: number
     batchLimit?: number
@@ -250,13 +244,6 @@ export async function updateFacebookSyncControlState(
   }
   if (typeof input.latestBatchLimit === 'number') {
     data.latestBatchLimit = clampBatchLimit(input.latestBatchLimit)
-  }
-  if (typeof input.backfillEnabled === 'boolean') data.backfillEnabled = input.backfillEnabled
-  if (typeof input.backfillIntervalMinutes === 'number') {
-    data.backfillIntervalMinutes = clampIntervalMinutes(input.backfillIntervalMinutes)
-  }
-  if (typeof input.backfillBatchLimit === 'number') {
-    data.backfillBatchLimit = clampBatchLimit(input.backfillBatchLimit)
   }
 
   if (typeof input.fallbackEnabled === 'boolean') data.fallbackEnabled = input.fallbackEnabled
@@ -316,7 +303,7 @@ async function runLatestLane(
       reason: 'latest_disabled',
       fetchedConversations: 0,
       createdLeads: 0,
-      nextCursor: settings.backfillCursor ?? settings.incrementalCursor ?? null,
+      nextCursor: settings.incrementalCursor ?? null,
       watermarkIso: settings.latestWatermark?.toISOString() ?? settings.incrementalWatermark?.toISOString() ?? null,
       nextRoundRobinOffset: settings.jrCrmRoundRobinOffset,
     }
@@ -339,98 +326,25 @@ async function runLatestLane(
   }
 }
 
-async function runBackfillLane(
-  settings: Awaited<ReturnType<typeof ensureControlRow>>,
-  startCursor: string | null,
-  roundRobinOffset: number,
-): Promise<LaneRunResult> {
-  if (!settings.backfillEnabled) {
-    return {
-      ran: false,
-      reason: 'backfill_disabled',
-      fetchedConversations: 0,
-      createdLeads: 0,
-      nextCursor: settings.backfillCursor ?? settings.incrementalCursor ?? null,
-      watermarkIso: settings.latestWatermark?.toISOString() ?? settings.incrementalWatermark?.toISOString() ?? null,
-      nextRoundRobinOffset: roundRobinOffset,
-    }
-  }
-
-  if (!startCursor) {
-    return {
-      ran: false,
-      reason: 'no_backfill_cursor',
-      fetchedConversations: 0,
-      createdLeads: 0,
-      nextCursor: null,
-      watermarkIso: settings.latestWatermark?.toISOString() ?? settings.incrementalWatermark?.toISOString() ?? null,
-      nextRoundRobinOffset: roundRobinOffset,
-    }
-  }
-
-  const backfillResult = await syncFacebookConversationsIncremental({
-    limit: settings.backfillBatchLimit || settings.batchLimit,
-    afterCursor: startCursor,
-    watermarkIso: null,
-    jrCrmRoundRobinOffset: roundRobinOffset,
-  })
-
-  return {
-    ran: true,
-    fetchedConversations: backfillResult.fetchedConversations,
-    createdLeads: backfillResult.createdLeads,
-    nextCursor: backfillResult.nextCursor,
-    watermarkIso: settings.latestWatermark?.toISOString() ?? settings.incrementalWatermark?.toISOString() ?? null,
-    nextRoundRobinOffset: backfillResult.nextJrCrmRoundRobinOffset,
-  }
-}
-
 async function runIncrementalSync(
   trigger: FacebookSyncTrigger,
   lane: FacebookSyncLane,
 ): Promise<RunFacebookSyncResult> {
+  const effectiveLane: FacebookSyncLane = 'LATEST'
   const settings = await ensureControlRow()
 
   if (!settings.enabled) {
-    return { ran: false, reason: 'sync_disabled', lane }
+    return { ran: false, reason: 'sync_disabled', lane: effectiveLane }
   }
 
   if (!isFacebookConfigured()) {
-    return { ran: false, reason: 'facebook_not_configured', lane }
+    return { ran: false, reason: 'facebook_not_configured', lane: effectiveLane }
   }
 
-  const shouldRunLatest = lane === 'LATEST' || lane === 'BOTH'
-  const shouldRunBackfill = lane === 'BACKFILL' || lane === 'BOTH'
+  const latestResult = await runLatestLane(settings)
 
-  const latestResult = shouldRunLatest
-    ? await runLatestLane(settings)
-    : {
-        ran: false,
-        reason: 'lane_not_selected',
-        fetchedConversations: 0,
-        createdLeads: 0,
-        nextCursor: settings.backfillCursor ?? settings.incrementalCursor ?? null,
-        watermarkIso: settings.latestWatermark?.toISOString() ?? settings.incrementalWatermark?.toISOString() ?? null,
-        nextRoundRobinOffset: settings.jrCrmRoundRobinOffset,
-      }
-
-  const backfillStartCursor =
-    settings.backfillCursor ?? settings.incrementalCursor ?? latestResult.nextCursor ?? null
-
-  const backfillResult = shouldRunBackfill
-    ? await runBackfillLane(settings, backfillStartCursor, latestResult.nextRoundRobinOffset)
-    : {
-        ran: false,
-        reason: 'lane_not_selected',
-        fetchedConversations: 0,
-        createdLeads: 0,
-        nextCursor: backfillStartCursor,
-        watermarkIso: latestResult.watermarkIso,
-        nextRoundRobinOffset: latestResult.nextRoundRobinOffset,
-      }
-
-  const totalFetched = latestResult.fetchedConversations + backfillResult.fetchedConversations
-  const totalCreated = latestResult.createdLeads + backfillResult.createdLeads
+  const totalFetched = latestResult.fetchedConversations
+  const totalCreated = latestResult.createdLeads
   const now = new Date()
 
   await prisma.facebookSyncControl.update({
@@ -453,37 +367,18 @@ async function runIncrementalSync(
             incrementalWatermark: latestResult.watermarkIso ? new Date(latestResult.watermarkIso) : null,
           }
         : {}),
-      ...(backfillResult.ran
-        ? {
-            lastBackfillSyncAt: now,
-            lastBackfillSyncStatus: 'SUCCESS',
-            lastBackfillSyncFetched: backfillResult.fetchedConversations,
-            lastBackfillSyncCreated: backfillResult.createdLeads,
-            lastBackfillSyncError: null,
-            backfillCursor: backfillResult.nextCursor,
-            incrementalCursor: backfillResult.nextCursor,
-          }
-        : {}),
-      jrCrmRoundRobinOffset: backfillResult.nextRoundRobinOffset,
+      jrCrmRoundRobinOffset: latestResult.nextRoundRobinOffset,
     },
   })
 
-  const anyLaneRan = latestResult.ran || backfillResult.ran
-  if (!anyLaneRan) {
+  if (!latestResult.ran) {
     return {
       ran: false,
-      reason:
-        latestResult.reason === 'latest_disabled' && backfillResult.reason === 'backfill_disabled'
-          ? 'all_lanes_disabled'
-          : latestResult.reason === 'latest_disabled'
-            ? 'latest_disabled'
-            : backfillResult.reason === 'backfill_disabled'
-              ? 'backfill_disabled'
-              : 'nothing_to_sync',
-      lane,
+      reason: latestResult.reason ?? 'latest_disabled',
+      lane: effectiveLane,
       fetchedConversations: 0,
       createdLeads: 0,
-      nextCursor: backfillResult.nextCursor,
+      nextCursor: settings.incrementalCursor ?? null,
       watermarkIso: latestResult.watermarkIso,
       latest: {
         ran: latestResult.ran,
@@ -493,21 +388,21 @@ async function runIncrementalSync(
         watermarkIso: latestResult.watermarkIso,
       },
       backfill: {
-        ran: backfillResult.ran,
-        reason: backfillResult.reason,
-        fetchedConversations: backfillResult.fetchedConversations,
-        createdLeads: backfillResult.createdLeads,
-        nextCursor: backfillResult.nextCursor,
+        ran: false,
+        reason: 'backfill_removed',
+        fetchedConversations: 0,
+        createdLeads: 0,
+        nextCursor: null,
       },
     }
   }
 
   return {
     ran: true,
-    lane,
+    lane: effectiveLane,
     fetchedConversations: totalFetched,
     createdLeads: totalCreated,
-    nextCursor: backfillResult.nextCursor,
+    nextCursor: latestResult.nextCursor,
     watermarkIso: latestResult.watermarkIso,
     latest: {
       ran: latestResult.ran,
@@ -517,18 +412,18 @@ async function runIncrementalSync(
       watermarkIso: latestResult.watermarkIso,
     },
     backfill: {
-      ran: backfillResult.ran,
-      reason: backfillResult.reason,
-      fetchedConversations: backfillResult.fetchedConversations,
-      createdLeads: backfillResult.createdLeads,
-      nextCursor: backfillResult.nextCursor,
+      ran: false,
+      reason: 'backfill_removed',
+      fetchedConversations: 0,
+      createdLeads: 0,
+      nextCursor: null,
     },
   }
 }
 
 export async function runFacebookSyncWithControl(
   trigger: FacebookSyncTrigger,
-  lane: FacebookSyncLane = 'BOTH',
+  lane: FacebookSyncLane = 'LATEST',
 ): Promise<RunFacebookSyncResult> {
   const acquired = await tryAcquireSyncLock()
   if (!acquired) {
@@ -552,26 +447,25 @@ export async function maybeRunFacebookFallbackSync(): Promise<RunFacebookSyncRes
   const settings = await ensureControlRow()
 
   if (!settings.enabled) {
-    return { ran: false, reason: 'sync_disabled', lane: 'BOTH' }
+    return { ran: false, reason: 'sync_disabled', lane: 'LATEST' }
   }
 
   if (!settings.fallbackEnabled) {
-    return { ran: false, reason: 'fallback_disabled', lane: 'BOTH' }
+    return { ran: false, reason: 'fallback_disabled', lane: 'LATEST' }
   }
 
   if (!isFacebookConfigured()) {
-    return { ran: false, reason: 'facebook_not_configured', lane: 'BOTH' }
+    return { ran: false, reason: 'facebook_not_configured', lane: 'LATEST' }
   }
 
   const nowMs = Date.now()
   const latestDue = settings.latestEnabled && isLaneDue(settings.lastLatestSyncAt, settings.latestIntervalMinutes, nowMs)
-  const backfillDue = settings.backfillEnabled && isLaneDue(settings.lastBackfillSyncAt, settings.backfillIntervalMinutes, nowMs)
 
-  if (!latestDue && !backfillDue) {
-    return { ran: false, reason: 'not_due_yet', lane: 'BOTH' }
+  if (!latestDue) {
+    return { ran: false, reason: 'not_due_yet', lane: 'LATEST' }
   }
 
-  const lane: FacebookSyncLane = latestDue && backfillDue ? 'BOTH' : latestDue ? 'LATEST' : 'BACKFILL'
+  const lane: FacebookSyncLane = 'LATEST'
 
   const acquired = await tryAcquireSyncLock()
   if (!acquired) {

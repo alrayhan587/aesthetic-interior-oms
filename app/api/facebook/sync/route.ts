@@ -12,10 +12,8 @@ type SyncRequestBody = {
 }
 
 function parseLane(value: unknown): FacebookSyncLane {
-  if (value === 'LATEST' || value === 'BACKFILL' || value === 'BOTH') {
-    return value
-  }
-  return 'BOTH'
+  void value
+  return 'LATEST'
 }
 
 export async function POST(request: Request) {
@@ -35,12 +33,12 @@ export async function POST(request: Request) {
     )
   }
 
-  let lane: FacebookSyncLane = 'BOTH'
+  let lane: FacebookSyncLane = 'LATEST'
   try {
     const body = (await request.json()) as SyncRequestBody
     lane = parseLane(body?.lane)
   } catch {
-    lane = 'BOTH'
+    lane = 'LATEST'
   }
 
   try {
@@ -60,7 +58,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: result,
-      message: `Facebook ${lane.toLowerCase()} sync completed`,
+      message: 'Facebook latest sync completed',
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to sync Facebook conversations'

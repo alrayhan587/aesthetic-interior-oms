@@ -88,6 +88,22 @@ type SyncFacebookIncrementalResult = {
   nextJrCrmRoundRobinOffset: number
 }
 
+export type FacebookLatestMonitorItem = {
+  conversationId: string
+  customerName: string
+  updatedTime: string | null
+  hasPhoneNumber: boolean
+  detectedPhone: string | null
+  selectedForImport: boolean
+  selectionReason:
+    | 'selected_for_import'
+    | 'skipped_no_phone'
+    | 'skipped_old_or_already_seen'
+    | 'skipped_existing_conversation'
+    | 'skipped_existing_phone'
+  phoneSource: 'embedded' | 'expanded' | 'none'
+}
+
 type FacebookCreatedLeadSignal = {
   leadId: string
   leadName: string
@@ -102,6 +118,7 @@ type JrCrmAgent = {
 const FB_DEFAULT_LIMIT = 20
 const FB_LOG_PREFIX = '[facebook-lib]'
 const FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT = 50
+const FB_DEFAULT_PHONE_SCAN_LIMIT = 200
 
 export type FacebookConversationMessage = {
   id: string
@@ -122,6 +139,12 @@ function clampMessageLookbackLimit(value: number): number {
 function getConversationMessageLookbackLimit(): number {
   const raw = Number(process.env.FB_CONVERSATION_MESSAGE_LOOKBACK_LIMIT ?? FB_DEFAULT_MESSAGE_LOOKBACK_LIMIT)
   return clampMessageLookbackLimit(raw)
+}
+
+function getConversationPhoneScanLimit(): number {
+  const raw = Number(process.env.FB_CONVERSATION_PHONE_SCAN_LIMIT ?? FB_DEFAULT_PHONE_SCAN_LIMIT)
+  if (!Number.isFinite(raw)) return FB_DEFAULT_PHONE_SCAN_LIMIT
+  return Math.max(50, Math.min(200, Math.trunc(raw)))
 }
 
 function getFacebookConfig() {
@@ -393,6 +416,26 @@ function extractPhoneFromMessages(messages: string[]): string | null {
   return null
 }
 
+async function extractPhoneFromConversation(
+  conversation: FacebookConversation,
+): Promise<{ phone: string | null; source: 'embedded' | 'expanded' | 'none' }> {
+  const embeddedMessages = getConversationMessages(conversation)
+  const embeddedPhone = extractPhoneFromMessages(embeddedMessages)
+  if (embeddedPhone) return { phone: embeddedPhone, source: 'embedded' }
+
+  if (!conversation.id) return { phone: null, source: 'none' }
+
+  try {
+    const expanded = await fetchFacebookConversationMessagesById(conversation.id, getConversationPhoneScanLimit())
+    const expandedPhone = extractPhoneFromMessages(expanded.map((item) => item.message))
+    if (expandedPhone) return { phone: expandedPhone, source: 'expanded' }
+  } catch (error) {
+    console.warn(`${FB_LOG_PREFIX} extract_phone expanded_scan_failed conversation_id=${conversation.id}`, error)
+  }
+
+  return { phone: null, source: 'none' }
+}
+
 async function importConversationToLead(
   conversation: FacebookConversation,
   pageId: string,
@@ -412,7 +455,8 @@ async function importConversationToLead(
   const messages = getConversationMessages(conversation)
   const lastMessage = messages[0] ?? ''
   const detectedAgent = findAgentByAssignedMessages(options.jrCrmAgents, messages)
-  const detectedPhone = extractPhoneFromMessages(messages)
+  const phoneResolution = await extractPhoneFromConversation(conversation)
+  const detectedPhone = phoneResolution.phone
   const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
 
   // Business rule: ignore Facebook conversations that do not contain a phone number.
@@ -715,4 +759,92 @@ export async function syncFacebookConversationsIncremental(
     maxUpdatedTimeIso,
     nextJrCrmRoundRobinOffset: jrCrmRoundRobinOffset,
   }
+}
+
+export async function fetchFacebookLatestMonitor(
+  limit = 100,
+  options: { watermarkIso?: string | null } = {},
+): Promise<FacebookLatestMonitorItem[]> {
+  const { pageId } = getFacebookConfig()
+  if (!pageId || !isFacebookConfigured()) {
+    return []
+  }
+
+  const watermark = options.watermarkIso ? new Date(options.watermarkIso) : null
+  const watermarkMs = watermark && !Number.isNaN(watermark.getTime()) ? watermark.getTime() : null
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 100) : 100
+  const { conversations } = await fetchFacebookConversationPage({ limit: safeLimit, afterCursor: null })
+
+  const newestFirstConversations = conversations
+    .slice()
+    .sort((a, b) => {
+      const aMs = a.updated_time ? new Date(a.updated_time).getTime() : 0
+      const bMs = b.updated_time ? new Date(b.updated_time).getTime() : 0
+      return bMs - aMs
+    })
+    .slice(0, safeLimit)
+
+  const rows: FacebookLatestMonitorItem[] = []
+  for (const conversation of newestFirstConversations) {
+    const phoneResolution = await extractPhoneFromConversation(conversation)
+    const detectedPhone = phoneResolution.phone
+    const phoneLookupCandidates = detectedPhone ? buildPhoneLookupVariants(detectedPhone) : []
+    const customerName =
+      extractCustomerName(conversation, pageId) ??
+      `Facebook User ${conversation.id?.slice(-6) ?? 'unknown'}`
+
+    const marker = conversation.id ? conversationMarker(conversation.id) : null
+    const updatedMs = conversation.updated_time ? new Date(conversation.updated_time).getTime() : null
+    const isValidUpdatedMs = updatedMs !== null && !Number.isNaN(updatedMs)
+    const isNewerThanWatermark =
+      watermarkMs === null || (isValidUpdatedMs && updatedMs > watermarkMs)
+
+    const existingConversationLead = marker
+      ? await prisma.lead.findFirst({
+          where: {
+            source: { equals: 'Facebook', mode: 'insensitive' },
+            remarks: { contains: marker },
+          },
+          select: { id: true },
+        })
+      : null
+
+    const existingPhoneLead =
+      detectedPhone && phoneLookupCandidates.length > 0
+        ? await prisma.lead.findFirst({
+            where: { phone: { in: phoneLookupCandidates } },
+            select: { id: true },
+          })
+        : null
+
+    let selectionReason: FacebookLatestMonitorItem['selectionReason'] = 'selected_for_import'
+    let selectedForImport = true
+
+    if (!detectedPhone) {
+      selectionReason = 'skipped_no_phone'
+      selectedForImport = false
+    } else if (!isNewerThanWatermark) {
+      selectionReason = 'skipped_old_or_already_seen'
+      selectedForImport = false
+    } else if (existingConversationLead) {
+      selectionReason = 'skipped_existing_conversation'
+      selectedForImport = false
+    } else if (existingPhoneLead) {
+      selectionReason = 'skipped_existing_phone'
+      selectedForImport = false
+    }
+
+    rows.push({
+      conversationId: conversation.id,
+      customerName,
+      updatedTime: conversation.updated_time ?? null,
+      hasPhoneNumber: Boolean(detectedPhone),
+      detectedPhone,
+      selectedForImport,
+      selectionReason,
+      phoneSource: phoneResolution.source,
+    })
+  }
+
+  return rows
 }
