@@ -242,6 +242,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logLeadAssignmentChanged, logLeadStatusChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 import { formatServerTiming, timeAsync } from '@/lib/server-timing';
+import { requireDatabaseRoles } from '@/lib/authz';
+import {
+  canManagePaymentStatus,
+  ensureDepartmentAssignment,
+  ensureSeniorCrmAssignment,
+  handoffDepartmentForSubStatus,
+  requiresSrCrmAssignment,
+} from '@/lib/lead-handoff';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -489,6 +497,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   // console.log('[DEBUG][lead/:id][PUT] Request received for id:', id);
 
   try {
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+    const actorDepartments = authResult.actor.userDepartments ?? [];
+
     const body = (await request.json()) as UpdateLeadBody;
     const name = toRequiredString(body.name);
     const phone = toRequiredString(body.phone);
@@ -534,8 +548,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
-    const userId = toOptionalString(body.userId);
+    const userId = authResult.actorUserId ?? toOptionalString(body.userId);
     const assignedTo = toOptionalString(body.assignedTo);
+
+    if (!canManagePaymentStatus({ actorDepartments, nextSubStatus: subStatus })) {
+      return NextResponse.json(
+        { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
+      );
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const updatedLead = await tx.lead.update({
@@ -587,6 +608,24 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         });
       }
 
+      if (requiresSrCrmAssignment(stage)) {
+        await ensureSeniorCrmAssignment({
+          tx,
+          leadId: id,
+          actorUserId: userId,
+        });
+      }
+
+      const autoHandoffDepartment = handoffDepartmentForSubStatus(subStatus);
+      if (autoHandoffDepartment) {
+        await ensureDepartmentAssignment({
+          tx,
+          leadId: id,
+          department: autoHandoffDepartment,
+          actorUserId: userId,
+        });
+      }
+
       await autoCompletePendingFollowups(tx, {
         leadId: id,
         userId,
@@ -631,6 +670,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   // console.log('[DEBUG][lead/:id][PATCH] Request received for id:', id);
 
   try {
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+    const actorDepartments = authResult.actor.userDepartments ?? [];
     const body = (await request.json()) as UpdateLeadBody;
 
     const existingLead = await prisma.lead.findFirst({ where: { id } });
@@ -657,7 +701,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
      const stage = toLeadStage(body.stage);
     const subStatus = toLeadSubStatus(body.subStatus) ?? null;
-    const userId = toOptionalString(body.userId);
+    const userId = authResult.actorUserId ?? toOptionalString(body.userId);
 
     const nextStage = stage ?? existingLead.stage;
     const nextSubStatus = body.subStatus !== undefined ? subStatus : existingLead.subStatus;
@@ -666,6 +710,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { success: false, error: 'Invalid subStatus for selected stage' },
         { status: 400 }
+      );
+    }
+    if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
+      return NextResponse.json(
+        { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
       );
     }
 
@@ -706,6 +756,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           userId,
           from: existingLead.stage,
           to: stage,
+        });
+      }
+
+      if (requiresSrCrmAssignment(nextStage)) {
+        await ensureSeniorCrmAssignment({
+          tx,
+          leadId: id,
+          actorUserId: userId,
+        });
+      }
+      const autoHandoffDepartment = handoffDepartmentForSubStatus(nextSubStatus);
+      if (autoHandoffDepartment) {
+        await ensureDepartmentAssignment({
+          tx,
+          leadId: id,
+          department: autoHandoffDepartment,
+          actorUserId: userId,
         });
       }
 

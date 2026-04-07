@@ -7,6 +7,7 @@ import {
   extractNormalizedPhonesSmart,
   formatPhoneForStorage,
 } from '@/lib/phone-normalize'
+import { ensureSeniorCrmAssignment } from '@/lib/lead-handoff'
 
 type InstagramConversation = {
   id: string
@@ -368,6 +369,12 @@ async function importConversationToLead(
         },
       })
     }
+
+    await ensureSeniorCrmAssignment({
+      tx,
+      leadId: lead.id,
+      actorUserId: assignee?.id ?? null,
+    })
   })
 
   return { created: true, usedRoundRobin }

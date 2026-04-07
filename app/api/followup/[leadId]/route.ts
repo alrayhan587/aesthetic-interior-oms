@@ -4,6 +4,8 @@ import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { logActivity, logLeadSubStatusChanged } from '@/lib/activity-log-service';
 import { NextRequest, NextResponse } from 'next/server';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { requireDatabaseRoles } from '@/lib/authz';
+import { canManagePaymentStatus } from '@/lib/lead-handoff';
 
 type RouteContext = { params: { leadId: string } | Promise<{ leadId: string }> };
 const debugLog = (...args: unknown[]) => {
@@ -102,11 +104,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   try {
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+
     const body = await request.json();
     const assignedToId = toNonEmptyString(body.assignedToId);
     const followupDate = toDate(body.followupDate);
     const notes = typeof body.notes === 'string' ? body.notes : undefined;
-    const userId = toNonEmptyString(body.userId);
+    const userId = authResult.actorUserId ?? toNonEmptyString(body.userId);
     const requestedSubStatus = toLeadSubStatus(body.subStatus);
 
     // Validation
@@ -144,6 +151,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { success: false, error: 'Invalid subStatus for selected stage' },
         { status: 400 }
+      );
+    }
+    if (
+      requestedSubStatus !== undefined &&
+      !canManagePaymentStatus({
+        actorDepartments: authResult.actor.userDepartments ?? [],
+        nextSubStatus: requestedSubStatus,
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
       );
     }
 

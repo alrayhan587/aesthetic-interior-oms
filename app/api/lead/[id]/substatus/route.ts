@@ -3,6 +3,14 @@ import { LeadSubStatus } from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { logLeadSubStatusChanged } from '@/lib/activity-log-service';
+import { requireDatabaseRoles } from '@/lib/authz';
+import {
+  canManagePaymentStatus,
+  ensureDepartmentAssignment,
+  ensureSeniorCrmAssignment,
+  handoffDepartmentForSubStatus,
+  requiresSrCrmAssignment,
+} from '@/lib/lead-handoff';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -41,6 +49,11 @@ function toLeadSubStatus(value: unknown): LeadSubStatus | null | undefined {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    const authResult = await requireDatabaseRoles([]);
+    if (!authResult.ok) {
+      return authResult.response;
+    }
+
     const leadId = await resolveLeadId(context);
     if (!leadId) {
       return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
@@ -48,8 +61,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const body = (await request.json()) as UpdateLeadSubStatusBody;
     const nextSubStatus = toLeadSubStatus(body.subStatus);
-    const userId = toOptionalString(body.userId);
+    const userId = authResult.actorUserId ?? toOptionalString(body.userId);
     const reason = toOptionalString(body.reason);
+    const actorDepartments = authResult.actor.userDepartments ?? [];
 
     if (nextSubStatus === undefined) {
       return NextResponse.json(
@@ -73,6 +87,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
+    if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
+      return NextResponse.json(
+        { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
+      );
+    }
 
     const updatedLead = await prisma.$transaction(async (tx) => {
       const updated = await tx.lead.update({
@@ -87,6 +107,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           from: existingLead.subStatus,
           to: nextSubStatus,
           reason,
+        });
+      }
+
+      if (requiresSrCrmAssignment(existingLead.stage)) {
+        await ensureSeniorCrmAssignment({
+          tx,
+          leadId,
+          actorUserId: userId,
+        });
+      }
+
+      const autoHandoffDepartment = handoffDepartmentForSubStatus(nextSubStatus);
+      if (autoHandoffDepartment) {
+        await ensureDepartmentAssignment({
+          tx,
+          leadId,
+          department: autoHandoffDepartment,
+          actorUserId: userId,
         });
       }
 

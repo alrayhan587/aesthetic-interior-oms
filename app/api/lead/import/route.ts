@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { LeadAssignmentDepartment, LeadStage, Prisma } from '@/generated/prisma/client'
 import { logLeadCreated } from '@/lib/activity-log-service'
+import { ensureSeniorCrmAssignment } from '@/lib/lead-handoff'
 
 export const runtime = 'nodejs'
 export const preferredRegion = 'sin1'
@@ -421,6 +422,18 @@ export async function POST(request: NextRequest) {
     select: { id: true, email: true },
   })
   const assignableByEmail = new Map(assignableUsers.map((user) => [user.email.toLowerCase(), user.id]))
+  const fallbackSrCrm = await prisma.user.findFirst({
+    where: {
+      isActive: true,
+      userDepartments: {
+        some: {
+          department: { name: 'SR_CRM' },
+        },
+      },
+    },
+    select: { id: true },
+    orderBy: [{ fullName: 'asc' }, { created_at: 'asc' }],
+  })
 
   const createdLeadIds: string[] = []
   let skipped = 0
@@ -461,6 +474,13 @@ export async function POST(request: NextRequest) {
             },
           })
         }
+
+        await ensureSeniorCrmAssignment({
+          tx,
+          leadId: lead.id,
+          preferredUserId: fallbackSrCrm?.id ?? null,
+          actorUserId: authResult.actorUserId,
+        })
 
         await logLeadCreated(tx, {
           leadId: lead.id,

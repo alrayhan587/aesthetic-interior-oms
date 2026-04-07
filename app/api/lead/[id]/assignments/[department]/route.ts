@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { LeadStage } from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
@@ -206,6 +207,7 @@ export async function PUT(
       'VISIT_TEAM',
       'JR_ARCHITECT',
       'VISUALIZER_3D',
+      'ACCOUNTS',
     ];
     if (!validDepartments.includes(department)) {
       return NextResponse.json(
@@ -217,7 +219,7 @@ export async function PUT(
     // Verify lead exists
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, stage: true },
     });
 
     if (!lead) {
@@ -335,6 +337,7 @@ export async function DELETE(
       'VISIT_TEAM',
       'JR_ARCHITECT',
       'VISUALIZER_3D',
+      'ACCOUNTS',
     ];
     if (!validDepartments.includes(department)) {
       return NextResponse.json(
@@ -346,7 +349,7 @@ export async function DELETE(
     // Verify lead exists
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, stage: true },
     });
 
     if (!lead) {
@@ -376,6 +379,14 @@ export async function DELETE(
         throw new Error('Assignment not found');
       }
       debugLog('📊 [DELETE /api/lead/[id]/assignments/[department]] - Found assignment:', assignment);
+
+      if (
+        department === 'SR_CRM' &&
+        lead.stage !== LeadStage.CONVERSION &&
+        lead.stage !== LeadStage.CLOSED
+      ) {
+        throw new Error('SR_CRM assignment is required until lead reaches CONVERSION or CLOSED');
+      }
 
       // Delete the assignment
       debugLog('🗑️ [DELETE /api/lead/[id]/assignments/[department]] - Deleting');

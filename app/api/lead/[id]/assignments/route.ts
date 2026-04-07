@@ -136,6 +136,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       'VISIT_TEAM',
       'JR_ARCHITECT',
       'VISUALIZER_3D',
+      'ACCOUNTS',
     ];
     debugLog('🔎 [POST /api/lead/[id]/assignments] - Validating department');
     if (!validDepartments.includes(department)) {

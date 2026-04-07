@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { MainLayout } from "@/components/layout/mainlayout";
 
 const CRM_DASHBOARD = "/crm/jr/dashboard";
+const SR_CRM_DASHBOARD = "/crm/sr/dashboard";
 const VISIT_DASHBOARD = "/visit-team/visit-dashboard";
 
 export const runtime = "nodejs";
@@ -47,6 +48,10 @@ export default async function AdminLayout({
 
   if (departmentNames.has("JR_CRM")) {
     redirect(CRM_DASHBOARD);
+  }
+
+  if (departmentNames.has("SR_CRM")) {
+    redirect(SR_CRM_DASHBOARD);
   }
 
   if (departmentNames.has("VISIT_TEAM")) {

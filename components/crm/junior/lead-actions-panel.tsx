@@ -293,12 +293,36 @@ export function LeadActionsPanel({
     () => ({
       NEW: [],
       NUMBER_COLLECTED: [],
+      DISCOVERY: ['FIRST_MEETING_SET', 'PROPOSAL_SENT', 'LAYOUT_REVISION', 'PROJECT_DROPPED'],
+      CAD_PHASE: ['CAD_ASSIGNED', 'CAD_WORKING', 'CAD_COMPLETED', 'CAD_APPROVED'],
+      QUOTATION_PHASE: [
+        'QUOTATION_ASSIGNED',
+        'QUOTATION_WORKING',
+        'QUOTATION_COMPLETED',
+        'QUOTATION_CORRECTION',
+      ],
+      BUDGET_PHASE: [
+        'BUDGET_MEETING_SET',
+        'CLIENT_CONFIRMED',
+        'CLIENT_PARTIALLY_PAID',
+        'CLIENT_FULL_PAID',
+        'REJECTED_OFFER',
+      ],
+      VISUALIZATION_PHASE: [
+        'VISUAL_ASSIGNED',
+        'VISUAL_WORKING',
+        'VISUAL_COMPLETED',
+        'CLIENT_APPROVED',
+        'VISUAL_CORRECTION',
+      ],
+      CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID', 'CLIENT_APPROVED'],
       CONTACT_ATTEMPTED: ['NO_ANSWER'],
       NURTURING: ['WARM_LEAD', 'FUTURE_CLIENT'],
       VISIT_SCHEDULED: [],
       VISIT_RESCHEDULED: [],
+      VISIT_COMPLETED: [],
       VISIT_CANCELLED: [],
-      CLOSED: ['SMALL_BUDGET', 'INVALID', 'NOT_INTERESTED', 'LOST', 'DEAD_LEAD'],
+      CLOSED: ['PROJECT_DROPPED', 'REJECTED_OFFER', 'SMALL_BUDGET', 'INVALID', 'NOT_INTERESTED', 'LOST', 'DEAD_LEAD'],
     }),
     [],
   )
@@ -308,13 +332,19 @@ export function LeadActionsPanel({
   const stageOrder: Record<string, number> = {
     NEW: 0,
     NUMBER_COLLECTED: 1,
-    CONTACT_ATTEMPTED: 2,
-    NURTURING: 3,
-    VISIT_SCHEDULED: 4,
-    VISIT_RESCHEDULED: 5,
-    VISIT_COMPLETED: 6,
-    VISIT_CANCELLED: 7,
-    CLOSED: 8,
+    DISCOVERY: 2,
+    CAD_PHASE: 3,
+    QUOTATION_PHASE: 4,
+    BUDGET_PHASE: 5,
+    VISUALIZATION_PHASE: 6,
+    CONVERSION: 7,
+    CONTACT_ATTEMPTED: 8,
+    NURTURING: 9,
+    VISIT_SCHEDULED: 10,
+    VISIT_RESCHEDULED: 11,
+    VISIT_COMPLETED: 12,
+    VISIT_CANCELLED: 13,
+    CLOSED: 14,
   }
   const originalStageRank = stageOrder[originalStage] ?? -1
   const selectedStageRank = stageOrder[stage] ?? -1
@@ -364,12 +394,19 @@ export function LeadActionsPanel({
     'VISIT_TEAM',
     'JR_ARCHITECT',
     'VISUALIZER_3D',
+    'ACCOUNTS',
   ]
 
   const formatLabel = (value: string) => value.replace(/_/g, ' ')
   const defaultReasonByStage: Record<string, string> = {
     NEW: 'Lead has been moved to new.',
     NUMBER_COLLECTED: 'Number has been collected.',
+    DISCOVERY: 'Discovery workflow has started.',
+    CAD_PHASE: 'Lead has moved to CAD phase.',
+    QUOTATION_PHASE: 'Lead has moved to quotation phase.',
+    BUDGET_PHASE: 'Lead has moved to budget phase.',
+    VISUALIZATION_PHASE: 'Lead has moved to visualization phase.',
+    CONVERSION: 'Lead has moved to conversion phase.',
     CONTACT_ATTEMPTED: 'Contact has been attempted.',
     NURTURING: 'Lead has been moved to nurturing for follow-up.',
     VISIT_SCHEDULED: 'Visit has been scheduled.',
@@ -1518,6 +1555,12 @@ export function LeadActionsPanel({
               <SelectItem value="NUMBER_COLLECTED">
                 Number Collected
               </SelectItem>
+              <SelectItem value="DISCOVERY">Discovery</SelectItem>
+              <SelectItem value="CAD_PHASE">CAD Phase</SelectItem>
+              <SelectItem value="QUOTATION_PHASE">Quotation Phase</SelectItem>
+              <SelectItem value="BUDGET_PHASE">Budget Phase</SelectItem>
+              <SelectItem value="VISUALIZATION_PHASE">Visualization Phase</SelectItem>
+              <SelectItem value="CONVERSION">Conversion</SelectItem>
               <SelectItem value="CONTACT_ATTEMPTED">
                 Contact Attempted
               </SelectItem>

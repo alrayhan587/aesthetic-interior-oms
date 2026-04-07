@@ -7,6 +7,7 @@ import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 import { isFacebookConfigured } from '@/lib/facebook';
 import { maybeRunFacebookFallbackSync, runFacebookSyncWithControl } from '@/lib/facebook-sync-control';
 import { maybeRunInstagramFallbackSync } from '@/lib/instagram-sync-control';
+import { ensureSeniorCrmAssignment } from '@/lib/lead-handoff';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -199,6 +200,7 @@ export async function GET(request: NextRequest) {
     const departmentNames = new Set(authResult.actor.userDepartments ?? []);
     const isJuniorCrm = departmentNames.has('JR_CRM');
     const isAdmin = departmentNames.has('ADMIN');
+    const isSeniorCrm = departmentNames.has('SR_CRM');
 
     const baseWhere: Prisma.LeadWhereInput = isAdmin
       ? {}
@@ -211,6 +213,15 @@ export async function GET(request: NextRequest) {
               },
             },
           }
+        : isSeniorCrm
+          ? {
+              assignments: {
+                some: {
+                  userId: authResult.actorUserId,
+                  department: LeadAssignmentDepartment.SR_CRM,
+                },
+              },
+            }
         : {};
 
     const searchParams = request.nextUrl.searchParams;
@@ -465,6 +476,27 @@ export async function POST(request: NextRequest) {
       jrCrmAssigneeId = authResult.actorUserId;
     }
 
+    let srCrmAssigneeId: string | null = null;
+    if (departmentNames.has('SR_CRM')) {
+      srCrmAssigneeId = authResult.actorUserId;
+    } else {
+      const fallbackSrCrm = await prisma.user.findFirst({
+        where: {
+          isActive: true,
+          userDepartments: {
+            some: {
+              department: {
+                name: 'SR_CRM',
+              },
+            },
+          },
+        },
+        select: { id: true },
+        orderBy: [{ fullName: 'asc' }, { created_at: 'asc' }],
+      });
+      srCrmAssigneeId = fallbackSrCrm?.id ?? null;
+    }
+
     if (phone) {
       // Check if a lead with the same phone already exists to prevent duplicates
       // console.log('🔄 [POST /api/lead] - Checking for duplicate phone');
@@ -540,6 +572,13 @@ export async function POST(request: NextRequest) {
           },
         });
       }
+
+      await ensureSeniorCrmAssignment({
+        tx,
+        leadId: newLead.id,
+        preferredUserId: srCrmAssigneeId,
+        actorUserId: authResult.actorUserId,
+      });
 
       // Log the lead creation activity with the authenticated user
       // console.log('📋 [POST /api/lead] - Logging lead creation activity');

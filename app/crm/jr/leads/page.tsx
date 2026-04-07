@@ -44,8 +44,39 @@ import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { LeadDateRangeFilter, type LeadDatePreset } from '@/components/crm/shared/lead-date-range-filter'
 
 const PAGE_SIZE = 20
-const stages = ['NEW', 'NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_RESCHEDULED', 'VISIT_COMPLETED', 'VISIT_CANCELLED', 'CLOSED']
-const stageGridStages = ['NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_SCHEDULED', 'VISIT_RESCHEDULED', 'VISIT_COMPLETED', 'VISIT_CANCELLED', 'CLOSED']
+const stages = [
+  'NEW',
+  'NUMBER_COLLECTED',
+  'DISCOVERY',
+  'CAD_PHASE',
+  'QUOTATION_PHASE',
+  'BUDGET_PHASE',
+  'VISUALIZATION_PHASE',
+  'CONVERSION',
+  'CONTACT_ATTEMPTED',
+  'NURTURING',
+  'VISIT_SCHEDULED',
+  'VISIT_RESCHEDULED',
+  'VISIT_COMPLETED',
+  'VISIT_CANCELLED',
+  'CLOSED',
+]
+const stageGridStages = [
+  'NUMBER_COLLECTED',
+  'DISCOVERY',
+  'CAD_PHASE',
+  'QUOTATION_PHASE',
+  'BUDGET_PHASE',
+  'VISUALIZATION_PHASE',
+  'CONVERSION',
+  'CONTACT_ATTEMPTED',
+  'NURTURING',
+  'VISIT_SCHEDULED',
+  'VISIT_RESCHEDULED',
+  'VISIT_COMPLETED',
+  'VISIT_CANCELLED',
+  'CLOSED',
+]
 const sourceFilterOptions = ['ALL', 'WhatsApp', 'Facebook', 'Instagram', 'Website', 'Manual', 'Referral']
 const assignmentFilterOptions = ['ALL', 'UNASSIGNED']
 
@@ -54,6 +85,12 @@ type ViewMode = 'list' | 'card'
 const stageColors: Record<string, string> = {
   NEW: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100',
   NUMBER_COLLECTED: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200',
+  DISCOVERY: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200',
+  CAD_PHASE: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200',
+  QUOTATION_PHASE: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
+  BUDGET_PHASE: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
+  VISUALIZATION_PHASE: 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200',
+  CONVERSION: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
   CONTACT_ATTEMPTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
   NURTURING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
   VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
@@ -66,6 +103,12 @@ const stageColors: Record<string, string> = {
 const stageStatConfig: Record<string, { icon: typeof CircleDot; tint: string }> = {
   NEW: { icon: CircleDot, tint: 'text-slate-600 bg-slate-100 dark:bg-slate-900/40 dark:text-slate-200' },
   NUMBER_COLLECTED: { icon: PhoneCall, tint: 'text-cyan-700 bg-cyan-100 dark:bg-cyan-900/40 dark:text-cyan-200' },
+  DISCOVERY: { icon: Handshake, tint: 'text-violet-700 bg-violet-100 dark:bg-violet-900/40 dark:text-violet-200' },
+  CAD_PHASE: { icon: LayoutGrid, tint: 'text-orange-700 bg-orange-100 dark:bg-orange-900/40 dark:text-orange-200' },
+  QUOTATION_PHASE: { icon: List, tint: 'text-sky-700 bg-sky-100 dark:bg-sky-900/40 dark:text-sky-200' },
+  BUDGET_PHASE: { icon: CircleDot, tint: 'text-teal-700 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-200' },
+  VISUALIZATION_PHASE: { icon: LayoutGrid, tint: 'text-pink-700 bg-pink-100 dark:bg-pink-900/40 dark:text-pink-200' },
+  CONVERSION: { icon: CheckCircle2, tint: 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200' },
   CONTACT_ATTEMPTED: { icon: Handshake, tint: 'text-blue-700 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-200' },
   NURTURING: { icon: Sprout, tint: 'text-yellow-700 bg-yellow-100 dark:bg-yellow-900/40 dark:text-yellow-200' },
   VISIT_SCHEDULED: { icon: CalendarCheck, tint: 'text-purple-700 bg-purple-100 dark:bg-purple-900/40 dark:text-purple-200' },

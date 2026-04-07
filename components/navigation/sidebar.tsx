@@ -76,6 +76,25 @@ const navigationGroups: Record<string, NavGroup[]> = {
       ],
     },
   ],
+  'Senior CRM': [
+    {
+      id: 'sr-overview',
+      label: 'Overview',
+      defaultOpen: true,
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/sr/dashboard' }],
+    },
+    {
+      id: 'sr-workflow',
+      label: 'Workflow',
+      defaultOpen: true,
+      items: [
+        { icon: Users, label: 'Lead Journey', href: '/crm/sr/lead-journey' },
+        { icon: CalendarClock, label: 'Meetings', href: '/crm/sr/meetings' },
+        { icon: ClipboardList, label: 'Handoff Center', href: '/crm/sr/handoffs' },
+        { icon: CheckSquare, label: 'Conversion & Payment', href: '/crm/sr/conversion-payment' },
+      ],
+    },
+  ],
   'Visit Team': [
     {
       id: 'visit-overview',

@@ -25,6 +25,7 @@ const DEFAULT_REDIRECT = "/";
 const DEPARTMENT_ROUTES: Record<string, string> = {
   ADMIN: "/crm/admin/dashboard",
   JR_CRM: "/crm/jr/dashboard",
+  SR_CRM: "/crm/sr/dashboard",
   VISIT_TEAM: "/visit-team/visit-dashboard",
 };
 

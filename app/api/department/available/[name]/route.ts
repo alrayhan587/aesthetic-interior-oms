@@ -9,6 +9,7 @@ const VALID_DEPARTMENTS = [
   'VISIT_TEAM',
   'JR_ARCHITECT',
   'VISUALIZER_3D',
+  'ACCOUNTS',
 ] as const;
 
 // GET - Fetch all users in a specific department (by name)

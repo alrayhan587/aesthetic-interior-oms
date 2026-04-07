@@ -9,6 +9,7 @@ export const metadata = {
 };
 
 const CRM_DASHBOARD = "/crm/jr/dashboard";
+const SR_CRM_DASHBOARD = "/crm/sr/dashboard";
 
 export const runtime = "nodejs";
 export const preferredRegion = "sin1";
@@ -51,6 +52,10 @@ export default async function VisitsLayout({
 
   if (departmentNames.has("JR_CRM")) {
     redirect(CRM_DASHBOARD);
+  }
+
+  if (departmentNames.has("SR_CRM")) {
+    redirect(SR_CRM_DASHBOARD);
   }
 
   redirect("/");

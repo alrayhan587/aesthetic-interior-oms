@@ -74,6 +74,7 @@ const getDepartmentPermissionMap = (department: Department): RolePermissionMap =
     '3D_VISUALIZER': 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200',
     'QUOTATION_TEAM': 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200',
     'VISIT_TEAM': 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200',
+    'ACCOUNTS': 'bg-lime-100 dark:bg-lime-900/40 text-lime-800 dark:text-lime-200',
   }
 
   const departmentPermissionsMap: Record<string, string[]> = {
@@ -101,6 +102,9 @@ const getDepartmentPermissionMap = (department: Department): RolePermissionMap =
     ],
     'VISIT_TEAM': [
       'view_leads', 'view_followups', 'view_visits', 'update_visit_result'
+    ],
+    'ACCOUNTS': [
+      'view_leads', 'view_followups', 'view_activity_log'
     ],
   }
 

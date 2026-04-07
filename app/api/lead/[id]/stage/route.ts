@@ -5,6 +5,13 @@ import { isSubStatusAllowedForStage } from '@/lib/lead-stage';
 import { logLeadStageChanged, logLeadSubStatusChanged } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import {
+  canManagePaymentStatus,
+  ensureDepartmentAssignment,
+  ensureSeniorCrmAssignment,
+  handoffDepartmentForSubStatus,
+  requiresSrCrmAssignment,
+} from '@/lib/lead-handoff';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -65,6 +72,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return authResult.response;
     }
     const userId = authResult.actorUserId;
+    const actorDepartments = authResult.actor.userDepartments ?? [];
     debugLog('🔐 [lead/:id/stage][PATCH] - Auth verified for user:', userId);
     
     const leadId = await resolveLeadId(context);
@@ -105,6 +113,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
+    if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
+      return NextResponse.json(
+        { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
+      );
+    }
 
     const updatedLead = await prisma.$transaction(async (tx) => {
       const updated = await tx.lead.update({
@@ -132,6 +146,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           from: existingLead.subStatus,
           to: nextSubStatus,
           reason,
+        });
+      }
+
+      if (requiresSrCrmAssignment(nextStage)) {
+        await ensureSeniorCrmAssignment({
+          tx,
+          leadId,
+          actorUserId: userId,
+        });
+      }
+
+      const autoHandoffDepartment = handoffDepartmentForSubStatus(nextSubStatus);
+      if (autoHandoffDepartment) {
+        await ensureDepartmentAssignment({
+          tx,
+          leadId,
+          department: autoHandoffDepartment,
+          actorUserId: userId,
         });
       }
 
