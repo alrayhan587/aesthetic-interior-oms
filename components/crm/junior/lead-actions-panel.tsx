@@ -22,9 +22,17 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { User, TrendingUp, Plus, Mail, MessageCircle } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
+import {
+  budgetRangeOptions,
+  clientMoodOptions,
+  clientPersonalityOptions,
+  clientPotentialityOptions,
+  projectTypeOptions,
+  stylePreferenceOptions,
+  urgencyOptions,
+} from '@/lib/visit-result-options'
 
 type Assignment = {
   id: string
@@ -171,6 +179,7 @@ function formatDateToLocalHourInput(date: Date): string {
 
 const dateTimeInputClassName =
   'dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-80 dark:[&::-webkit-calendar-picker-indicator]:invert dark:[&::-webkit-calendar-picker-indicator]:brightness-200'
+const selectUnsetValue = '__UNSET__'
 
 export function LeadActionsPanel({
   leadId,
@@ -458,12 +467,32 @@ export function LeadActionsPanel({
       .then((res) => res.json())
       .then((payload) => {
         if (payload.success && Array.isArray(payload.data)) {
-          setLeadVisits(payload.data)
+          const nextVisits = payload.data as LeadVisitRecord[]
+          setLeadVisits(nextVisits)
+          const latestVisit = nextVisits[0]
+          if (latestVisit?.assignedTo) {
+            setScheduledVisitCard({
+              id: latestVisit.id,
+              scheduledAt: latestVisit.scheduledAt,
+              location: latestVisit.location,
+              projectSqft: latestVisit.projectSqft ?? null,
+              projectStatus: latestVisit.projectStatus ?? null,
+              notes: latestVisit.notes ?? null,
+              assignedToName: latestVisit.assignedTo.fullName,
+              assignedToEmail: latestVisit.assignedTo.email,
+            })
+          } else {
+            setScheduledVisitCard(null)
+          }
         } else {
           setLeadVisits([])
+          setScheduledVisitCard(null)
         }
       })
-      .catch(() => setLeadVisits([]))
+      .catch(() => {
+        setLeadVisits([])
+        setScheduledVisitCard(null)
+      })
       .finally(() => setLeadVisitsLoading(false))
   }, [leadId])
 
@@ -525,7 +554,6 @@ export function LeadActionsPanel({
   const canManageSupportForVisit = useCallback(
     (visit: LeadVisitRecord) => {
       if (!currentUserId) return false
-      if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
       return visit.assignedTo?.id === currentUserId
     },
     [currentUserId],
@@ -591,6 +619,26 @@ export function LeadActionsPanel({
       setSupportDialogError(message)
     } finally {
       setSavingSupportMember(false)
+    }
+  }
+
+  const handleRemoveSupportMember = async (visitId: string, supportUserId: string) => {
+    try {
+      const response = await fetch(
+        `/api/visit-schedule/${visitId}/supports?supportUserId=${encodeURIComponent(supportUserId)}`,
+        {
+          method: 'DELETE',
+        },
+      )
+      const payload = await response.json()
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Failed to remove support member')
+      }
+      toast.success('Support member removed.')
+      refreshLeadVisits()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to remove support member'
+      toast.error(message)
     }
   }
 
@@ -1310,6 +1358,10 @@ export function LeadActionsPanel({
       setSelectedUserId('')
       setDepartmentUsers([])
       onAssignmentsRefresh()
+      if (department === 'VISIT_TEAM') {
+        refreshLeadVisits()
+        onLeadRefresh?.()
+      }
       onFollowupRefresh?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save assignment.'
@@ -1781,18 +1833,29 @@ export function LeadActionsPanel({
                     <div className="mt-1 space-y-1">
                       {(visit.supportAssignments ?? []).map((supportItem) => (
                         <div key={supportItem.id} className="flex items-center justify-between gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            {supportItem.supportUser.fullName}
-                          </p>
-                          <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              supportItem.result
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {supportItem.result ? 'Submitted' : 'Pending'}
-                          </span>
+                          <p className="text-xs text-muted-foreground">{supportItem.supportUser.fullName}</p>
+                          <div className="flex items-center gap-1">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                supportItem.result
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}
+                            >
+                              {supportItem.result ? 'Submitted' : 'Pending'}
+                            </span>
+                            {canManageSupportForVisit(visit) ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[10px]"
+                                onClick={() => void handleRemoveSupportMember(visit.id, supportItem.supportUserId)}
+                              >
+                                Remove
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1808,7 +1871,7 @@ export function LeadActionsPanel({
                         className="h-7 px-2 text-[11px]"
                         onClick={() => void openSupportDialog(visit)}
                       >
-                        Add Support Member
+                        Manage Support Members
                       </Button>
                     </div>
                   ) : null}
@@ -2254,105 +2317,162 @@ export function LeadActionsPanel({
 
                 <div className="space-y-2">
                   <Label>Client mood (optional)</Label>
-                  <Tabs
-                    value={visitResultClientMood}
-                    onValueChange={setVisitResultClientMood}
-                    className="w-full"
+                  <Select
+                    value={visitResultClientMood || selectUnsetValue}
+                    onValueChange={(value) =>
+                      setVisitResultClientMood(value === selectUnsetValue ? '' : value)
+                    }
                   >
-                    <TabsList className="grid w-full grid-cols-4">
-                      <TabsTrigger value="HAPPY">Happy</TabsTrigger>
-                      <TabsTrigger value="NEUTRAL">Neutral</TabsTrigger>
-                      <TabsTrigger value="CONCERNED">Concerned</TabsTrigger>
-                      <TabsTrigger value="UNSURE">Unsure</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select client mood" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={selectUnsetValue}>None</SelectItem>
+                      {clientMoodOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex flex-col">
+                            <span>{option.label}</span>
+                            {option.description ? (
+                              <span className="text-xs text-muted-foreground">{option.description}</span>
+                            ) : null}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Potentiality / Hotness</Label>
-                    <select
-                      value={visitResultClientPotentiality}
-                      onChange={(event) => setVisitResultClientPotentiality(event.target.value)}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    <Select
+                      value={visitResultClientPotentiality || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultClientPotentiality(value === selectUnsetValue ? '' : value)
+                      }
                     >
-                      <option value="">Select</option>
-                      <option value="HOT">Hot (Immediate)</option>
-                      <option value="WARM">Warm (3-6 months)</option>
-                      <option value="COLD">Cold (Long-term)</option>
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select potentiality" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {clientPotentialityOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Project Type</Label>
-                    <select
-                      value={visitResultProjectType}
-                      onChange={(event) => setVisitResultProjectType(event.target.value)}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    <Select
+                      value={visitResultProjectType || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultProjectType(value === selectUnsetValue ? '' : value)
+                      }
                     >
-                      <option value="">Select</option>
-                      <option value="DUPLEX">Duplex</option>
-                      <option value="APARTMENT">Apartment</option>
-                      <option value="TRIPLEX">Triplex</option>
-                      <option value="VILLA">Villa</option>
-                      <option value="OFFICE">Office</option>
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select project type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {projectTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label>Client Personality</Label>
-                    <select
-                      value={visitResultClientPersonality}
-                      onChange={(event) => setVisitResultClientPersonality(event.target.value)}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    <Select
+                      value={visitResultClientPersonality || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultClientPersonality(value === selectUnsetValue ? '' : value)
+                      }
                     >
-                      <option value="">Select</option>
-                      <option value="ANALYTICAL">
-                        Analytical (Compliant/Thinker): Methodical, logical, and detail-oriented.
-                      </option>
-                      <option value="DRIVER">
-                        Driver (Dominant/Assertive): Results-oriented, efficient, and direct.
-                      </option>
-                      <option value="AMIABLE">
-                        Amiable (Supporter): Easy-going, patient, and people-oriented.
-                      </option>
-                      <option value="EXPRESSIVE">
-                        Expressive (Influencer): Enthusiastic, creative, and fast-paced.
-                      </option>
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select client personality" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {clientPersonalityOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex flex-col">
+                              <span>{option.label}</span>
+                              {option.description ? (
+                                <span className="text-xs text-muted-foreground">{option.description}</span>
+                              ) : null}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Budget Range</Label>
-                    <Input
-                      value={visitResultBudgetRange}
-                      onChange={(event) => setVisitResultBudgetRange(event.target.value)}
-                      placeholder="e.g. 20L - 35L"
-                    />
+                    <Select
+                      value={visitResultBudgetRange || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultBudgetRange(value === selectUnsetValue ? '' : value)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select budget range" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {budgetRangeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Timeline</Label>
-                    <select
-                      value={visitResultTimelineUrgency}
-                      onChange={(event) => setVisitResultTimelineUrgency(event.target.value)}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    <Label>Urgency</Label>
+                    <Select
+                      value={visitResultTimelineUrgency || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultTimelineUrgency(value === selectUnsetValue ? '' : value)
+                      }
                     >
-                      <option value="">Select</option>
-                      <option value="IMMEDIATE">Immediate</option>
-                      <option value="THREE_TO_SIX_MONTHS">3-6 months</option>
-                      <option value="MORE_THAN_SIX_MONTHS">&gt; 6 months</option>
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select urgency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {urgencyOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label>Style Preference</Label>
-                    <select
-                      value={visitResultStylePreference}
-                      onChange={(event) => setVisitResultStylePreference(event.target.value)}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    <Select
+                      value={visitResultStylePreference || selectUnsetValue}
+                      onValueChange={(value) =>
+                        setVisitResultStylePreference(value === selectUnsetValue ? '' : value)
+                      }
                     >
-                      <option value="">Select</option>
-                      <option value="MODERN">Modern</option>
-                      <option value="TRADITIONAL">Traditional</option>
-                      <option value="MINIMALIST">Minimalist</option>
-                      <option value="LUXURY">Luxury</option>
-                    </select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select style preference" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={selectUnsetValue}>None</SelectItem>
+                        {stylePreferenceOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

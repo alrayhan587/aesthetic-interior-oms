@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
-import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
+import { logUserAssigned } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { VisitStatus } from '@/generated/prisma/client';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -235,6 +236,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             },
           },
         });
+      }
+
+      if (department === 'VISIT_TEAM') {
+        const visitsToReassign = await tx.visit.findMany({
+          where: {
+            leadId,
+            status: { not: VisitStatus.CANCELLED },
+          },
+          select: { id: true },
+        });
+
+        if (visitsToReassign.length > 0) {
+          const visitIds = visitsToReassign.map((visit) => visit.id);
+          await tx.visit.updateMany({
+            where: { id: { in: visitIds } },
+            data: { assignedToId: userId },
+          });
+
+          // A visit lead cannot also stay as support on the same visit.
+          await tx.visitSupportAssignment.deleteMany({
+            where: {
+              visitId: { in: visitIds },
+              supportUserId: userId,
+            },
+          });
+        }
       }
 
       // Log the assignment activity

@@ -276,6 +276,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         },
       });
 
+      if (visitTeamUserId) {
+        await tx.visitSupportAssignment.deleteMany({
+          where: {
+            visitId: visit.id,
+            supportUserId: visitTeamUserId,
+          },
+        });
+      }
+
       if (visitTeamUserId && visitTeamUserId !== existing.assignedToId) {
         await tx.notification.createMany({
           data: [

@@ -89,7 +89,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       data: {
         assignedLeaderId: visit.assignedToId,
         assignedSupports: visit.supportAssignments,
-        availableMembers: members.filter((member) => member.id !== visit.assignedToId),
+        availableMembers: members.filter(
+          (member) =>
+            member.id !== visit.assignedToId &&
+            !visit.supportAssignments.some((assignment) => assignment.supportUser.id === member.id),
+        ),
       },
     })
   } catch (error) {
@@ -145,7 +149,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         throw new Error('NOT_ASSIGNED_LEADER')
       }
 
-      if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') {
+      if (visit.status === 'CANCELLED') {
         throw new Error('VISIT_LOCKED')
       }
 
@@ -184,7 +188,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Only assigned visit lead can add support members' }, { status: 403 })
     }
     if (error instanceof Error && error.message === 'VISIT_LOCKED') {
-      return NextResponse.json({ success: false, error: 'Cannot change support members for a completed/cancelled visit' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Cannot change support members for a cancelled visit' }, { status: 400 })
     }
     if (error instanceof Error && error.message === 'INVALID_SUPPORT_USER') {
       return NextResponse.json({ success: false, error: 'Support user must be from VISIT_TEAM' }, { status: 400 })
@@ -242,7 +246,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         throw new Error('FORBIDDEN')
       }
 
-      if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') {
+      if (visit.status === 'CANCELLED') {
         throw new Error('VISIT_LOCKED')
       }
 
@@ -273,7 +277,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Not authorized to remove support members' }, { status: 403 })
     }
     if (error instanceof Error && error.message === 'VISIT_LOCKED') {
-      return NextResponse.json({ success: false, error: 'Cannot change support members for a completed/cancelled visit' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Cannot change support members for a cancelled visit' }, { status: 400 })
     }
     if (error instanceof Error && error.message === 'SUPPORT_NOT_FOUND') {
       return NextResponse.json({ success: false, error: 'Support member is not assigned to this visit' }, { status: 404 })
