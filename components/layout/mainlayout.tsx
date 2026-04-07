@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Header } from '@/components/navigation/header'
 import { Sidebar } from '@/components/navigation/sidebar'
 
@@ -15,7 +15,12 @@ export function MainLayout({
   children,
   role = 'JR CRM',
 }: MainLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  useEffect(() => {
+    const isDesktop = window.matchMedia('(min-width: 1024px)').matches
+    setSidebarOpen(isDesktop)
+  }, [])
 
   return (
     <div className="flex h-screen bg-background">

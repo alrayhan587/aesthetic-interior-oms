@@ -141,7 +141,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-50 h-screen w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300 lg:translate-x-0',
+          'fixed top-0 left-0 z-50 h-screen w-64 bg-sidebar text-sidebar-foreground transition-transform duration-300',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -154,7 +154,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="lg:hidden rounded p-1 hover:bg-sidebar-accent"
+            className="rounded p-1 hover:bg-sidebar-accent"
           >
             <X className="w-5 h-5" />
           </button>
@@ -193,7 +193,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                           pathname === item.href ||
                           pathname.startsWith(item.href + '/')
                         return (
-                          <Link key={item.href} href={item.href}>
+                          <Link key={item.href} href={item.href} onClick={() => onOpenChange(false)}>
                             <Button
                               variant={isActive ? 'secondary' : 'ghost'}
                               className={cn(
@@ -239,7 +239,12 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       </aside>
 
       {/* Spacer for desktop */}
-      <div className="hidden lg:block w-64" />
+      <div
+        className={cn(
+          'hidden lg:block transition-all duration-300',
+          open ? 'w-64' : 'w-0',
+        )}
+      />
     </>
   )
 }

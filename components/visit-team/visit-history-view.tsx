@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -232,7 +232,7 @@ function VisitRecordCard({ visit }: { visit: VisitRecord }) {
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="size-3.5" />
-                  {visit.location}
+                  <span className="min-w-0 break-words">{visit.location}</span>
                 </span>
               </div>
               {visit.notes ? (
@@ -269,6 +269,10 @@ export function VisitHistoryView({
   const [statusFilter, setStatusFilter] = useState<'ALL' | VisitStatus>('ALL')
   const [searchTerm, setSearchTerm] = useState('')
   const [datePreset, setDatePreset] = useState<VisitDatePreset>('THIS_MONTH')
+  const [activeTab, setActiveTab] = useState<'overview' | 'upcoming' | 'history'>('overview')
+  const overviewRef = useRef<HTMLDivElement | null>(null)
+  const upcomingRef = useRef<HTMLDivElement | null>(null)
+  const historyRef = useRef<HTMLDivElement | null>(null)
   const initialRange = useMemo(() => getPresetRange('THIS_MONTH'), [])
   const [visitDateFrom, setVisitDateFrom] = useState(initialRange.from)
   const [visitDateTo, setVisitDateTo] = useState(initialRange.to)
@@ -387,11 +391,47 @@ export function VisitHistoryView({
 
   const totalLabel = mode === 'support' ? 'Total Supports' : 'Total Visits'
 
+  const scrollToTabData = (tab: 'overview' | 'upcoming' | 'history') => {
+    requestAnimationFrame(() => {
+      const target =
+        tab === 'overview'
+          ? overviewRef.current
+          : tab === 'upcoming'
+            ? upcomingRef.current
+            : historyRef.current
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  const focusTotal = () => {
+    setStatusFilter('ALL')
+    setActiveTab('overview')
+    scrollToTabData('overview')
+  }
+
+  const focusUpcoming = () => {
+    setStatusFilter('ALL')
+    setActiveTab('upcoming')
+    scrollToTabData('upcoming')
+  }
+
+  const focusCompleted = () => {
+    setStatusFilter('COMPLETED')
+    setActiveTab('history')
+    scrollToTabData('history')
+  }
+
+  const focusCancelled = () => {
+    setStatusFilter('CANCELLED')
+    setActiveTab('history')
+    scrollToTabData('history')
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <CrmPageHeader title={title} subtitle={subtitle} />
 
-      <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-[1440px] overflow-x-hidden px-4 py-6 sm:px-6">
         <div className="space-y-6">
           <div className="flex justify-end">
             <Badge variant={source === 'api' ? 'secondary' : 'outline'}>
@@ -400,7 +440,13 @@ export function VisitHistoryView({
           </div>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            <Card>
+            <Card
+              role="button"
+              tabIndex={0}
+              onClick={focusTotal}
+              onKeyDown={(event) => event.key === 'Enter' && focusTotal()}
+              className="cursor-pointer transition hover:border-primary/40"
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">{totalLabel}</p>
@@ -409,7 +455,13 @@ export function VisitHistoryView({
                 <Users className="size-4 text-muted-foreground" />
               </CardContent>
             </Card>
-            <Card>
+            <Card
+              role="button"
+              tabIndex={0}
+              onClick={focusUpcoming}
+              onKeyDown={(event) => event.key === 'Enter' && focusUpcoming()}
+              className="cursor-pointer transition hover:border-primary/40"
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Upcoming</p>
@@ -418,7 +470,13 @@ export function VisitHistoryView({
                 <Calendar className="size-4 text-muted-foreground" />
               </CardContent>
             </Card>
-            <Card>
+            <Card
+              role="button"
+              tabIndex={0}
+              onClick={focusCompleted}
+              onKeyDown={(event) => event.key === 'Enter' && focusCompleted()}
+              className="cursor-pointer transition hover:border-primary/40"
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Completed</p>
@@ -427,7 +485,13 @@ export function VisitHistoryView({
                 <CheckCircle2 className="size-4 text-success" />
               </CardContent>
             </Card>
-            <Card>
+            <Card
+              role="button"
+              tabIndex={0}
+              onClick={focusCancelled}
+              onKeyDown={(event) => event.key === 'Enter' && focusCancelled()}
+              className="cursor-pointer transition hover:border-primary/40"
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Cancelled</p>
@@ -436,7 +500,13 @@ export function VisitHistoryView({
                 <Ban className="size-4 text-destructive" />
               </CardContent>
             </Card>
-            <Card className="col-span-2 md:col-span-1">
+            <Card
+              role="button"
+              tabIndex={0}
+              onClick={focusCompleted}
+              onKeyDown={(event) => event.key === 'Enter' && focusCompleted()}
+              className="col-span-2 cursor-pointer transition hover:border-primary/40 md:col-span-1"
+            >
               <CardContent className="p-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Completion Rate</p>
@@ -536,23 +606,23 @@ export function VisitHistoryView({
 
           {loading ? <div className="text-sm text-muted-foreground">Loading visits...</div> : null}
 
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList>
-              <TabsTrigger value="overview" className="gap-1.5">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="w-full overflow-x-hidden">
+            <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsTrigger value="overview" className="gap-1.5 shrink-0">
                 <TrendingUp className="size-3.5" />
                 Overview
               </TabsTrigger>
-              <TabsTrigger value="upcoming" className="gap-1.5">
+              <TabsTrigger value="upcoming" className="gap-1.5 shrink-0">
                 <Calendar className="size-3.5" />
                 Upcoming ({upcomingVisits.length})
               </TabsTrigger>
-              <TabsTrigger value="history" className="gap-1.5">
+              <TabsTrigger value="history" className="gap-1.5 shrink-0">
                 <History className="size-3.5" />
                 Lifetime Timeline
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview" className="space-y-4 mt-4">
+            <TabsContent value="overview" className="space-y-4 mt-4" ref={overviewRef}>
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Recent Visit Activity</CardTitle>
@@ -570,7 +640,7 @@ export function VisitHistoryView({
               </Card>
             </TabsContent>
 
-            <TabsContent value="upcoming" className="mt-4">
+            <TabsContent value="upcoming" className="mt-4" ref={upcomingRef}>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                 {upcomingVisits.map((visit) => (
                   <VisitRecordCard key={visit.id} visit={visit} />
@@ -583,7 +653,7 @@ export function VisitHistoryView({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-6 mt-4">
+            <TabsContent value="history" className="space-y-6 mt-4" ref={historyRef}>
               {groupedByMonth.map(([monthKey, monthVisits]) => (
                 <div key={monthKey} className="space-y-3">
                   <div className="flex items-center justify-between">

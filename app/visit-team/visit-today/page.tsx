@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,7 @@ import {
 import { Clock, MapPin, AlertCircle, Loader2, CalendarDays, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import { fetchMeCached } from '@/lib/client-me'
+import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import {
   budgetRangeOptions,
   clientMoodOptions,
@@ -145,6 +146,9 @@ export default function VisitTodayPage() {
   const [supportDialogError, setSupportDialogError] = useState<string | null>(null)
   const [supportDialogLoading, setSupportDialogLoading] = useState(false)
   const [supportDialogSaving, setSupportDialogSaving] = useState(false)
+  const [statFilter, setStatFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED'>('ALL')
+  const [mobileTab, setMobileTab] = useState<'timeline' | 'queue' | 'summary'>('timeline')
+  const queueRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     fetchMeCached()
@@ -211,6 +215,20 @@ export default function VisitTodayPage() {
   const completedCount = todayVisits.filter((visit) => visit.status === 'COMPLETED').length
   const cancelledCount = todayVisits.filter((visit) => visit.status === 'CANCELLED').length
   const pendingCount = Math.max(todayVisits.length - completedCount - cancelledCount, 0)
+  const statFilteredVisits = useMemo(() => {
+    if (statFilter === 'ALL') return todayVisits
+    if (statFilter === 'COMPLETED') return todayVisits.filter((visit) => visit.status === 'COMPLETED')
+    if (statFilter === 'CANCELLED') return todayVisits.filter((visit) => visit.status === 'CANCELLED')
+    return todayVisits.filter((visit) => visit.status !== 'COMPLETED' && visit.status !== 'CANCELLED')
+  }, [todayVisits, statFilter])
+
+  const openStatData = (filter: 'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED') => {
+    setStatFilter(filter)
+    setMobileTab('queue')
+    requestAnimationFrame(() => {
+      queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const visitQueueContent = (
     <Card className="xl:col-span-8 xl:flex xl:flex-col xl:overflow-hidden">
@@ -218,7 +236,7 @@ export default function VisitTodayPage() {
         <CardTitle className="text-base">Visit Queue</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 xl:flex-1 xl:overflow-y-auto">
-        {todayVisits.map((visit, index) => {
+        {statFilteredVisits.map((visit, index) => {
           const visitDate = new Date(visit.scheduledAt)
           return (
             <motion.div
@@ -359,7 +377,7 @@ export default function VisitTodayPage() {
         <div className="relative pl-4">
           <div className="absolute left-[7px] top-1 bottom-1 w-px bg-border" />
           <div className="space-y-3">
-            {todayVisits.map((visit) => {
+            {statFilteredVisits.map((visit) => {
               const visitDate = new Date(visit.scheduledAt)
               return (
                 <div key={`${visit.id}-timeline`} className="relative rounded-lg border border-border bg-card p-3">
@@ -387,6 +405,11 @@ export default function VisitTodayPage() {
         <p>Total planned visits: <span className="font-semibold text-foreground">{todayVisits.length}</span></p>
         <p>Pending actions: <span className="font-semibold text-foreground">{pendingCount}</span></p>
         <p>Finished so far: <span className="font-semibold text-foreground">{completedCount}</span></p>
+        <p>
+          Current view: <span className="font-semibold text-foreground">
+            {statFilter === 'ALL' ? 'All' : statFilter === 'PENDING' ? 'Pending' : statFilter}
+          </span>
+        </p>
       </CardContent>
     </Card>
   )
@@ -680,34 +703,26 @@ export default function VisitTodayPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 sm:py-6">
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35 }}
-          className="mb-6 rounded-2xl border border-border bg-gradient-to-br from-card via-card to-primary/5 p-5 shadow-sm sm:p-6"
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Today&apos;s Visits</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {new Date().toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </p>
-            </div>
-            <Badge variant="secondary" className="w-fit gap-1.5 px-3 py-1 text-xs font-semibold">
-              <CalendarDays className="size-3.5" />
-              {todayVisits.length} {todayVisits.length === 1 ? 'visit' : 'visits'} scheduled
-            </Badge>
-          </div>
-        </motion.div>
+      <CrmPageHeader
+        title="Visit Schedule"
+        subtitle="Track today&apos;s visit queue and complete outcomes quickly."
+      />
+      <div className="mx-auto max-w-[1440px] overflow-x-hidden px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mb-6 flex justify-end">
+          <Badge variant="secondary" className="w-fit gap-1.5 px-3 py-1 text-xs font-semibold">
+            <CalendarDays className="size-3.5" />
+            {todayVisits.length} {todayVisits.length === 1 ? 'visit' : 'visits'} scheduled
+          </Badge>
+        </div>
 
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => openStatData('PENDING')}
+            onKeyDown={(event) => event.key === 'Enter' && openStatData('PENDING')}
+            className="cursor-pointer transition hover:border-primary/40"
+          >
             <CardContent className="flex items-center justify-between p-4">
               <div>
                 <p className="text-xs text-muted-foreground">Pending</p>
@@ -716,7 +731,13 @@ export default function VisitTodayPage() {
               <Clock className="size-4 text-muted-foreground" />
             </CardContent>
           </Card>
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => openStatData('COMPLETED')}
+            onKeyDown={(event) => event.key === 'Enter' && openStatData('COMPLETED')}
+            className="cursor-pointer transition hover:border-primary/40"
+          >
             <CardContent className="flex items-center justify-between p-4">
               <div>
                 <p className="text-xs text-muted-foreground">Completed</p>
@@ -725,7 +746,13 @@ export default function VisitTodayPage() {
               <CheckCircle2 className="size-4 text-chart-2" />
             </CardContent>
           </Card>
-          <Card>
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => openStatData('CANCELLED')}
+            onKeyDown={(event) => event.key === 'Enter' && openStatData('CANCELLED')}
+            className="cursor-pointer transition hover:border-primary/40"
+          >
             <CardContent className="flex items-center justify-between p-4">
               <div>
                 <p className="text-xs text-muted-foreground">Cancelled</p>
@@ -768,7 +795,7 @@ export default function VisitTodayPage() {
         {!loading && !error && todayVisits.length > 0 ? (
           <>
             <div className="xl:hidden">
-              <Tabs defaultValue="timeline" className="w-full">
+              <Tabs value={mobileTab} onValueChange={(value) => setMobileTab(value as typeof mobileTab)} className="w-full">
                 <TabsList className="w-full justify-start overflow-x-auto">
                   <TabsTrigger value="timeline">Quick Timeline</TabsTrigger>
                   <TabsTrigger value="queue">Visit Queue</TabsTrigger>
@@ -777,7 +804,7 @@ export default function VisitTodayPage() {
                 <TabsContent value="timeline" className="mt-4">
                   {quickTimelineContent}
                 </TabsContent>
-                <TabsContent value="queue" className="mt-4">
+                <TabsContent value="queue" className="mt-4" ref={queueRef}>
                   {visitQueueContent}
                 </TabsContent>
                 <TabsContent value="summary" className="mt-4">
@@ -786,7 +813,7 @@ export default function VisitTodayPage() {
               </Tabs>
             </div>
 
-            <div className="hidden xl:grid grid-cols-12 gap-6 xl:h-[calc(100vh-19rem)]">
+            <div className="hidden xl:grid grid-cols-12 gap-6 xl:h-[calc(100vh-19rem)]" ref={queueRef}>
               {visitQueueContent}
               <div className="space-y-6 xl:col-span-4 xl:flex xl:flex-col xl:overflow-hidden">
                 {quickTimelineContent}
@@ -867,8 +894,8 @@ export default function VisitTodayPage() {
       </Dialog>
 
       <Dialog open={completeOpen} onOpenChange={setCompleteOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col rounded-none p-0 sm:top-[50%] sm:left-[50%] sm:h-auto sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <DialogHeader className="border-b px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <DialogTitle className="text-lg">Complete Visit</DialogTitle>
             <DialogDescription className="text-sm">
               {completeRole === 'SUPPORT'
@@ -877,7 +904,7 @@ export default function VisitTodayPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             {completeRole === 'LEAD' &&
             completeVisit &&
             (completeVisit.supportAssignments ?? []).some((item) => !item.result) ? (
@@ -908,198 +935,237 @@ export default function VisitTodayPage() {
                     className="text-sm resize-none"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Attachments (optional)</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                    className="text-sm"
+                  />
+                  {completeFiles.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
+                  ) : null}
+                </div>
               </>
             ) : (
               <>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Summary</Label>
-                  <Textarea
-                    value={completeSummary}
-                    onChange={(event) => setCompleteSummary(event.target.value)}
-                    rows={3}
-                    placeholder="What happened in this visit?"
-                    className="text-sm resize-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Client Mood (optional)</Label>
-                  <Select
-                    value={completeClientMood || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteClientMood(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select client mood" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {clientMoodOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            {option.description ? (
-                              <span className="text-xs text-muted-foreground">{option.description}</span>
-                            ) : null}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <Select
-                    value={completeClientPotentiality || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteClientPotentiality(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select potentiality" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {clientPotentialityOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={completeProjectType || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteProjectType(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select project type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {projectTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="md:col-span-2">
-                    <Select
-                      value={completeClientPersonality || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteClientPersonality(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select client personality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {clientPersonalityOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            <div className="flex flex-col">
-                              <span>{option.label}</span>
-                              {option.description ? (
-                                <span className="text-xs text-muted-foreground">{option.description}</span>
-                              ) : null}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Select
-                    value={completeBudgetRange || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteBudgetRange(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select budget range" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {budgetRangeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={completeTimelineUrgency || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteTimelineUrgency(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select urgency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {urgencyOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={completeStylePreference || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteStylePreference(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select style preference" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {stylePreferenceOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Project Status (optional)</Label>
-                  <select
-                    value={completeProjectStatus}
-                    onChange={(event) => setCompleteProjectStatus(event.target.value)}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="">Select project status</option>
-                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                    <option value="READY">READY</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Note (optional)</Label>
-                  <Textarea
-                    value={completeNote}
-                    onChange={(event) => setCompleteNote(event.target.value)}
-                    rows={2}
-                    placeholder="Add note"
-                    className="text-sm resize-none"
-                  />
-                </div>
+                <Tabs defaultValue="outcome" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="outcome">Outcome</TabsTrigger>
+                    <TabsTrigger value="details">Details</TabsTrigger>
+                    <TabsTrigger value="files">Files</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="outcome" className="mt-4 space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Summary</Label>
+                      <Textarea
+                        value={completeSummary}
+                        onChange={(event) => setCompleteSummary(event.target.value)}
+                        rows={3}
+                        placeholder="What happened in this visit?"
+                        className="text-sm resize-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Client Mood (optional)</Label>
+                      <Select
+                        value={completeClientMood || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteClientMood(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select client mood" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {clientMoodOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              <div className="flex flex-col">
+                                <span>{option.label}</span>
+                                {option.description ? (
+                                  <span className="text-xs text-muted-foreground">{option.description}</span>
+                                ) : null}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Project Status (optional)</Label>
+                      <select
+                        value={completeProjectStatus}
+                        onChange={(event) => setCompleteProjectStatus(event.target.value)}
+                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="">Select project status</option>
+                        <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
+                        <option value="READY">READY</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Note (optional)</Label>
+                      <Textarea
+                        value={completeNote}
+                        onChange={(event) => setCompleteNote(event.target.value)}
+                        rows={2}
+                        placeholder="Add note"
+                        className="text-sm resize-none"
+                      />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="details" className="mt-4">
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Potentiality / Hotness</Label>
+                        <Select
+                          value={completeClientPotentiality || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteClientPotentiality(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select potentiality" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {clientPotentialityOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Project Type</Label>
+                        <Select
+                          value={completeProjectType || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteProjectType(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select project type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {projectTypeOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-sm font-medium">Client Personality</Label>
+                        <Select
+                          value={completeClientPersonality || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteClientPersonality(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select client personality" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {clientPersonalityOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                <div className="flex flex-col">
+                                  <span>{option.label}</span>
+                                  {option.description ? (
+                                    <span className="text-xs text-muted-foreground">{option.description}</span>
+                                  ) : null}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Budget Range</Label>
+                        <Select
+                          value={completeBudgetRange || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteBudgetRange(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select budget range" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {budgetRangeOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Urgency</Label>
+                        <Select
+                          value={completeTimelineUrgency || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteTimelineUrgency(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select urgency" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {urgencyOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-sm font-medium">Style Preference</Label>
+                        <Select
+                          value={completeStylePreference || selectUnsetValue}
+                          onValueChange={(value) =>
+                            setCompleteStylePreference(value === selectUnsetValue ? '' : value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select style preference" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={selectUnsetValue}>None</SelectItem>
+                            {stylePreferenceOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="files" className="mt-4 space-y-2">
+                    <Label className="text-sm font-medium">Attachments (optional)</Label>
+                    <Input
+                      type="file"
+                      multiple
+                      onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                      className="text-sm"
+                    />
+                    {completeFiles.length > 0 ? (
+                      <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
+                    ) : null}
+                  </TabsContent>
+                </Tabs>
               </>
             )}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Attachments (optional)</Label>
-              <Input
-                type="file"
-                multiple
-                onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
-                className="text-sm"
-              />
-              {completeFiles.length > 0 ? (
-                <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
-              ) : null}
-            </div>
             {completeError ? (
               <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {completeError}
@@ -1107,7 +1173,7 @@ export default function VisitTodayPage() {
             ) : null}
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 border-t px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <Button variant="outline" onClick={() => setCompleteOpen(false)} className="text-sm">
               Close
             </Button>

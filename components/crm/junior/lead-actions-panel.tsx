@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { User, TrendingUp, Plus, Mail, MessageCircle } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import {
@@ -2216,8 +2217,8 @@ export function LeadActionsPanel({
       </Dialog>
 
       <Dialog open={visitResultOpen} onOpenChange={handleVisitResultOpenChange}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col rounded-none p-0 sm:top-[50%] sm:left-[50%] sm:h-auto sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <DialogHeader className="border-b px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <DialogTitle>{isVisitResultUpdate ? 'Update visit result' : 'Add visit result'}</DialogTitle>
             <DialogDescription>
               {visitResultRole === 'SUPPORT'
@@ -2230,7 +2231,7 @@ export function LeadActionsPanel({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             <div className="space-y-2">
               <Label>Visit</Label>
               <Select value={visitResultVisitId} onValueChange={setVisitResultVisitId}>
@@ -2302,103 +2303,49 @@ export function LeadActionsPanel({
                     rows={2}
                   />
                 </div>
-              </>
-            ) : (
-              <>
                 <div className="space-y-2">
-                  <Label>Summary</Label>
-                  <Textarea
-                    value={visitResultSummary}
-                    onChange={(event) => setVisitResultSummary(event.target.value)}
-                    rows={4}
-                    placeholder="Write visit outcome summary..."
+                  <Label>Attachments (optional)</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? [])
+                      setVisitResultFiles(files)
+                    }}
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Client mood (optional)</Label>
-                  <Select
-                    value={visitResultClientMood || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setVisitResultClientMood(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select client mood" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {clientMoodOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            {option.description ? (
-                              <span className="text-xs text-muted-foreground">{option.description}</span>
-                            ) : null}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              </>
+            ) : (
+              <Tabs defaultValue="outcome" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="outcome">Outcome</TabsTrigger>
+                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="files">Files</TabsTrigger>
+                </TabsList>
+                <TabsContent value="outcome" className="mt-4 space-y-3">
                   <div className="space-y-2">
-                    <Label>Potentiality / Hotness</Label>
-                    <Select
-                      value={visitResultClientPotentiality || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setVisitResultClientPotentiality(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select potentiality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {clientPotentialityOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Summary</Label>
+                    <Textarea
+                      value={visitResultSummary}
+                      onChange={(event) => setVisitResultSummary(event.target.value)}
+                      rows={4}
+                      placeholder="Write visit outcome summary..."
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Project Type</Label>
+                    <Label>Client mood (optional)</Label>
                     <Select
-                      value={visitResultProjectType || selectUnsetValue}
+                      value={visitResultClientMood || selectUnsetValue}
                       onValueChange={(value) =>
-                        setVisitResultProjectType(value === selectUnsetValue ? '' : value)
+                        setVisitResultClientMood(value === selectUnsetValue ? '' : value)
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select project type" />
+                        <SelectValue placeholder="Select client mood" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {projectTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Client Personality</Label>
-                    <Select
-                      value={visitResultClientPersonality || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setVisitResultClientPersonality(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select client personality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {clientPersonalityOptions.map((option) => (
+                        {clientMoodOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             <div className="flex flex-col">
                               <span>{option.label}</span>
@@ -2412,111 +2359,180 @@ export function LeadActionsPanel({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Budget Range</Label>
-                    <Select
-                      value={visitResultBudgetRange || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setVisitResultBudgetRange(value === selectUnsetValue ? '' : value)
-                      }
-                    >
+                    <Label>Project Status (optional)</Label>
+                    <Select value={visitResultProjectStatus} onValueChange={setVisitResultProjectStatus}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select budget range" />
+                        <SelectValue placeholder="Select project status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {budgetRangeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
+                        <SelectItem value="READY">Ready</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Urgency</Label>
-                    <Select
-                      value={visitResultTimelineUrgency || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setVisitResultTimelineUrgency(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select urgency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {urgencyOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Note (optional)</Label>
+                    <Textarea
+                      value={visitResultNote}
+                      onChange={(event) => setVisitResultNote(event.target.value)}
+                      rows={3}
+                      placeholder="Add note for the lead timeline..."
+                    />
                   </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Style Preference</Label>
-                    <Select
-                      value={visitResultStylePreference || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setVisitResultStylePreference(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select style preference" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {stylePreferenceOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                </TabsContent>
+                <TabsContent value="details" className="mt-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Potentiality / Hotness</Label>
+                      <Select
+                        value={visitResultClientPotentiality || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultClientPotentiality(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select potentiality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {clientPotentialityOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Project Type</Label>
+                      <Select
+                        value={visitResultProjectType || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultProjectType(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {projectTypeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Client Personality</Label>
+                      <Select
+                        value={visitResultClientPersonality || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultClientPersonality(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select client personality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {clientPersonalityOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              <div className="flex flex-col">
+                                <span>{option.label}</span>
+                                {option.description ? (
+                                  <span className="text-xs text-muted-foreground">{option.description}</span>
+                                ) : null}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Budget Range</Label>
+                      <Select
+                        value={visitResultBudgetRange || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultBudgetRange(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select budget range" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {budgetRangeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Urgency</Label>
+                      <Select
+                        value={visitResultTimelineUrgency || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultTimelineUrgency(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select urgency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {urgencyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Style Preference</Label>
+                      <Select
+                        value={visitResultStylePreference || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setVisitResultStylePreference(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select style preference" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {stylePreferenceOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Project Status (optional)</Label>
-                  <Select value={visitResultProjectStatus} onValueChange={setVisitResultProjectStatus}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select project status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="UNDER_CONSTRUCTION">Under Construction</SelectItem>
-                      <SelectItem value="READY">Ready</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Note (optional)</Label>
-                  <Textarea
-                    value={visitResultNote}
-                    onChange={(event) => setVisitResultNote(event.target.value)}
-                    rows={3}
-                    placeholder="Add note for the lead timeline..."
+                </TabsContent>
+                <TabsContent value="files" className="mt-4 space-y-2">
+                  <Label>Attachments (optional)</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? [])
+                      setVisitResultFiles(files)
+                    }}
                   />
-                </div>
-              </>
+                </TabsContent>
+              </Tabs>
             )}
-
-            <div className="space-y-2">
-              <Label>Attachments (optional)</Label>
-              <Input
-                type="file"
-                multiple
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? [])
-                  setVisitResultFiles(files)
-                }}
-              />
-            </div>
 
             {visitResultError ? <p className="text-sm text-destructive">{visitResultError}</p> : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <Button
               onClick={handleSubmitVisitResult}
               disabled={

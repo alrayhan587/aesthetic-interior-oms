@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ import { Plus, MapPin, Clock, ChevronLeft, ChevronRight, Loader2 } from 'lucide-
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { fetchMeCached } from '@/lib/client-me'
 import { toast } from '@/components/ui/sonner'
+import { cn } from '@/lib/utils'
 import {
   budgetRangeOptions,
   clientMoodOptions,
@@ -127,6 +129,11 @@ type VisitsPageProps = {
   blurUnassignedVisitDetails?: boolean
   visitScope?: 'default' | 'all'
   allowManageAssignment?: boolean
+  showScheduleButton?: boolean
+  showSummaryDashboard?: boolean
+  pageTitle?: string
+  pageSubtitle?: string
+  cardNavigatesToLead?: boolean
 }
 
 export function VisitsPageView({
@@ -137,7 +144,13 @@ export function VisitsPageView({
   blurUnassignedVisitDetails = false,
   visitScope = 'default',
   allowManageAssignment = true,
+  showScheduleButton = true,
+  showSummaryDashboard = false,
+  pageTitle = 'Visits',
+  pageSubtitle = 'Schedule and manage site visits',
+  cardNavigatesToLead = false,
 }: VisitsPageProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState('calendar')
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -181,6 +194,10 @@ export function VisitsPageView({
   const [supportDialogMembers, setSupportDialogMembers] = useState<SupportMemberOption[]>([])
   const [supportDialogLoading, setSupportDialogLoading] = useState(false)
   const [supportDialogSaving, setSupportDialogSaving] = useState(false)
+  const [listFilter, setListFilter] = useState<
+    'ALL' | 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED' | 'LEAD' | 'SUPPORT'
+  >('ALL')
+  const listDetailsRef = useRef<HTMLDivElement | null>(null)
 
   const formatLocalDateKey = (date: Date) => {
     const year = date.getFullYear()
@@ -278,7 +295,6 @@ export function VisitsPageView({
     () => filteredVisits.filter((v) => v.status === 'COMPLETED'),
     [filteredVisits]
   )
-
   // Group visits by date (YYYY-MM-DD from ISO string)
   const visitsByDate = useMemo(() => {
     const grouped: Record<string, VisitRecord[]> = {}
@@ -362,6 +378,35 @@ export function VisitsPageView({
     return isSupport ? 'SUPPORT' : 'NONE'
   }
 
+  const rescheduledVisits = useMemo(
+    () => filteredVisits.filter((v) => v.status === 'RESCHEDULED'),
+    [filteredVisits],
+  )
+  const cancelledVisits = useMemo(
+    () => filteredVisits.filter((v) => v.status === 'CANCELLED'),
+    [filteredVisits],
+  )
+  const leadRoleVisits = useMemo(
+    () => filteredVisits.filter((visit) => getVisitRole(visit) === 'LEAD'),
+    [filteredVisits, currentUserId],
+  )
+  const supportRoleVisits = useMemo(
+    () => filteredVisits.filter((visit) => getVisitRole(visit) === 'SUPPORT'),
+    [filteredVisits, currentUserId],
+  )
+  const filteredListVisits = useMemo(() => {
+    if (listFilter === 'ALL') return filteredVisits
+    if (listFilter === 'LEAD') return leadRoleVisits
+    if (listFilter === 'SUPPORT') return supportRoleVisits
+    return filteredVisits.filter((visit) => visit.status === listFilter)
+  }, [filteredVisits, listFilter, leadRoleVisits, supportRoleVisits])
+  const listFilterLabel = useMemo(() => {
+    if (listFilter === 'ALL') return 'All Visits'
+    if (listFilter === 'LEAD') return 'Leading Visits'
+    if (listFilter === 'SUPPORT') return 'Supporting Visits'
+    return `${formatVisitStatus(listFilter)} Visits`
+  }, [listFilter])
+
   const restrictedMessage = blurUnassignedVisitDetails
     ? 'Restricted to assigned team'
     : 'Restricted to assigned CRM'
@@ -369,6 +414,21 @@ export function VisitsPageView({
   const canManageSupportForVisit = (visit: VisitRecord) => {
     if (!currentUserId) return false
     return visit.assignedTo?.id === currentUserId
+  }
+
+  const shouldIgnoreCardNavigation = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false
+    return Boolean(target.closest('button, a, input, textarea, select, [role="button"]'))
+  }
+
+  const openListDetails = (
+    filter: 'ALL' | 'SCHEDULED' | 'COMPLETED' | 'RESCHEDULED' | 'CANCELLED' | 'LEAD' | 'SUPPORT',
+  ) => {
+    setListFilter(filter)
+    setActiveTab('list')
+    requestAnimationFrame(() => {
+      listDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   const openCompleteDialog = (visit: VisitRecord) => {
@@ -680,16 +740,35 @@ export function VisitsPageView({
     const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
     const visitRole = getVisitRole(visit)
     const canComplete = allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE'
+    const canNavigateFromCard = cardNavigatesToLead && isVisible
+
+    const handleCardNavigation = (event: MouseEvent<HTMLDivElement>) => {
+      if (!canNavigateFromCard || shouldIgnoreCardNavigation(event.target)) return
+      router.push(leadHref)
+    }
 
     return (
-      <Card className="mb-3 overflow-hidden relative">
+      <Card
+        className={cn(
+          'relative mb-3 overflow-hidden',
+          canNavigateFromCard ? 'cursor-pointer transition hover:border-primary/40' : '',
+        )}
+      >
         {!isVisible ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-xs font-semibold text-muted-foreground bg-background/70">
             {restrictedMessage}
           </div>
         ) : null}
-        <CardContent className={`pt-6 ${!isVisible ? 'blur-xs pointer-events-none select-none' : ''}`}>
-          <div className="flex items-start justify-between gap-4">
+        <CardContent
+          className={`pt-5 sm:pt-6 ${!isVisible ? 'blur-xs pointer-events-none select-none' : ''}`}
+          onClick={handleCardNavigation}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <span
+              className={`self-start px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColors[visit.status]}`}
+            >
+              {formatVisitStatus(visit.status)}
+            </span>
             <div className="flex-1">
               <div className="flex flex-col gap-1">
                 <h3 className="font-semibold text-foreground">{visit.lead?.name || 'Unknown'}</h3>
@@ -767,16 +846,18 @@ export function VisitsPageView({
                 </div>
                 <div className="pt-1">
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={leadHref}>Open Lead Details</Link>
-                    </Button>
+                    {!cardNavigatesToLead ? (
+                      <Button size="sm" variant="outline" className="w-full sm:w-auto" asChild>
+                        <Link href={leadHref}>Open Lead Details</Link>
+                      </Button>
+                    ) : null}
                     {allowManageAssignment ? (
-                      <Button size="sm" variant="outline" onClick={() => openAssignDialog(visit)}>
+                      <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => openAssignDialog(visit)}>
                         {visit.assignedTo ? 'Reassign' : 'Assign'}
                       </Button>
                     ) : null}
                     {canComplete && (
-                      <Button size="sm" variant="outline" onClick={() => openCompleteDialog(visit)}>
+                      <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => openCompleteDialog(visit)}>
                         {visitRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
                       </Button>
                     )}
@@ -784,11 +865,6 @@ export function VisitsPageView({
                 </div>
               </div>
             </div>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColors[visit.status]}`}
-            >
-              {formatVisitStatus(visit.status)}
-            </span>
           </div>
           {visitRole !== 'NONE' ? (
             <div className="pt-2">
@@ -811,16 +887,79 @@ export function VisitsPageView({
   return (
     <div className="min-h-screen bg-background">
       <CrmPageHeader
-        title="Visits"
-        subtitle="Schedule and manage site visits"
+        title={pageTitle}
+        subtitle={pageSubtitle}
       />
-      <main className="mx-auto max-w-[1440px] px-6 py-6 space-y-6">
-        <div className="flex items-center justify-end">
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          Schedule Visit
-        </Button>
-      </div>
+      <main className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 sm:py-6 space-y-5 sm:space-y-6">
+        {showScheduleButton ? (
+          <div className="flex items-center justify-end">
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              Schedule Visit
+            </Button>
+          </div>
+        ) : null}
+
+        {showSummaryDashboard ? (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            <button
+              type="button"
+              onClick={() => openListDetails('ALL')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">All</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{filteredVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('SCHEDULED')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Pending</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{scheduledVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('COMPLETED')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Completed</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{completedVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('RESCHEDULED')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Rescheduled</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{rescheduledVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('CANCELLED')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Cancelled</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{cancelledVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('LEAD')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Leading</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{leadRoleVisits.length}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => openListDetails('SUPPORT')}
+              className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
+            >
+              <p className="text-[11px] font-medium text-muted-foreground">Supporting</p>
+              <p className="mt-1 text-xl font-semibold text-foreground">{supportRoleVisits.length}</p>
+            </button>
+          </div>
+        ) : null}
 
       {loading ? <p className="text-sm text-muted-foreground">Loading visits...</p> : null}
       {!loading && error ? (
@@ -828,7 +967,7 @@ export function VisitsPageView({
       ) : null}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
           <TabsTrigger value="list">List View</TabsTrigger>
         </TabsList>
@@ -954,10 +1093,19 @@ export function VisitsPageView({
                                   {row.visits.slice(0, 3).map((visit) => {
                                     const isVisible = canViewVisit(visit)
                                     const role = getVisitRole(visit)
+                                    const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
+                                    const canNavigateFromCard = cardNavigatesToLead && isVisible
                                     return (
                                       <div
                                         key={visit.id}
-                                        className="rounded-md border border-border bg-card p-2 text-xs relative overflow-hidden"
+                                        className={cn(
+                                          'rounded-md border border-border bg-card p-2 text-xs relative overflow-hidden',
+                                          canNavigateFromCard ? 'cursor-pointer transition hover:border-primary/40' : '',
+                                        )}
+                                        onClick={(event) => {
+                                          if (!canNavigateFromCard || shouldIgnoreCardNavigation(event.target)) return
+                                          router.push(leadHref)
+                                        }}
                                       >
                                         {!isVisible ? (
                                           <div className="absolute inset-0 z-10 flex items-center justify-center text-[10px] font-semibold text-muted-foreground bg-background/70">
@@ -978,11 +1126,13 @@ export function VisitsPageView({
                                               ? (visit.supportAssignments ?? []).map((item) => item.supportUser.fullName).join(', ')
                                               : 'None'}
                                           </p>
-                                          <div>
-                                            <Button size="sm" variant="outline" asChild className="h-6 px-2 text-[10px]">
-                                              <Link href={`${leadHrefPrefix}/${visit.lead.id}`}>Open Lead</Link>
-                                            </Button>
-                                          </div>
+                                          {!cardNavigatesToLead ? (
+                                            <div>
+                                              <Button size="sm" variant="outline" asChild className="h-6 px-2 text-[10px]">
+                                                <Link href={leadHref}>Open Lead</Link>
+                                              </Button>
+                                            </div>
+                                          ) : null}
                                           {role !== 'NONE' ? (
                                             <p className="text-[10px] font-semibold text-muted-foreground">
                                               {role === 'LEAD' ? 'Leading' : 'Supporting'}
@@ -1036,10 +1186,19 @@ export function VisitsPageView({
                       {visitsByDate[selectedDate].map((visit) => {
                         const isVisible = canViewVisit(visit)
                         const role = getVisitRole(visit)
+                        const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
+                        const canNavigateFromCard = cardNavigatesToLead && isVisible
                         return (
                           <div
                             key={visit.id}
-                            className="p-3 border rounded-lg space-y-2 bg-muted/50 relative overflow-hidden"
+                            className={cn(
+                              'p-3 border rounded-lg space-y-2 bg-muted/50 relative overflow-hidden',
+                              canNavigateFromCard ? 'cursor-pointer transition hover:border-primary/40' : '',
+                            )}
+                            onClick={(event) => {
+                              if (!canNavigateFromCard || shouldIgnoreCardNavigation(event.target)) return
+                              router.push(leadHref)
+                            }}
                           >
                             {!isVisible ? (
                               <div className="absolute inset-0 z-10 flex items-center justify-center text-[10px] font-semibold text-muted-foreground bg-background/70">
@@ -1086,16 +1245,18 @@ export function VisitsPageView({
                                   {role === 'LEAD' ? 'Leading' : 'Supporting'}
                                 </span>
                               ) : null}
-                              <div className="pt-1">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  asChild
-                                  className="h-7 px-2 text-[11px]"
-                                >
-                                  <Link href={`${leadHrefPrefix}/${visit.lead.id}`}>Open Lead</Link>
-                                </Button>
-                              </div>
+                              {!cardNavigatesToLead ? (
+                                <div className="pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    asChild
+                                    className="h-7 px-2 text-[11px]"
+                                  >
+                                    <Link href={leadHref}>Open Lead</Link>
+                                  </Button>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         )
@@ -1113,33 +1274,80 @@ export function VisitsPageView({
         </TabsContent>
 
         <TabsContent value="list" className="mt-6">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
+          <div className="space-y-4" ref={listDetailsRef}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <Input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search by lead name or phone"
-                className="max-w-sm"
+                className="w-full sm:max-w-sm"
               />
               {searchTerm ? (
-                <Button variant="ghost" size="sm" onClick={() => setSearchTerm('')}>
+                <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={() => setSearchTerm('')}>
                   Clear
                 </Button>
               ) : null}
             </div>
+            {showSummaryDashboard ? (
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ['ALL', 'All'],
+                  ['SCHEDULED', 'Pending'],
+                  ['COMPLETED', 'Completed'],
+                  ['RESCHEDULED', 'Rescheduled'],
+                  ['CANCELLED', 'Cancelled'],
+                  ['LEAD', 'Leading'],
+                  ['SUPPORT', 'Supporting'],
+                ].map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={listFilter === value ? 'default' : 'outline'}
+                    className="h-7"
+                    onClick={() =>
+                      setListFilter(
+                        value as
+                          | 'ALL'
+                          | 'SCHEDULED'
+                          | 'COMPLETED'
+                          | 'RESCHEDULED'
+                          | 'CANCELLED'
+                          | 'LEAD'
+                          | 'SUPPORT',
+                      )
+                    }
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
             <div className="space-y-6">
               <div>
-                <h3 className="mb-3 font-semibold text-foreground">Scheduled ({scheduledVisits.length})</h3>
+                <h3 className="mb-3 font-semibold text-foreground">
+                  {showSummaryDashboard ? `${listFilterLabel} (${filteredListVisits.length})` : `Scheduled (${scheduledVisits.length})`}
+                </h3>
                 {loading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {Array.from({ length: 6 }).map((_, idx) => (
                       <Card key={idx} className="border-border animate-pulse">
                         <CardContent className="h-44" />
                       </Card>
                     ))}
                   </div>
+                ) : showSummaryDashboard ? (
+                  filteredListVisits.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {filteredListVisits.map((visit) => (
+                        <VisitCard key={visit.id} visit={visit} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No visits found for this filter</p>
+                  )
                 ) : scheduledVisits.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {scheduledVisits.map((visit) => (
                       <VisitCard key={visit.id} visit={visit} />
                     ))}
@@ -1148,34 +1356,36 @@ export function VisitsPageView({
                   <p className="text-muted-foreground">No scheduled visits</p>
                 )}
               </div>
-              <div>
-                <h3 className="mb-3 font-semibold text-foreground">Completed ({completedVisits.length})</h3>
-                {loading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Array.from({ length: 3 }).map((_, idx) => (
-                      <Card key={idx} className="border-border animate-pulse">
-                        <CardContent className="h-44" />
-                      </Card>
-                    ))}
-                  </div>
-                ) : completedVisits.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {completedVisits.map((visit) => (
-                      <VisitCard key={visit.id} visit={visit} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No completed visits</p>
-                )}
-              </div>
+              {!showSummaryDashboard ? (
+                <div>
+                  <h3 className="mb-3 font-semibold text-foreground">Completed ({completedVisits.length})</h3>
+                  {loading ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <Card key={idx} className="border-border animate-pulse">
+                          <CardContent className="h-44" />
+                        </Card>
+                      ))}
+                    </div>
+                  ) : completedVisits.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {completedVisits.map((visit) => (
+                        <VisitCard key={visit.id} visit={visit} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No completed visits</p>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         </TabsContent>
       </Tabs>
 
       <Dialog open={completeOpen} onOpenChange={setCompleteOpen}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col rounded-none p-0 sm:top-[50%] sm:left-[50%] sm:h-auto sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <DialogHeader className="border-b px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <DialogTitle>Complete Visit</DialogTitle>
             <DialogDescription>
               {completeRole === 'SUPPORT'
@@ -1183,7 +1393,7 @@ export function VisitsPageView({
                 : 'Submit visit outcome to mark this visit as completed and update lead stage automatically.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             {completeRole === 'LEAD' &&
             completeVisitId &&
             visits
@@ -1211,101 +1421,49 @@ export function VisitsPageView({
                   <Label>Extra Concern (optional)</Label>
                   <Textarea value={supportExtraConcern} onChange={(e) => setSupportExtraConcern(e.target.value)} rows={2} />
                 </div>
+                <div className="space-y-2">
+                  <Label>Attachments (optional)</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                  />
+                  {completeFiles.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
+                  ) : null}
+                </div>
               </>
             ) : (
-              <>
-                <div className="space-y-2">
-                  <Label>Meeting Summary</Label>
-                  <Textarea
-                    value={completeSummary}
-                    onChange={(event) => setCompleteSummary(event.target.value)}
-                    rows={3}
-                    placeholder="What happened during this visit?"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Client Mood (optional)</Label>
-                  <Select
-                    value={completeClientMood || selectUnsetValue}
-                    onValueChange={(value) =>
-                      setCompleteClientMood(value === selectUnsetValue ? '' : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select client mood" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={selectUnsetValue}>None</SelectItem>
-                      {clientMoodOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex flex-col">
-                            <span>{option.label}</span>
-                            {option.description ? (
-                              <span className="text-xs text-muted-foreground">{option.description}</span>
-                            ) : null}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Tabs defaultValue="outcome" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="outcome">Outcome</TabsTrigger>
+                  <TabsTrigger value="details">Details</TabsTrigger>
+                  <TabsTrigger value="files">Files</TabsTrigger>
+                </TabsList>
+                <TabsContent value="outcome" className="mt-4 space-y-3">
                   <div className="space-y-2">
-                    <Label>Potentiality / Hotness</Label>
-                    <Select
-                      value={completeClientPotentiality || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteClientPotentiality(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select potentiality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {clientPotentialityOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Meeting Summary</Label>
+                    <Textarea
+                      value={completeSummary}
+                      onChange={(event) => setCompleteSummary(event.target.value)}
+                      rows={3}
+                      placeholder="What happened during this visit?"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Project Type</Label>
+                    <Label>Client Mood (optional)</Label>
                     <Select
-                      value={completeProjectType || selectUnsetValue}
+                      value={completeClientMood || selectUnsetValue}
                       onValueChange={(value) =>
-                        setCompleteProjectType(value === selectUnsetValue ? '' : value)
+                        setCompleteClientMood(value === selectUnsetValue ? '' : value)
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select project type" />
+                        <SelectValue placeholder="Select client mood" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {projectTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Client Personality</Label>
-                    <Select
-                      value={completeClientPersonality || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteClientPersonality(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select client personality" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {clientPersonalityOptions.map((option) => (
+                        {clientMoodOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             <div className="flex flex-col">
                               <span>{option.label}</span>
@@ -1319,106 +1477,178 @@ export function VisitsPageView({
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Budget Range</Label>
-                    <Select
-                      value={completeBudgetRange || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteBudgetRange(value === selectUnsetValue ? '' : value)
-                      }
+                    <Label>Project Status (optional)</Label>
+                    <select
+                      value={completeProjectStatus}
+                      onChange={(event) => setCompleteProjectStatus(event.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select budget range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {budgetRangeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <option value="">Select project status</option>
+                      <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
+                      <option value="READY">READY</option>
+                    </select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Urgency</Label>
-                    <Select
-                      value={completeTimelineUrgency || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteTimelineUrgency(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select urgency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {urgencyOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Note (optional)</Label>
+                    <Textarea
+                      value={completeNote}
+                      onChange={(event) => setCompleteNote(event.target.value)}
+                      rows={2}
+                      placeholder="Add follow-up note if needed"
+                    />
                   </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Style Preference</Label>
-                    <Select
-                      value={completeStylePreference || selectUnsetValue}
-                      onValueChange={(value) =>
-                        setCompleteStylePreference(value === selectUnsetValue ? '' : value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select style preference" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={selectUnsetValue}>None</SelectItem>
-                        {stylePreferenceOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                </TabsContent>
+                <TabsContent value="details" className="mt-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Potentiality / Hotness</Label>
+                      <Select
+                        value={completeClientPotentiality || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteClientPotentiality(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select potentiality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {clientPotentialityOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Project Type</Label>
+                      <Select
+                        value={completeProjectType || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteProjectType(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select project type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {projectTypeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Client Personality</Label>
+                      <Select
+                        value={completeClientPersonality || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteClientPersonality(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select client personality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {clientPersonalityOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              <div className="flex flex-col">
+                                <span>{option.label}</span>
+                                {option.description ? (
+                                  <span className="text-xs text-muted-foreground">{option.description}</span>
+                                ) : null}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Budget Range</Label>
+                      <Select
+                        value={completeBudgetRange || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteBudgetRange(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select budget range" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {budgetRangeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Urgency</Label>
+                      <Select
+                        value={completeTimelineUrgency || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteTimelineUrgency(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select urgency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {urgencyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Style Preference</Label>
+                      <Select
+                        value={completeStylePreference || selectUnsetValue}
+                        onValueChange={(value) =>
+                          setCompleteStylePreference(value === selectUnsetValue ? '' : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select style preference" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={selectUnsetValue}>None</SelectItem>
+                          {stylePreferenceOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Project Status (optional)</Label>
-                  <select
-                    value={completeProjectStatus}
-                    onChange={(event) => setCompleteProjectStatus(event.target.value)}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="">Select project status</option>
-                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                    <option value="READY">READY</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Note (optional)</Label>
-                  <Textarea
-                    value={completeNote}
-                    onChange={(event) => setCompleteNote(event.target.value)}
-                    rows={2}
-                    placeholder="Add follow-up note if needed"
+                </TabsContent>
+                <TabsContent value="files" className="mt-4 space-y-2">
+                  <Label>Attachments (optional)</Label>
+                  <Input
+                    type="file"
+                    multiple
+                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
                   />
-                </div>
-              </>
+                  {completeFiles.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
+                  ) : null}
+                </TabsContent>
+              </Tabs>
             )}
-            <div className="space-y-2">
-              <Label>Attachments (optional)</Label>
-              <Input
-                type="file"
-                multiple
-                onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
-              />
-              {completeFiles.length > 0 ? (
-                <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
-              ) : null}
-            </div>
             {completeError ? <p className="text-sm text-destructive">{completeError}</p> : null}
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
             <Button variant="outline" onClick={() => setCompleteOpen(false)}>
               Close
             </Button>
