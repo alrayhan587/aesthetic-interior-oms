@@ -118,6 +118,21 @@ type MeetingsApiResponse = {
   error?: string
 }
 
+type SrTaskApiItem = {
+  id: string
+  leadId: string
+  leadName: string
+  phaseType: 'CAD' | 'QUOTATION'
+  dueAt: string
+  status: 'OPEN' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED'
+}
+
+type SrTasksApiResponse = {
+  success: boolean
+  data?: SrTaskApiItem[]
+  error?: string
+}
+
 function toMeeting(item: MeetingsApiItem): Meeting {
   const start = new Date(item.startsAt)
   const end = item.endsAt ? new Date(item.endsAt) : new Date(start.getTime() + 60 * 60 * 1000)
@@ -127,6 +142,20 @@ function toMeeting(item: MeetingsApiItem): Meeting {
     title: item.title,
     leadName: item.lead.name,
     type: item.type,
+    start,
+    end,
+  }
+}
+
+function toDeadlineMeeting(item: SrTaskApiItem): Meeting {
+  const start = new Date(item.dueAt)
+  const end = new Date(start.getTime() + 60 * 60 * 1000)
+  return {
+    id: `task-${item.id}`,
+    leadId: item.leadId,
+    title: `Task Deadline - ${item.phaseType}`,
+    leadName: item.leadName,
+    type: 'REVIEW_CHECKPOINT',
     start,
     end,
   }
@@ -161,8 +190,23 @@ export default function SeniorCrmMeetingsPage() {
         if (!response.ok || !payload.success || !Array.isArray(payload.data)) {
           throw new Error(payload.error ?? 'Failed to load meetings')
         }
+
+        const tasksResponse = await fetch(
+          `/api/sr/tasks?myLeadsOnly=${myLeadsOnly ? '1' : '0'}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+          { cache: 'no-store' },
+        )
+        const tasksPayload = (await tasksResponse.json()) as SrTasksApiResponse
+        if (!tasksResponse.ok || !tasksPayload.success || !Array.isArray(tasksPayload.data)) {
+          throw new Error(tasksPayload.error ?? 'Failed to load task deadlines')
+        }
+
         if (!cancelled) {
-          setMeetings(payload.data.map(toMeeting))
+          setMeetings([
+            ...payload.data.map(toMeeting),
+            ...tasksPayload.data
+              .filter((task) => task.status !== 'CANCELLED')
+              .map(toDeadlineMeeting),
+          ])
         }
       } catch (error) {
         if (!cancelled) {
@@ -479,8 +523,8 @@ export default function SeniorCrmMeetingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <CrmPageHeader
-        title="Meetings"
-        subtitle="Google-calendar style timeline view for first meetings and budget meetings."
+        title="Calendar"
+        subtitle="Calendar view for meetings and Senior CRM task deadlines."
       />
 
       <main className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">

@@ -7,6 +7,7 @@ import {
   Prisma,
 } from '@/generated/prisma/client'
 import { logActivity } from '@/lib/activity-log-service'
+import { DEFAULT_CAD_WORK_DETAILS } from '@/lib/sr-task-service'
 
 function phaseTypeFromSubStatus(subStatus: LeadSubStatus | null | undefined): LeadPhaseType | null {
   if (!subStatus) return null
@@ -63,13 +64,15 @@ export async function ensurePhaseTaskForSubStatus(input: {
   })
 
   const dueAt = new Date()
-  dueAt.setDate(dueAt.getDate() + (phaseType === LeadPhaseType.CAD ? 3 : 2))
+  dueAt.setDate(dueAt.getDate() + 3)
 
   await input.tx.leadPhaseTask.create({
     data: {
       leadId: input.leadId,
       phaseType,
+      workDetails: phaseType === LeadPhaseType.CAD ? DEFAULT_CAD_WORK_DETAILS : null,
       assigneeUserId: assignee?.userId ?? input.actorUserId,
+      startedAt: new Date(),
       dueAt,
       createdById: input.actorUserId,
     },

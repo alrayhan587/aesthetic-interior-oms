@@ -1,0 +1,8 @@
+ALTER TABLE "LeadPhaseTask"
+ADD COLUMN IF NOT EXISTS "workDetails" TEXT,
+ADD COLUMN IF NOT EXISTS "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN IF NOT EXISTS "completedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "lastSrActionAt" TIMESTAMP(3);
+
+CREATE INDEX IF NOT EXISTS "LeadPhaseTask_startedAt_idx" ON "LeadPhaseTask"("startedAt");
+CREATE INDEX IF NOT EXISTS "LeadPhaseTask_dueAt_idx" ON "LeadPhaseTask"("dueAt");

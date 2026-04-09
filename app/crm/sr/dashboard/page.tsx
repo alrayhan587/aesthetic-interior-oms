@@ -3,8 +3,11 @@ import { redirect } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { NotificationType } from '@/generated/prisma/client'
-import { SR_CAD_REVIEW_TODO_TITLE } from '@/lib/sr-cad-todo'
+import {
+  DEFAULT_CAD_WORK_DETAILS,
+  ensureSrDeadlineAlerts,
+  listSrTaskCards,
+} from '@/lib/sr-task-service'
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat('en-US', {
@@ -31,32 +34,40 @@ export default async function SeniorCrmDashboardPage() {
   const isSeniorCrm = actor.userDepartments.some((row) => row.department.name === 'SR_CRM')
   if (!isSeniorCrm) redirect('/crm/sr')
 
-  const liveTodos = await prisma.notification.findMany({
-    where: {
-      userId: actor.id,
-      type: NotificationType.LEAD_ASSIGNED_TO_YOU,
-      title: SR_CAD_REVIEW_TODO_TITLE,
-    },
-    include: {
-      lead: {
-        select: { id: true, name: true },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
+  await ensureSrDeadlineAlerts()
+
+  const liveTodos = await listSrTaskCards({
+    actorUserId: actor.id,
+    isAdmin: false,
+    myLeadsOnly: true,
+    todayOnly: true,
   })
 
   const dummyTodo = {
     id: 'dummy-cad-review-001',
-    title: SR_CAD_REVIEW_TODO_TITLE,
-    message:
-      'Check lead Fahim Residence CAD work. Reason: Rafi (JR Architect) started architect work on 2026-04-09.',
+    leadId: 'DEMO-LEAD-001',
+    leadName: 'Fahim',
+    leadStage: 'CAD_PHASE',
+    leadSubStatus: 'CAD_WORKING',
+    phaseType: 'CAD',
+    workDetails: DEFAULT_CAD_WORK_DETAILS,
+    workerUserId: 'DEMO-WORKER-001',
+    workerName: 'User Name working on that',
+    startedAt: new Date('2025-12-04T09:30:00.000Z'),
+    dueAt: new Date('2025-12-07T09:30:00.000Z'),
+    status: 'OPEN',
+    completedAt: null,
+    lastSrActionAt: null,
+    lastNote: 'Client is good',
+    lastNoteAt: new Date('2025-12-04T10:00:00.000Z'),
     createdAt: new Date('2026-04-09T09:30:00.000Z'),
-    lead: { id: 'DEMO-LEAD-001', name: 'Fahim Residence' },
     isDummy: true,
   }
 
-  const todos = [dummyTodo, ...liveTodos.map((item) => ({ ...item, isDummy: false }))]
+  const todos =
+    liveTodos.length > 0
+      ? liveTodos.map((item) => ({ ...item, isDummy: false }))
+      : [dummyTodo]
 
   return (
     <div className="min-h-screen bg-background">
@@ -97,16 +108,23 @@ export default async function SeniorCrmDashboardPage() {
             {todos.map((todo) => (
               <div key={todo.id} className="rounded-lg border p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold">{todo.title}</p>
+                  <p className="text-sm font-semibold">{todo.leadName} - {todo.phaseType}</p>
                   {todo.isDummy ? (
                     <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                       Dummy
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">{todo.message}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Stage: {todo.leadStage}
+                  {todo.leadSubStatus ? ` -> ${todo.leadSubStatus}` : ''}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Work: {todo.workDetails ?? 'No work details added yet.'}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Started: {formatDateTime(todo.startedAt)} | Worker: {todo.workerName}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Deadline: {formatDateTime(todo.dueAt)} | Status: {todo.status}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Last Note: {todo.lastNote ?? 'No note from worker yet.'}</p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Lead: {todo.lead?.name ?? 'Unknown'} | Created: {formatDateTime(todo.createdAt)}
+                  Lead ID: {todo.leadId}
                 </p>
               </div>
             ))}

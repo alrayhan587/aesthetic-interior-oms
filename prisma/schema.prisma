@@ -164,9 +164,13 @@ model LeadPhaseTask {
   id                 String              @id @default(cuid())
   leadId             String
   phaseType          LeadPhaseType
+  workDetails        String?
   assigneeUserId     String
+  startedAt          DateTime            @default(now())
   dueAt              DateTime
   status             LeadPhaseTaskStatus @default(OPEN)
+  completedAt        DateTime?
+  lastSrActionAt     DateTime?
   currentReviewRound Int                 @default(0)
   createdById        String
   createdAt          DateTime            @default(now())
@@ -181,6 +185,8 @@ model LeadPhaseTask {
   @@index([assigneeUserId])
   @@index([phaseType])
   @@index([status])
+  @@index([startedAt])
+  @@index([dueAt])
 }
 
 model LeadPhaseReview {

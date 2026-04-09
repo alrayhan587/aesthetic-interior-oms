@@ -11,12 +11,15 @@ import { requireDatabaseRoles } from '@/lib/authz'
 import { buildScopedLeadWhere } from '@/lib/lead-access'
 import { canManagePrimaryLeadFlow, isSrOrAdmin } from '@/lib/lead-workflow-auth'
 import { logActivity } from '@/lib/activity-log-service'
+import { DEFAULT_CAD_WORK_DETAILS } from '@/lib/sr-task-service'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
 
 type CreatePhaseTaskBody = {
   phaseType?: unknown
+  workDetails?: unknown
   assigneeUserId?: unknown
+  startedAt?: unknown
   dueAt?: unknown
   status?: unknown
 }
@@ -102,14 +105,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = (await request.json()) as CreatePhaseTaskBody
     const phaseType = toPhaseType(body.phaseType)
+    const workDetails = toOptionalString(body.workDetails)
     const status = toTaskStatus(body.status) ?? LeadPhaseTaskStatus.OPEN
+    const startedAtRaw = toOptionalString(body.startedAt)
     const dueAtRaw = toOptionalString(body.dueAt)
+    const startedAt = startedAtRaw ? new Date(startedAtRaw) : new Date()
     const dueAt = dueAtRaw ? new Date(dueAtRaw) : null
 
     if (!phaseType) {
       return NextResponse.json({ success: false, error: 'phaseType must be CAD or QUOTATION' }, { status: 400 })
     }
-    if (!dueAt || Number.isNaN(dueAt.getTime())) {
+    if (!startedAt || Number.isNaN(startedAt.getTime())) {
+      return NextResponse.json({ success: false, error: 'startedAt must be a valid ISO date' }, { status: 400 })
+    }
+    const normalizedDueAt = dueAt ?? new Date(startedAt.getTime() + 3 * 24 * 60 * 60 * 1000)
+    if (Number.isNaN(normalizedDueAt.getTime())) {
       return NextResponse.json({ success: false, error: 'dueAt must be a valid ISO date' }, { status: 400 })
     }
 
@@ -166,8 +176,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       data: {
         leadId,
         phaseType,
+        workDetails: workDetails ?? (phaseType === LeadPhaseType.CAD ? DEFAULT_CAD_WORK_DETAILS : null),
         assigneeUserId,
-        dueAt,
+        startedAt,
+        dueAt: normalizedDueAt,
         status,
         createdById: authResult.actorUserId,
       },
@@ -181,7 +193,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       leadId,
       userId: authResult.actorUserId,
       type: ActivityType.PHASE_DEADLINE_SET,
-      description: `${phaseType} task deadline set to ${task.dueAt.toISOString()}.`,
+      description: `${phaseType} task started at ${task.startedAt.toISOString()} with deadline ${task.dueAt.toISOString()}.`,
     })
 
     return NextResponse.json({

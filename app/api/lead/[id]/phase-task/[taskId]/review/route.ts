@@ -115,6 +115,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         data: {
           currentReviewRound: nextRound,
           status: decision === LeadPhaseReviewDecision.APPROVED ? LeadPhaseTaskStatus.COMPLETED : LeadPhaseTaskStatus.OPEN,
+          completedAt: decision === LeadPhaseReviewDecision.APPROVED ? new Date() : null,
+          lastSrActionAt: new Date(),
         },
       })
 

@@ -11,6 +11,7 @@ type RouteContext = {
 }
 
 type UpdatePhaseTaskBody = {
+  workDetails?: unknown
   assigneeUserId?: unknown
   dueAt?: unknown
   status?: unknown
@@ -71,6 +72,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = (await request.json()) as UpdatePhaseTaskBody
+    const workDetails = toOptionalString(body.workDetails)
     const assigneeUserId = toOptionalString(body.assigneeUserId)
     const dueAtRaw = toOptionalString(body.dueAt)
     const nextStatus = toTaskStatus(body.status)
@@ -106,9 +108,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const updated = await tx.leadPhaseTask.update({
         where: { id: existingTask.id },
         data: {
+          ...(body.workDetails !== undefined ? { workDetails } : {}),
           ...(assigneeUserId ? { assigneeUserId } : {}),
           ...(nextDueAt ? { dueAt: nextDueAt } : {}),
           ...(nextStatus ? { status: nextStatus } : {}),
+          ...(nextStatus === LeadPhaseTaskStatus.COMPLETED ? { completedAt: new Date() } : {}),
+          ...(nextStatus && nextStatus !== LeadPhaseTaskStatus.COMPLETED ? { completedAt: null } : {}),
+          ...(body.workDetails !== undefined || assigneeUserId || nextDueAt || nextStatus
+            ? { lastSrActionAt: new Date() }
+            : {}),
         },
         include: {
           assignee: { select: { id: true, fullName: true, email: true } },

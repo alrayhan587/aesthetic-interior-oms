@@ -89,7 +89,7 @@ const navigationGroups: Record<string, NavGroup[]> = {
       defaultOpen: true,
       items: [
         { icon: Users, label: 'Lead Journey', href: '/crm/sr/lead-journey' },
-        { icon: CalendarClock, label: 'Meetings', href: '/crm/sr/meetings' },
+        { icon: CalendarClock, label: 'Calendar', href: '/crm/sr/meetings' },
         { icon: ClipboardList, label: 'Handoff Center', href: '/crm/sr/handoffs' },
         { icon: CheckSquare, label: 'Conversion & Payment', href: '/crm/sr/conversion-payment' },
       ],
