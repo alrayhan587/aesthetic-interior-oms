@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { CalendarClock, Crown, Send, UserCheck, Workflow } from 'lucide-react'
+import { useState } from 'react'
+import { CalendarClock, Crown, UserCheck, Workflow } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,28 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
-type LeadMeetingEvent = {
-  id: string
-  type: 'FIRST_MEETING' | 'BUDGET_MEETING' | 'REVIEW_CHECKPOINT'
-  title: string
-  startsAt: string
-  endsAt: string | null
-}
-
-type LeadPhaseTask = {
-  id: string
-  phaseType: 'CAD' | 'QUOTATION'
-  assigneeUserId: string
-  dueAt: string
-  status: 'OPEN' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED'
-  currentReviewRound: number
-  assignee?: {
-    id: string
-    fullName: string
-    email: string
-  } | null
-}
 
 type LeadPrimaryOwner = {
   id: string
@@ -76,8 +54,6 @@ type LeadSnapshot = {
   subStatus: string | null
   location: string | null
   primaryOwner?: LeadPrimaryOwner
-  phaseTasks?: LeadPhaseTask[]
-  meetingEvents?: LeadMeetingEvent[]
 }
 
 type SrCommandPanelProps = {
@@ -93,10 +69,6 @@ function toDateTimeLocalInput(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0')
   const min = String(date.getMinutes()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}T${hh}:${min}`
-}
-
-function formatPhaseLabel(value: string) {
-  return value.replace(/_/g, ' ')
 }
 
 export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommandPanelProps) {
@@ -117,19 +89,6 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
   const [visitLocation, setVisitLocation] = useState(lead.location ?? '')
   const [visitReason, setVisitReason] = useState('Scheduled by Senior CRM for direct client handling.')
   const [visitNotes, setVisitNotes] = useState('')
-
-  const [newTaskPhase, setNewTaskPhase] = useState<'CAD' | 'QUOTATION'>('CAD')
-  const [newTaskDueAt, setNewTaskDueAt] = useState(toDateTimeLocalInput(new Date(Date.now() + 24 * 60 * 60 * 1000)))
-  const [newTaskAssigneeId, setNewTaskAssigneeId] = useState('')
-
-  const [reviewTaskId, setReviewTaskId] = useState('')
-  const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REWORK'>('APPROVED')
-  const [reviewComment, setReviewComment] = useState('')
-
-  const openTasks = useMemo(
-    () => (lead.phaseTasks ?? []).filter((task) => task.status !== 'COMPLETED' && task.status !== 'CANCELLED'),
-    [lead.phaseTasks],
-  )
 
   const runAction = async (key: string, action: () => Promise<void>) => {
     setBusyAction(key)
@@ -208,8 +167,6 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
     }
   }
 
-  const selectedReviewTask = openTasks.find((task) => task.id === reviewTaskId) ?? null
-
   return (
     <>
       <Card>
@@ -256,62 +213,9 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
               Set First Meeting
             </Button>
 
-            <Button
-              variant="outline"
-              className="justify-start gap-2"
-              disabled={busyAction === 'send-cad'}
-              onClick={() =>
-                runAction('send-cad', async () => {
-                  await patchJson(`/api/lead/${lead.id}/stage`, {
-                    stage: 'CAD_PHASE',
-                    subStatus: 'CAD_ASSIGNED',
-                    reason: 'Sent to CAD by SR CRM command panel.',
-                  })
-                  toast.success('Lead moved to CAD phase')
-                })
-              }
-            >
-              <Send className="h-4 w-4" />
-              Send to CAD
-            </Button>
-
-            <Button
-              variant="outline"
-              className="justify-start gap-2"
-              disabled={busyAction === 'send-quotation'}
-              onClick={() =>
-                runAction('send-quotation', async () => {
-                  await postJson(`/api/lead/${lead.id}/send-to-quotation`, {
-                    reason: 'Manual SR confirmation after first meeting.',
-                  })
-                  toast.success('Lead sent to quotation team')
-                })
-              }
-            >
-              <Send className="h-4 w-4" />
-              Send to Quotation
-            </Button>
-
             <Button variant="outline" className="justify-start gap-2" onClick={() => setBudgetMeetingOpen(true)}>
               <CalendarClock className="h-4 w-4" />
               Set Budget Meeting
-            </Button>
-
-            <Button
-              variant="outline"
-              className="justify-start gap-2"
-              disabled={busyAction === 'send-visual'}
-              onClick={() =>
-                runAction('send-visual', async () => {
-                  await postJson(`/api/lead/${lead.id}/send-to-visual-accounts`, {
-                    reason: 'Budget meeting confirmed. Sent to 3D and Accounts.',
-                  })
-                  toast.success('Lead sent to 3D + Accounts')
-                })
-              }
-            >
-              <Send className="h-4 w-4" />
-              Send to 3D + Accounts
             </Button>
 
             <Button
@@ -324,105 +228,6 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
             >
               <UserCheck className="h-4 w-4" />
               Schedule SR Visit
-            </Button>
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border p-3">
-            <p className="text-sm font-semibold text-foreground">Phase Deadline</p>
-            <div className="grid grid-cols-1 gap-2">
-              <Select value={newTaskPhase} onValueChange={(value) => setNewTaskPhase(value as 'CAD' | 'QUOTATION')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select phase" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CAD">CAD</SelectItem>
-                  <SelectItem value="QUOTATION">Quotation</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Input
-                type="datetime-local"
-                value={newTaskDueAt}
-                onChange={(event) => setNewTaskDueAt(event.target.value)}
-              />
-
-              <Input
-                placeholder="Optional assignee user id"
-                value={newTaskAssigneeId}
-                onChange={(event) => setNewTaskAssigneeId(event.target.value)}
-              />
-
-              <Button
-                size="sm"
-                disabled={busyAction === 'create-task'}
-                onClick={() =>
-                  runAction('create-task', async () => {
-                    if (!newTaskDueAt) throw new Error('Task deadline is required')
-                    await postJson(`/api/lead/${lead.id}/phase-task`, {
-                      phaseType: newTaskPhase,
-                      dueAt: new Date(newTaskDueAt).toISOString(),
-                      assigneeUserId: newTaskAssigneeId.trim() || undefined,
-                    })
-                    toast.success(`${newTaskPhase} task created`)
-                  })
-                }
-              >
-                Create Phase Task
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border p-3">
-            <p className="text-sm font-semibold text-foreground">Phase Review</p>
-            <Select value={reviewTaskId} onValueChange={setReviewTaskId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select active task" />
-              </SelectTrigger>
-              <SelectContent>
-                {openTasks.map((task) => (
-                  <SelectItem key={task.id} value={task.id}>
-                    {task.phaseType} - {formatPhaseLabel(task.status)} - Round {task.currentReviewRound}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={reviewDecision}
-              onValueChange={(value) => setReviewDecision(value as 'APPROVED' | 'REWORK')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Decision" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="APPROVED">Approved</SelectItem>
-                <SelectItem value="REWORK">Rework</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Textarea
-              placeholder="Review note"
-              rows={3}
-              value={reviewComment}
-              onChange={(event) => setReviewComment(event.target.value)}
-            />
-
-            <Button
-              size="sm"
-              disabled={busyAction === 'review-task'}
-              onClick={() =>
-                runAction('review-task', async () => {
-                  if (!selectedReviewTask) throw new Error('Select a task to review')
-                  await postJson(`/api/lead/${lead.id}/phase-task/${selectedReviewTask.id}/review`, {
-                    decision: reviewDecision,
-                    comment: reviewComment.trim() || undefined,
-                  })
-                  setReviewComment('')
-                  toast.success('Review submitted')
-                })
-              }
-            >
-              Submit Review Round
             </Button>
           </div>
         </CardContent>

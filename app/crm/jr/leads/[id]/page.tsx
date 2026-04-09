@@ -203,6 +203,7 @@ export default function LeadDetailPage() {
   const [canManageVisitRequests, setCanManageVisitRequests] = useState(false)
   const isVisitTeamView = pathname?.startsWith('/visit-team/') ?? false
   const isSeniorCrmView = pathname?.startsWith('/crm/sr/') ?? false
+  const isJuniorCrmView = pathname?.startsWith('/crm/jr/') ?? false
   const blurVisitResult = pathname?.startsWith('/crm/jr/') ?? false
   const backHref = useMemo(() => {
     if (pathname?.startsWith('/crm/sr/')) return '/crm/sr/lead-journey'
@@ -798,8 +799,9 @@ export default function LeadDetailPage() {
             canManageVisitRequests={!isVisitTeamView && canManageVisitRequests}
             canManageStage={!isVisitTeamView}
             canSetVisitCompletedStage={false}
-            canAddFollowup={!isVisitTeamView}
-            canScheduleVisit={!isVisitTeamView}
+            restrictStagesForJrCrm={isJuniorCrmView}
+            canAddFollowup={!isVisitTeamView && !isSeniorCrmView}
+            canScheduleVisit={!isVisitTeamView && !isSeniorCrmView}
             canSubmitVisitResult={isVisitTeamView}
             blurVisitResult={blurVisitResult}
             currentUserId={currentUserId}

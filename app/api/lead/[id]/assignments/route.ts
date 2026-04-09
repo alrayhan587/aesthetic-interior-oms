@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logUserAssigned } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
-import { VisitStatus } from '@/generated/prisma/client';
+import {
+  LeadAssignmentDepartment,
+  LeadPrimaryOwnerDepartment,
+  VisitStatus,
+} from '@/generated/prisma/client';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -203,7 +207,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const existingAssignment = await tx.leadAssignment.findFirst({
         where: {
           leadId,
-          department: department as any,
+          department: department as LeadAssignmentDepartment,
         },
       });
       debugLog('📊 [POST /api/lead/[id]/assignments] - Existing assignment:', existingAssignment);
@@ -229,7 +233,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           data: {
             leadId,
             userId,
-            department: department as any,
+            department: department as LeadAssignmentDepartment,
           },
           include: {
             user: {
@@ -263,6 +267,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             },
           });
         }
+      }
+
+      if (department === 'SR_CRM') {
+        await tx.lead.update({
+          where: { id: leadId },
+          data: {
+            primaryOwnerDepartment: LeadPrimaryOwnerDepartment.SR_CRM,
+            primaryOwnerUserId: userId,
+          },
+        });
       }
 
       // Log the assignment activity

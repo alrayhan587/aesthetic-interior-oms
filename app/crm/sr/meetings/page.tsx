@@ -30,6 +30,8 @@ type Meeting = {
   leadName: string
   start: Date
   end: Date
+  source: 'MEETING' | 'TASK'
+  taskStatus?: 'OPEN' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED'
   type: 'FIRST_MEETING' | 'BUDGET_MEETING' | 'REVIEW_CHECKPOINT'
 }
 
@@ -79,6 +81,20 @@ function getTypeClass(type: Meeting['type']) {
   if (type === 'FIRST_MEETING') return 'bg-blue-100 text-blue-800 border-blue-200'
   if (type === 'BUDGET_MEETING') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
   return 'bg-violet-100 text-violet-800 border-violet-200'
+}
+
+function getEventClass(event: Meeting) {
+  if (event.source === 'TASK') {
+    if (event.taskStatus === 'COMPLETED') return 'bg-green-100 text-green-800 border-green-200'
+    if (event.taskStatus === 'IN_REVIEW') return 'bg-indigo-100 text-indigo-800 border-indigo-200'
+    return 'bg-amber-100 text-amber-900 border-amber-300'
+  }
+  return getTypeClass(event.type)
+}
+
+function getEventLabel(event: Meeting): string {
+  if (event.source === 'TASK') return 'Task Deadline'
+  return event.type.replace(/_/g, ' ')
 }
 
 function getStartOfSaturdayWeek(date: Date) {
@@ -141,6 +157,7 @@ function toMeeting(item: MeetingsApiItem): Meeting {
     leadId: item.lead.id,
     title: item.title,
     leadName: item.lead.name,
+    source: 'MEETING',
     type: item.type,
     start,
     end,
@@ -153,8 +170,10 @@ function toDeadlineMeeting(item: SrTaskApiItem): Meeting {
   return {
     id: `task-${item.id}`,
     leadId: item.leadId,
-    title: `Task Deadline - ${item.phaseType}`,
+    title: `${item.phaseType} Deadline`,
     leadName: item.leadName,
+    source: 'TASK',
+    taskStatus: item.status,
     type: 'REVIEW_CHECKPOINT',
     start,
     end,
@@ -325,9 +344,10 @@ export default function SeniorCrmMeetingsPage() {
                   {hourEvents.map((event) => (
                     <div
                       key={event.id}
-                      className={`rounded-md border px-2 py-1.5 text-xs ${getTypeClass(event.type)}`}
+                      className={`rounded-md border px-2 py-1.5 text-xs ${getEventClass(event)}`}
                     >
                       <p className="font-semibold">{event.title}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide">{getEventLabel(event)}</p>
                       <p>{event.leadName}</p>
                     </div>
                   ))}
@@ -376,10 +396,9 @@ export default function SeniorCrmMeetingsPage() {
                 {events.map((event) => (
                   <div
                     key={event.id}
-                    className={`mb-1 rounded border px-1.5 py-1 text-[10px] leading-tight ${getTypeClass(
-                      event.type,
-                    )}`}
+                    className={`mb-1 rounded border px-1.5 py-1 text-[10px] leading-tight ${getEventClass(event)}`}
                   >
+                    {event.source === 'TASK' ? 'Task: ' : ''}
                     {event.title}
                   </div>
                 ))}
@@ -423,7 +442,8 @@ export default function SeniorCrmMeetingsPage() {
               </p>
               <div className="space-y-1">
                 {events.slice(0, 3).map((event) => (
-                  <div key={event.id} className={`truncate rounded border px-1.5 py-1 text-[10px] ${getTypeClass(event.type)}`}>
+                  <div key={event.id} className={`truncate rounded border px-1.5 py-1 text-[10px] ${getEventClass(event)}`}>
+                    {event.source === 'TASK' ? 'Task: ' : ''}
                     {event.title}
                   </div>
                 ))}
@@ -471,7 +491,7 @@ export default function SeniorCrmMeetingsPage() {
                       }`}
                     >
                       <p>{day.getDate()}</p>
-                      {count > 0 ? <p className="text-primary font-semibold">{count} mtg</p> : null}
+                      {count > 0 ? <p className="text-primary font-semibold">{count} items</p> : null}
                     </div>
                   )
                 })}
@@ -497,6 +517,10 @@ export default function SeniorCrmMeetingsPage() {
                 {cells.map((day) => {
                   const inMonth = day.getMonth() === monthIndex
                   const meetingCount = meetingsByDay.get(formatDayKey(day))?.length ?? 0
+                  const taskCount =
+                    meetingsByDay
+                      .get(formatDayKey(day))
+                      ?.filter((item) => item.source === 'TASK').length ?? 0
                   return (
                     <div
                       key={`${monthIndex}-${formatDayKey(day)}`}
@@ -506,7 +530,9 @@ export default function SeniorCrmMeetingsPage() {
                       tabIndex={0}
                       className={`h-7 rounded border flex items-center justify-center cursor-pointer transition hover:border-primary/40 ${
                         inMonth ? 'border-border text-foreground' : 'border-transparent text-muted-foreground'
-                      } ${meetingCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''}`}
+                      } ${meetingCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''} ${
+                        taskCount > 0 ? 'ring-1 ring-amber-400/70' : ''
+                      }`}
                     >
                       {day.getDate()}
                     </div>
@@ -609,16 +635,26 @@ export default function SeniorCrmMeetingsPage() {
                     <p className="text-sm text-muted-foreground">No meetings in this timeline.</p>
                   ) : (
                     visibleMeetings.map((meeting) => (
-                      <div key={meeting.id} className="rounded-md border border-border p-3">
+                      <div
+                        key={meeting.id}
+                        className={`rounded-md border p-3 ${
+                          meeting.source === 'TASK' ? 'border-amber-300 bg-amber-50/50' : 'border-border'
+                        }`}
+                      >
                         <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {getEventLabel(meeting)}
+                        </p>
                         <p className="text-xs text-muted-foreground">{meeting.leadName}</p>
                         <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Clock className="size-3.5" />
                           {meeting.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
                           {meeting.start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </p>
-                        <Badge className={`mt-2 border ${getTypeClass(meeting.type)}`}>
-                          {meeting.type.replace(/_/g, ' ')}
+                        <Badge className={`mt-2 border ${getEventClass(meeting)}`}>
+                          {meeting.source === 'TASK'
+                            ? `TASK DEADLINE${meeting.taskStatus ? ` - ${meeting.taskStatus}` : ''}`
+                            : meeting.type.replace(/_/g, ' ')}
                         </Badge>
                       </div>
                     ))
@@ -650,15 +686,25 @@ export default function SeniorCrmMeetingsPage() {
               <p className="text-sm text-muted-foreground">No meetings on this day.</p>
             ) : (
               selectedDayMeetings.map((meeting) => (
-                <div key={meeting.id} className="rounded-md border border-border p-3">
+                <div
+                  key={meeting.id}
+                  className={`rounded-md border p-3 ${
+                    meeting.source === 'TASK' ? 'border-amber-300 bg-amber-50/50' : 'border-border'
+                  }`}
+                >
                   <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {getEventLabel(meeting)}
+                  </p>
                   <p className="text-xs text-muted-foreground">{meeting.leadName}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {meeting.start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} -{' '}
                     {meeting.end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </p>
-                  <Badge className={`mt-2 border ${getTypeClass(meeting.type)}`}>
-                    {meeting.type.replace(/_/g, ' ')}
+                  <Badge className={`mt-2 border ${getEventClass(meeting)}`}>
+                    {meeting.source === 'TASK'
+                      ? `TASK DEADLINE${meeting.taskStatus ? ` - ${meeting.taskStatus}` : ''}`
+                      : meeting.type.replace(/_/g, ' ')}
                   </Badge>
                 </div>
               ))

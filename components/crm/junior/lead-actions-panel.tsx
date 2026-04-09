@@ -145,6 +145,7 @@ interface LeadActionsPanelProps {
   currentUserId?: string | null
   blurVisitResult?: boolean
   canManageVisitRequests?: boolean
+  restrictStagesForJrCrm?: boolean
   stage: string
   originalStage: string
   subStatus: string | null
@@ -199,6 +200,7 @@ export function LeadActionsPanel({
   currentUserId = null,
   blurVisitResult = false,
   canManageVisitRequests = false,
+  restrictStagesForJrCrm = false,
   stage,
   originalStage,
   subStatus,
@@ -303,11 +305,9 @@ export function LeadActionsPanel({
       ],
       BUDGET_PHASE: [
         'BUDGET_MEETING_SET',
-        'CLIENT_CONFIRMED',
-        'CLIENT_PARTIALLY_PAID',
-        'CLIENT_FULL_PAID',
         'REJECTED_OFFER',
       ],
+      CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID'],
       VISUALIZATION_PHASE: [
         'VISUAL_ASSIGNED',
         'VISUAL_WORKING',
@@ -315,7 +315,6 @@ export function LeadActionsPanel({
         'CLIENT_APPROVED',
         'VISUAL_CORRECTION',
       ],
-      CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID', 'CLIENT_APPROVED'],
       VISIT_PHASE: ['VISIT_SCHEDULED', 'VISIT_COMPLETED', 'VISIT_RESCHEDULED', 'VISIT_CANCELLED'],
       CONTACT_ATTEMPTED: ['NO_ANSWER'],
       NURTURING: ['WARM_LEAD', 'FUTURE_CLIENT'],
@@ -325,19 +324,30 @@ export function LeadActionsPanel({
   )
 
   const subStatusOptions = stageSubStatusMap[stage] ?? []
+  const jrCrmEnabledStages = useMemo(
+    () => new Set(['NEW', 'NUMBER_COLLECTED', 'CONTACT_ATTEMPTED', 'NURTURING', 'VISIT_PHASE']),
+    [],
+  )
+  const isJrCrmStageAllowed = !restrictStagesForJrCrm || jrCrmEnabledStages.has(stage)
+  const isJrCrmVisitSubStatusAllowed =
+    !restrictStagesForJrCrm ||
+    stage !== 'VISIT_PHASE' ||
+    subStatus === null ||
+    subStatus === '' ||
+    subStatus === 'VISIT_SCHEDULED'
   const requiresSubStatus = subStatusOptions.length > 0
   const stageOrder: Record<string, number> = {
     NEW: 0,
     NUMBER_COLLECTED: 1,
-    DISCOVERY: 2,
-    CAD_PHASE: 3,
-    QUOTATION_PHASE: 4,
-    BUDGET_PHASE: 5,
-    VISUALIZATION_PHASE: 6,
-    CONVERSION: 7,
-    VISIT_PHASE: 8,
-    CONTACT_ATTEMPTED: 9,
-    NURTURING: 10,
+    CONTACT_ATTEMPTED: 2,
+    NURTURING: 3,
+    VISIT_PHASE: 4,
+    CAD_PHASE: 5,
+    DISCOVERY: 6,
+    QUOTATION_PHASE: 7,
+    BUDGET_PHASE: 8,
+    CONVERSION: 9,
+    VISUALIZATION_PHASE: 10,
     CLOSED: 11,
   }
   const originalStageRank = stageOrder[originalStage] ?? -1
@@ -365,7 +375,9 @@ export function LeadActionsPanel({
   const canUpdateStage =
     (!requiresSubStatus || Boolean(subStatus)) &&
     hasStageChanged &&
-    !stageLockedAfterVisitScheduled
+    !stageLockedAfterVisitScheduled &&
+    isJrCrmStageAllowed &&
+    isJrCrmVisitSubStatusAllowed
 
 
   const getVisitStatusLabel = (value: string) => {
@@ -819,6 +831,10 @@ export function LeadActionsPanel({
   }
 
   const handleStageChange = (value: string) => {
+    if (restrictStagesForJrCrm && !jrCrmEnabledStages.has(value)) {
+      setStageError('For JR CRM, only Number Collected, Contact Attempted, Nurturing, and Visit Phase are enabled.')
+      return
+    }
     if (value === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
       setStageError('Visit Completed can only be set from visit result.')
       return
@@ -1542,24 +1558,24 @@ export function LeadActionsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="NEW">New</SelectItem>
+              <SelectItem value="NEW" disabled={restrictStagesForJrCrm && !jrCrmEnabledStages.has('NEW')}>New</SelectItem>
               <SelectItem value="NUMBER_COLLECTED">
                 Number Collected
               </SelectItem>
-              <SelectItem value="DISCOVERY">Discovery</SelectItem>
-              <SelectItem value="CAD_PHASE">CAD Phase</SelectItem>
-              <SelectItem value="QUOTATION_PHASE">Quotation Phase</SelectItem>
-              <SelectItem value="BUDGET_PHASE">Budget Phase</SelectItem>
-              <SelectItem value="VISUALIZATION_PHASE">Visualization Phase</SelectItem>
-              <SelectItem value="CONVERSION">Conversion</SelectItem>
-              <SelectItem value="VISIT_PHASE">Visit Phase</SelectItem>
               <SelectItem value="CONTACT_ATTEMPTED">
                 Contact Attempted
               </SelectItem>
               <SelectItem value="NURTURING">
                 Nurturing
               </SelectItem>
-              <SelectItem value="CLOSED">
+              <SelectItem value="VISIT_PHASE">Visit Phase</SelectItem>
+              <SelectItem value="CAD_PHASE" disabled={restrictStagesForJrCrm}>CAD Phase</SelectItem>
+              <SelectItem value="DISCOVERY" disabled={restrictStagesForJrCrm}>Discovery</SelectItem>
+              <SelectItem value="QUOTATION_PHASE" disabled={restrictStagesForJrCrm}>Quotation Phase</SelectItem>
+              <SelectItem value="BUDGET_PHASE" disabled={restrictStagesForJrCrm}>Budget Phase</SelectItem>
+              <SelectItem value="CONVERSION" disabled={restrictStagesForJrCrm}>Conversion</SelectItem>
+              <SelectItem value="VISUALIZATION_PHASE" disabled={restrictStagesForJrCrm}>Visualization Phase</SelectItem>
+              <SelectItem value="CLOSED" disabled={restrictStagesForJrCrm}>
                 Closed
               </SelectItem>
             </SelectContent>
@@ -1569,6 +1585,10 @@ export function LeadActionsPanel({
             <Select
               value={subStatus ?? ''}
               onValueChange={(value) => {
+                if (restrictStagesForJrCrm && stage === 'VISIT_PHASE' && value !== 'VISIT_SCHEDULED') {
+                  setStageError('For JR CRM, only Visit Scheduled is enabled in Visit Phase.')
+                  return
+                }
                 setStageError(null)
                 onSubStatusChange(value)
               }}
@@ -1579,7 +1599,11 @@ export function LeadActionsPanel({
               </SelectTrigger>
               <SelectContent>
                 {subStatusOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
+                  <SelectItem
+                    key={option}
+                    value={option}
+                    disabled={restrictStagesForJrCrm && stage === 'VISIT_PHASE' && option !== 'VISIT_SCHEDULED'}
+                  >
                     {formatLabel(option)}
                   </SelectItem>
                 ))}

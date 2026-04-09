@@ -620,12 +620,22 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      await ensureSeniorCrmAssignment({
+      const srAssignment = await ensureSeniorCrmAssignment({
         tx,
         leadId: newLead.id,
         preferredUserId: srCrmAssigneeId,
         actorUserId: authResult.actorUserId,
       });
+
+      if (srAssignment.userId) {
+        await tx.lead.update({
+          where: { id: newLead.id },
+          data: {
+            primaryOwnerDepartment: LeadPrimaryOwnerDepartment.SR_CRM,
+            primaryOwnerUserId: srAssignment.userId,
+          },
+        });
+      }
 
       // Log the lead creation activity with the authenticated user
       // console.log('📋 [POST /api/lead] - Logging lead creation activity');

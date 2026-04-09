@@ -116,6 +116,12 @@ const navigationGroups: Record<string, NavGroup[]> = {
   ],
   'Jr Architect': [
     {
+      id: 'jr-arch-overview',
+      label: 'Overview',
+      defaultOpen: true,
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/jr-architecture/dashboard' }],
+    },
+    {
       id: 'jr-arch-workflow',
       label: 'Workflow',
       defaultOpen: true,

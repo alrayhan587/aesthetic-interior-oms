@@ -13,9 +13,6 @@ export const stageSubStatusMap: Record<LeadStage, LeadSubStatus[]> = {
   ],
   BUDGET_PHASE: [
     'BUDGET_MEETING_SET',
-    'CLIENT_CONFIRMED',
-    'CLIENT_PARTIALLY_PAID',
-    'CLIENT_FULL_PAID',
     'REJECTED_OFFER',
   ],
   VISIT_PHASE: ['VISIT_SCHEDULED', 'VISIT_COMPLETED', 'VISIT_RESCHEDULED', 'VISIT_CANCELLED'],
@@ -26,7 +23,7 @@ export const stageSubStatusMap: Record<LeadStage, LeadSubStatus[]> = {
     'CLIENT_APPROVED',
     'VISUAL_CORRECTION',
   ],
-  CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID', 'CLIENT_APPROVED'],
+  CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID'],
   CONTACT_ATTEMPTED: ['NO_ANSWER'],
   NURTURING: ['WARM_LEAD', 'FUTURE_CLIENT'],
   // Legacy visit stages kept for backward compatibility with old records.

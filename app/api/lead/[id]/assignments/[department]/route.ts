@@ -1,5 +1,9 @@
 import prisma from '@/lib/prisma';
-import { LeadStage } from '@/generated/prisma/client';
+import {
+  LeadAssignmentDepartment,
+  LeadPrimaryOwnerDepartment,
+  LeadStage,
+} from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
@@ -247,7 +251,7 @@ export async function PUT(
       const existingAssignment = await tx.leadAssignment.findFirst({
         where: {
           leadId,
-          department: department as any,
+          department: department as LeadAssignmentDepartment,
         },
       });
       debugLog('📊 [PUT /api/lead/[id]/assignments/[department]] - Existing assignment:', existingAssignment);
@@ -265,6 +269,16 @@ export async function PUT(
           },
         },
       });
+
+      if (department === 'SR_CRM') {
+        await tx.lead.update({
+          where: { id: leadId },
+          data: {
+            primaryOwnerDepartment: LeadPrimaryOwnerDepartment.SR_CRM,
+            primaryOwnerUserId: userId,
+          },
+        });
+      }
 
       // Log the update activity
       await logUserAssigned(tx, {
@@ -366,7 +380,7 @@ export async function DELETE(
       const assignment = await tx.leadAssignment.findFirst({
         where: {
           leadId,
-          department: department as any,
+          department: department as LeadAssignmentDepartment,
         },
         include: {
           user: {

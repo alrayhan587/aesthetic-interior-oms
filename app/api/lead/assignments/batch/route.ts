@@ -1,4 +1,4 @@
-import { LeadAssignmentDepartment } from '@/generated/prisma/client'
+import { LeadAssignmentDepartment, LeadPrimaryOwnerDepartment } from '@/generated/prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireDatabaseRoles } from '@/lib/authz'
 import prisma from '@/lib/prisma'
@@ -142,6 +142,16 @@ export async function POST(request: NextRequest) {
             },
           })
           created += 1
+        }
+
+        if (department === LeadAssignmentDepartment.SR_CRM) {
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: {
+              primaryOwnerDepartment: LeadPrimaryOwnerDepartment.SR_CRM,
+              primaryOwnerUserId: user.id,
+            },
+          })
         }
 
         await logUserAssigned(tx, {

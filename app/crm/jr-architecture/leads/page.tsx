@@ -8,9 +8,31 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
-import { formatDistanceToNow } from 'date-fns'
 
 const PAGE_SIZE = 20
+
+function formatDistanceToNow(date: Date): string {
+  const now = Date.now()
+  const diffMs = now - date.getTime()
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'just now'
+
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+
+  if (diffMs < minute) return 'just now'
+  if (diffMs < hour) {
+    const minutes = Math.floor(diffMs / minute)
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  }
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour)
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  }
+
+  const days = Math.floor(diffMs / day)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}
 
 type LeadSummary = {
   id: string
@@ -156,7 +178,7 @@ export default function JrArchLeadsPage() {
                   )}
                   <div className="flex items-center justify-between mt-4">
                     <p className="text-xs text-muted-foreground">
-                      Created {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
+                      Created {formatDistanceToNow(new Date(lead.created_at))}
                     </p>
                     <Link href={`/crm/jr-architecture/leads/${lead.id}`}>
                       <Button size="sm">Workspace</Button>
