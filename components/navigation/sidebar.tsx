@@ -114,6 +114,16 @@ const navigationGroups: Record<string, NavGroup[]> = {
       ],
     },
   ],
+  'Jr Architect': [
+    {
+      id: 'jr-arch-workflow',
+      label: 'Workflow',
+      defaultOpen: true,
+      items: [
+        { icon: Users, label: 'Assigned Leads', href: '/crm/jr-architecture/leads' },
+      ],
+    },
+  ],
 }
 
 export function Sidebar({ open, onOpenChange, role }: SidebarProps) {

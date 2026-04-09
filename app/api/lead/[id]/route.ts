@@ -441,11 +441,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         ...(includeVisits
           ? {
               visits: {
-                select: {
-                  id: true,
-                  scheduledAt: true,
-                  projectSqft: true,
-                  projectStatus: true,
+                include: {
+                  result: true,
                 },
                 orderBy: { scheduledAt: 'desc' },
                 take: 1,
