@@ -1,5 +1,10 @@
 import prisma from '@/lib/prisma';
-import { LeadAssignmentDepartment, LeadStage, Prisma } from '@/generated/prisma/client';
+import {
+  LeadAssignmentDepartment,
+  LeadPrimaryOwnerDepartment,
+  LeadStage,
+  Prisma,
+} from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { logLeadCreated } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
@@ -8,6 +13,7 @@ import { isFacebookConfigured } from '@/lib/facebook';
 import { maybeRunFacebookFallbackSync, runFacebookSyncWithControl } from '@/lib/facebook-sync-control';
 import { maybeRunInstagramFallbackSync } from '@/lib/instagram-sync-control';
 import { ensureSeniorCrmAssignment } from '@/lib/lead-handoff';
+import { formatPhoneForStorage } from '@/lib/phone-normalize';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -150,10 +156,33 @@ function toBudget(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toPhoneForStorage(value: unknown): string | null {
+  const raw = toOptionalString(value);
+  if (!raw) return null;
+
+  const normalized = formatPhoneForStorage(raw);
+  if (!normalized) return raw.replace(/\D/g, '') || raw;
+
+  // Store Bangladesh numbers as local format (01XXXXXXXXX) for easier direct dialing.
+  if (/^8801[3-9]\d{8}$/.test(normalized)) {
+    return `0${normalized.slice(3)}`;
+  }
+
+  return normalized;
+}
+
 function toLeadStageParam(value: string | null): LeadStage | null {
   const normalized = toOptionalString(value);
   if (!normalized || normalized === 'ALL') return null;
   const upper = normalized.toUpperCase();
+  if (
+    upper === LeadStage.VISIT_SCHEDULED ||
+    upper === LeadStage.VISIT_RESCHEDULED ||
+    upper === LeadStage.VISIT_COMPLETED ||
+    upper === LeadStage.VISIT_CANCELLED
+  ) {
+    return LeadStage.VISIT_PHASE;
+  }
   return Object.values(LeadStage).includes(upper as LeadStage) ? (upper as LeadStage) : null;
 }
 
@@ -443,7 +472,7 @@ export async function POST(request: NextRequest) {
 
     // Extract and validate required fields
     const name = toOptionalString(body.name);
-    const phone = toOptionalString(body.phone);
+    const phone = toPhoneForStorage(body.phone);
     const email = toOptionalString(body.email)?.toLowerCase();
     const source = toOptionalString(body.source);
     const requestedAssigneeId = toOptionalString(body.assignedToId);
@@ -541,6 +570,12 @@ export async function POST(request: NextRequest) {
     // console.log('💾 [POST /api/lead] - Creating lead and activity log in transaction');
     const lead = await prisma.$transaction(async (tx) => {
       const stage = phone ? LeadStage.NUMBER_COLLECTED : LeadStage.NEW
+      const primaryOwnerDepartment = jrCrmAssigneeId
+        ? LeadPrimaryOwnerDepartment.JR_CRM
+        : srCrmAssigneeId
+          ? LeadPrimaryOwnerDepartment.SR_CRM
+          : null
+      const primaryOwnerUserId = jrCrmAssigneeId ?? srCrmAssigneeId ?? null
 
       // Create the new lead with validated data
       const newLead = await tx.lead.create({
@@ -553,6 +588,8 @@ export async function POST(request: NextRequest) {
           budget: toBudget(body.budget),
           stage,
           ...(jrCrmAssigneeId ? { assignedTo: jrCrmAssigneeId } : {}),
+          ...(primaryOwnerDepartment ? { primaryOwnerDepartment } : {}),
+          ...(primaryOwnerUserId ? { primaryOwnerUserId } : {}),
         },
         // Include assignee details in the response
         include: {

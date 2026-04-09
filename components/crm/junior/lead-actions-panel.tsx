@@ -316,12 +316,9 @@ export function LeadActionsPanel({
         'VISUAL_CORRECTION',
       ],
       CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID', 'CLIENT_APPROVED'],
+      VISIT_PHASE: ['VISIT_SCHEDULED', 'VISIT_COMPLETED', 'VISIT_RESCHEDULED', 'VISIT_CANCELLED'],
       CONTACT_ATTEMPTED: ['NO_ANSWER'],
       NURTURING: ['WARM_LEAD', 'FUTURE_CLIENT'],
-      VISIT_SCHEDULED: [],
-      VISIT_RESCHEDULED: [],
-      VISIT_COMPLETED: [],
-      VISIT_CANCELLED: [],
       CLOSED: ['PROJECT_DROPPED', 'REJECTED_OFFER', 'SMALL_BUDGET', 'INVALID', 'NOT_INTERESTED', 'LOST', 'DEAD_LEAD'],
     }),
     [],
@@ -338,19 +335,16 @@ export function LeadActionsPanel({
     BUDGET_PHASE: 5,
     VISUALIZATION_PHASE: 6,
     CONVERSION: 7,
-    CONTACT_ATTEMPTED: 8,
-    NURTURING: 9,
-    VISIT_SCHEDULED: 10,
-    VISIT_RESCHEDULED: 11,
-    VISIT_COMPLETED: 12,
-    VISIT_CANCELLED: 13,
-    CLOSED: 14,
+    VISIT_PHASE: 8,
+    CONTACT_ATTEMPTED: 9,
+    NURTURING: 10,
+    CLOSED: 11,
   }
   const originalStageRank = stageOrder[originalStage] ?? -1
   const selectedStageRank = stageOrder[stage] ?? -1
   const isForwardMove = selectedStageRank > originalStageRank
   const stageLockedAfterVisitScheduled =
-    originalStageRank >= stageOrder.VISIT_SCHEDULED || localVisitStageLock
+    originalStageRank >= stageOrder.VISIT_PHASE || localVisitStageLock
   const hasStageChanged = stage !== originalStage || (subStatus ?? null) !== (originalSubStatus ?? null)
   const requiresPhoneForNumberCollected =
     stage === 'NUMBER_COLLECTED' &&
@@ -367,7 +361,7 @@ export function LeadActionsPanel({
     shouldCreateFollowupForNoAnswer || requiresPendingFollowupForNurturing
   const showFollowupFieldsInStageModal =
     isNoAnswerSubStatus || requiresPendingFollowupForNurturing
-  const requiresVisitSchedulingInStageModal = stage === 'VISIT_SCHEDULED'
+  const requiresVisitSchedulingInStageModal = stage === 'VISIT_PHASE' && subStatus === 'VISIT_SCHEDULED'
   const canUpdateStage =
     (!requiresSubStatus || Boolean(subStatus)) &&
     hasStageChanged &&
@@ -381,7 +375,7 @@ export function LeadActionsPanel({
 
   useEffect(() => {
     const latestOriginalStageRank = stageOrder[originalStage] ?? -1
-    if (latestOriginalStageRank < stageOrder.VISIT_SCHEDULED) {
+    if (latestOriginalStageRank < stageOrder.VISIT_PHASE) {
       setLocalVisitStageLock(false)
     }
   }, [originalStage])
@@ -407,12 +401,9 @@ export function LeadActionsPanel({
     BUDGET_PHASE: 'Lead has moved to budget phase.',
     VISUALIZATION_PHASE: 'Lead has moved to visualization phase.',
     CONVERSION: 'Lead has moved to conversion phase.',
+    VISIT_PHASE: 'Lead has moved to visit phase.',
     CONTACT_ATTEMPTED: 'Contact has been attempted.',
     NURTURING: 'Lead has been moved to nurturing for follow-up.',
-    VISIT_SCHEDULED: 'Visit has been scheduled.',
-    VISIT_RESCHEDULED: 'Visit has been rescheduled.',
-    VISIT_COMPLETED: 'Visit has been completed.',
-    VISIT_CANCELLED: 'Visit has been cancelled.',
     CLOSED: 'Lead has been closed.',
   }
   const defaultStageReason =
@@ -828,7 +819,7 @@ export function LeadActionsPanel({
   }
 
   const handleStageChange = (value: string) => {
-    if (value === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
+    if (value === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
       setStageError('Visit Completed can only be set from visit result.')
       return
     }
@@ -845,7 +836,7 @@ export function LeadActionsPanel({
   const openReasonDialog = () => {
     setStageError(null)
     if (stageLockedAfterVisitScheduled) {
-      setStageError('After Visit Scheduled, CRM stage changes are locked.')
+      setStageError('After entering Visit Phase, CRM stage changes are locked.')
       return
     }
     if (!canUpdateStage) {
@@ -861,7 +852,7 @@ export function LeadActionsPanel({
   }
 
   const handleStageSubmit = async () => {
-    if (stage === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
+    if (stage === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
       setStageError('Visit Completed can only be set from visit result.')
       return
     }
@@ -969,8 +960,8 @@ export function LeadActionsPanel({
         setReason('')
         setStageFollowupDate('')
         setStageFollowupNotes('')
-        onStageChange('VISIT_SCHEDULED')
-        onSubStatusChange(null)
+        onStageChange('VISIT_PHASE')
+        onSubStatusChange('VISIT_SCHEDULED')
         setLocalVisitStageLock(true)
         resetVisitForm()
         refreshLeadVisits()
@@ -1119,8 +1110,8 @@ export function LeadActionsPanel({
 
       setVisitOpen(false)
       resetVisitForm()
-      onStageChange('VISIT_SCHEDULED')
-      onSubStatusChange(null)
+      onStageChange('VISIT_PHASE')
+      onSubStatusChange('VISIT_SCHEDULED')
       setLocalVisitStageLock(true)
       refreshLeadVisits()
       onFollowupRefresh?.()
@@ -1318,8 +1309,8 @@ export function LeadActionsPanel({
       setVisitResultOpen(false)
       resetVisitResultForm()
       if (visitResultRole === 'LEAD' && !isVisitResultUpdate) {
-        onStageChange('VISIT_COMPLETED')
-        onSubStatusChange(null)
+        onStageChange('VISIT_PHASE')
+        onSubStatusChange('VISIT_COMPLETED')
       }
       onLeadRefresh?.()
       refreshLeadVisits()
@@ -1561,23 +1552,12 @@ export function LeadActionsPanel({
               <SelectItem value="BUDGET_PHASE">Budget Phase</SelectItem>
               <SelectItem value="VISUALIZATION_PHASE">Visualization Phase</SelectItem>
               <SelectItem value="CONVERSION">Conversion</SelectItem>
+              <SelectItem value="VISIT_PHASE">Visit Phase</SelectItem>
               <SelectItem value="CONTACT_ATTEMPTED">
                 Contact Attempted
               </SelectItem>
               <SelectItem value="NURTURING">
                 Nurturing
-              </SelectItem>
-              <SelectItem value="VISIT_SCHEDULED">
-                Visit Scheduled
-              </SelectItem>
-              <SelectItem value="VISIT_RESCHEDULED">
-                Visit Rescheduled
-              </SelectItem>
-              <SelectItem value="VISIT_COMPLETED" disabled={!canSetVisitCompletedStage}>
-                Visit Completed
-              </SelectItem>
-              <SelectItem value="VISIT_CANCELLED">
-                Visit Cancelled
               </SelectItem>
               <SelectItem value="CLOSED">
                 Closed
@@ -1619,7 +1599,7 @@ export function LeadActionsPanel({
           ) : null}
           {canManageStage && stageLockedAfterVisitScheduled ? (
             <p className="text-xs text-muted-foreground">
-              Once the lead reaches Visit Scheduled, CRM stage updates are locked.
+              Once the lead reaches Visit Phase, CRM stage updates are locked.
             </p>
           ) : null}
 
@@ -1648,7 +1628,7 @@ export function LeadActionsPanel({
                 <DialogTitle>Reason for change</DialogTitle>
                 <DialogDescription>
                   {requiresVisitSchedulingInStageModal
-                    ? 'Add reason and visit details. Submitting will schedule the visit and move stage to Visit Scheduled.'
+                    ? 'Add reason and visit details. Submitting will schedule the visit and move stage to Visit Phase.'
                     : showFollowupFieldsInStageModal
                     ? 'Add a reason and schedule the required follow-up.'
                     : 'Add a short reason for updating the stage/substatus.'}

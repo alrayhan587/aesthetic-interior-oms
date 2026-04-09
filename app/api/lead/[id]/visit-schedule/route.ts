@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import {
   ActivityType,
   LeadAssignmentDepartment,
+  LeadSubStatus,
   LeadStage,
   NotificationType,
   ProjectStatus,
@@ -65,9 +66,8 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
-async function validateVisitTeamUser(userId: string) {
-  // console.log('[validateVisitTeamUser] Validating user:', userId);
-  const visitTeamUser = await prisma.user.findUnique({
+async function validateVisitAssignee(userId: string) {
+  const visitAssignee = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
@@ -84,31 +84,25 @@ async function validateVisitTeamUser(userId: string) {
 
   // console.log('[validateVisitTeamUser] User found:', visitTeamUser);
 
-  if (!visitTeamUser) {
-    // console.log('[validateVisitTeamUser] User not found');
-    return { ok: false as const, response: NextResponse.json({ success: false, error: 'Visit team user not found' }, { status: 404 }) };
+  if (!visitAssignee) {
+    return { ok: false as const, response: NextResponse.json({ success: false, error: 'Visit assignee user not found' }, { status: 404 }) };
   }
 
-  const isInVisitDepartment = visitTeamUser.userDepartments.some(
-    ({ department }) => department.name === 'VISIT_TEAM'
+  const isAllowedDepartment = visitAssignee.userDepartments.some(
+    ({ department }) => department.name === 'VISIT_TEAM' || department.name === 'SR_CRM'
   );
 
-  // console.log('[validateVisitTeamUser] User departments:', visitTeamUser.userDepartments);
-  // console.log('[validateVisitTeamUser] Is in VISIT_TEAM department:', isInVisitDepartment);
-
-  if (!isInVisitDepartment) {
-    // console.log('[validateVisitTeamUser] User not in VISIT_TEAM department');
+  if (!isAllowedDepartment) {
     return {
       ok: false as const,
       response: NextResponse.json(
-        { success: false, error: 'User is not mapped to VISIT_TEAM department' },
+        { success: false, error: 'User must be mapped to VISIT_TEAM or SR_CRM department' },
         { status: 400 }
       ),
     };
   }
 
-  // console.log('[validateVisitTeamUser] Validation passed');
-  return { ok: true as const, visitTeamUser };
+  return { ok: true as const, visitAssignee };
 }
 
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -123,7 +117,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Invalid lead id' }, { status: 400 });
     }
 
-    const [lead, visitTeamDepartment] = await Promise.all([
+    const [lead, visitTeamDepartment, srCrmDepartment] = await Promise.all([
       prisma.lead.findUnique({
         where: { id: leadId },
         select: { id: true, name: true, location: true, stage: true },
@@ -152,13 +146,45 @@ export async function GET(_request: NextRequest, context: RouteContext) {
           },
         },
       }),
+      prisma.department.findUnique({
+        where: { name: 'SR_CRM' },
+        select: {
+          id: true,
+          name: true,
+          userDepartments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+            },
+            orderBy: {
+              user: {
+                fullName: 'asc',
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     if (!lead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
 
-    const members = (visitTeamDepartment?.userDepartments ?? []).map((row) => row.user);
+    const visitMembers = (visitTeamDepartment?.userDepartments ?? []).map((row) => row.user);
+    const srMembers = (srCrmDepartment?.userDepartments ?? []).map((row) => row.user);
+    const uniqueById = new Map<string, (typeof visitMembers)[number]>();
+    for (const member of [...visitMembers, ...srMembers]) {
+      if (!uniqueById.has(member.id)) {
+        uniqueById.set(member.id, member);
+      }
+    }
+    const members = Array.from(uniqueById.values());
 
     return NextResponse.json({
       success: true,
@@ -166,6 +192,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         lead,
         defaultLocation: lead.location,
         visitTeamMembers: members,
+        visitAssigneeMembers: members,
       },
     });
   } catch (error) {
@@ -239,9 +266,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const [lead, visitTeamUserResult] = await Promise.all([
       prisma.lead.findUnique({
         where: { id: leadId },
-        select: { id: true, name: true, stage: true, location: true },
+        select: { id: true, name: true, stage: true, subStatus: true, location: true },
       }),
-      validateVisitTeamUser(visitTeamUserId),
+      validateVisitAssignee(visitTeamUserId),
     ]);
 
     // console.log('[POST] Lead found:', lead);
@@ -284,11 +311,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const leadAfterStageUpdate = await tx.lead.update({
         where: { id: leadId },
         data: {
-          stage: LeadStage.VISIT_SCHEDULED,
+          stage: LeadStage.VISIT_PHASE,
+          subStatus: LeadSubStatus.VISIT_SCHEDULED,
           location: locationToUse,
         },
       });
-      // console.log('[POST] Lead stage updated to VISIT_SCHEDULED');
+      // console.log('[POST] Lead stage updated to VISIT_PHASE/VISIT_SCHEDULED');
 
       const visit = await tx.visit.create({
         data: {
@@ -341,7 +369,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             visitId: visit.id,
             type: NotificationType.VISIT_SCHEDULED_ADMIN,
             title: 'Visit scheduled',
-            message: `Lead: ${lead.name} visit scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUserResult.visitTeamUser.fullName}.`,
+            message: `Lead: ${lead.name} visit scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUserResult.visitAssignee.fullName}.`,
             scheduledFor: parsedScheduledAt,
           })),
         });
@@ -384,13 +412,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
       }
 
-      if (lead.stage !== LeadStage.VISIT_SCHEDULED) {
+      if (lead.stage !== LeadStage.VISIT_PHASE || lead.subStatus !== LeadSubStatus.VISIT_SCHEDULED) {
         // console.log('[POST] Logging lead stage change');
         await logLeadStageChanged(tx, {
           leadId,
           userId: actorUserId,
           from: lead.stage,
-          to: LeadStage.VISIT_SCHEDULED,
+          to: LeadStage.VISIT_PHASE,
           reason,
         });
       }
@@ -401,14 +429,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
         leadId,
         userId: actorUserId,
         type: ActivityType.VISIT_SCHEDULED,
-        description: `Visit ${visit.id} scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUserResult.visitTeamUser.fullName}.${reasonPart}`,
+        description: `Visit ${visit.id} scheduled at ${parsedScheduledAt.toISOString()} and assigned to ${visitTeamUserResult.visitAssignee.fullName}.${reasonPart}`,
       });
 
       // console.log('[POST] Logging user assigned activity');
       await logUserAssigned(tx, {
         leadId,
         userId: actorUserId,
-        leadName: `${visitTeamUserResult.visitTeamUser.fullName} assigned to VISIT_TEAM department`,
+        leadName: `${visitTeamUserResult.visitAssignee.fullName} assigned as visit lead`,
       });
 
       await autoCompletePendingFollowups(tx, {

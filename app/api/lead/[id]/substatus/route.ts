@@ -11,6 +11,10 @@ import {
   handoffDepartmentForSubStatus,
   requiresSrCrmAssignment,
 } from '@/lib/lead-handoff';
+import { buildScopedLeadWhere } from '@/lib/lead-access';
+import { canManagePrimaryLeadFlow } from '@/lib/lead-workflow-auth';
+import { ensurePhaseTaskForSubStatus } from '@/lib/lead-phase-task';
+import { createSrCadReviewTodosForCadStart } from '@/lib/sr-cad-todo';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -72,9 +76,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingLead = await prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { id: true, stage: true, subStatus: true },
+    const scopedWhere = buildScopedLeadWhere({
+      leadId,
+      actorUserId: authResult.actorUserId,
+      actorDepartments,
+    });
+    const existingLead = await prisma.lead.findFirst({
+      where: scopedWhere,
+      select: { id: true, stage: true, subStatus: true, primaryOwnerUserId: true },
     });
 
     if (!existingLead) {
@@ -90,6 +99,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
       return NextResponse.json(
         { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
+      );
+    }
+    if (
+      !canManagePrimaryLeadFlow({
+        actorUserId: authResult.actorUserId,
+        actorDepartments,
+        lead: { primaryOwnerUserId: existingLead.primaryOwnerUserId },
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Only primary owner or admin can change lead flow' },
         { status: 403 },
       );
     }
@@ -127,6 +148,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           actorUserId: userId,
         });
       }
+      await ensurePhaseTaskForSubStatus({
+        tx,
+        leadId,
+        subStatus: nextSubStatus,
+        actorUserId: authResult.actorUserId,
+      });
+      await createSrCadReviewTodosForCadStart({
+        tx,
+        leadId,
+        fromStage: existingLead.stage,
+        fromSubStatus: existingLead.subStatus,
+        toStage: existingLead.stage,
+        toSubStatus: nextSubStatus,
+        triggeredByUserId: authResult.actorUserId,
+      });
 
       return updated;
     });

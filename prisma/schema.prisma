@@ -25,10 +25,13 @@ model Lead {
   location   String?
   remarks    String?
   assignedTo String?
+  primaryOwnerDepartment LeadPrimaryOwnerDepartment?
+  primaryOwnerUserId String?
   created_at DateTime       @default(now())
   updated_at DateTime       @updatedAt
 
   assignee      User?               @relation("UserAssignedLeads", fields: [assignedTo], references: [id])
+  primaryOwner  User?               @relation("LeadPrimaryOwner", fields: [primaryOwnerUserId], references: [id], onDelete: SetNull)
   followUps     FollowUp[]
   notes         Note[]
   activities    ActivityLog[]
@@ -37,8 +40,11 @@ model Lead {
   visits        Visit[]
   attachments   LeadAttachment[]
   notifications Notification[]
+  phaseTasks    LeadPhaseTask[]
+  meetingEvents LeadMeetingEvent[]
 
   @@index([assignedTo])
+  @@index([primaryOwnerUserId])
   @@index([email])
   @@index([phone])
 }
@@ -131,6 +137,7 @@ model User {
   approvedBy   User?               @relation("UserApprover", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedUsers User[]             @relation("UserApprover")
   leads           Lead[]              @relation("UserAssignedLeads")
+  primaryOwnedLeads Lead[]            @relation("LeadPrimaryOwner")
   followUps       FollowUp[]
   notes           Note[]
   activities      ActivityLog[]
@@ -145,8 +152,73 @@ model User {
   supportVisits             VisitSupportAssignment[] @relation("VisitSupportMember")
   supportVisitsAssignedBy   VisitSupportAssignment[] @relation("VisitSupportAssignedBy")
   supportVisitResults       VisitSupportResult[]
+  phaseTasksAssigned        LeadPhaseTask[]      @relation("LeadPhaseTaskAssignee")
+  phaseTasksCreated         LeadPhaseTask[]      @relation("LeadPhaseTaskCreator")
+  phaseReviews              LeadPhaseReview[]
+  meetingEventsCreated      LeadMeetingEvent[]
   notifications Notification[]
   signupNotifications Notification[] @relation("NotificationSubjectUser")
+}
+
+model LeadPhaseTask {
+  id                 String              @id @default(cuid())
+  leadId             String
+  phaseType          LeadPhaseType
+  assigneeUserId     String
+  dueAt              DateTime
+  status             LeadPhaseTaskStatus @default(OPEN)
+  currentReviewRound Int                 @default(0)
+  createdById        String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  lead      Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee  User              @relation("LeadPhaseTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("LeadPhaseTaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  reviews   LeadPhaseReview[]
+
+  @@index([leadId])
+  @@index([assigneeUserId])
+  @@index([phaseType])
+  @@index([status])
+}
+
+model LeadPhaseReview {
+  id           String                  @id @default(cuid())
+  taskId        String
+  roundNo      Int
+  submittedAt  DateTime                @default(now())
+  reviewedById String
+  decision     LeadPhaseReviewDecision
+  comment      String?
+
+  task       LeadPhaseTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewedBy User          @relation(fields: [reviewedById], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, roundNo])
+  @@index([taskId])
+  @@index([reviewedById])
+}
+
+model LeadMeetingEvent {
+  id          String              @id @default(cuid())
+  leadId      String
+  type        LeadMeetingEventType
+  title       String
+  notes       String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  createdById String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  lead      Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([type])
+  @@index([startsAt])
+  @@index([createdById])
 }
 
 model Visit {
@@ -488,6 +560,7 @@ enum LeadStage {
   CAD_PHASE
   QUOTATION_PHASE
   BUDGET_PHASE
+  VISIT_PHASE
   VISUALIZATION_PHASE
   CONVERSION
   CONTACT_ATTEMPTED
@@ -525,6 +598,10 @@ enum LeadSubStatus {
   VISUAL_COMPLETED
   CLIENT_APPROVED
   VISUAL_CORRECTION
+  VISIT_SCHEDULED
+  VISIT_COMPLETED
+  VISIT_RESCHEDULED
+  VISIT_CANCELLED
   PROJECT_DROPPED
   SMALL_BUDGET
   DEAD_LEAD
@@ -540,6 +617,34 @@ enum FollowUpStatus {
   MISSED
 }
 
+enum LeadPrimaryOwnerDepartment {
+  JR_CRM
+  SR_CRM
+}
+
+enum LeadPhaseType {
+  CAD
+  QUOTATION
+}
+
+enum LeadPhaseTaskStatus {
+  OPEN
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum LeadPhaseReviewDecision {
+  APPROVED
+  REWORK
+}
+
+enum LeadMeetingEventType {
+  FIRST_MEETING
+  BUDGET_MEETING
+  REVIEW_CHECKPOINT
+}
+
 enum ActivityType {
   CALL
   STATUS_CHANGE
@@ -549,6 +654,11 @@ enum ActivityType {
   VISIT_SCHEDULED
   LEAD_CREATED
   USER_ASSIGNED
+  SR_TAKEOVER
+  PHASE_DEADLINE_SET
+  PHASE_REVIEW_ROUND
+  MEETING_SCHEDULED
+  HANDOFF_TRIGGERED
 }
 
 enum VisitStatus {

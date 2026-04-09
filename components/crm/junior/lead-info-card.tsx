@@ -17,6 +17,11 @@ type LeadDetails = {
   assignedTo: string | null
   created_at: string
   updated_at: string
+  primaryOwner?: {
+    id: string
+    fullName: string
+    email: string
+  } | null
   visits?: Array<{
     id: string
     scheduledAt: string
@@ -32,6 +37,7 @@ const stageColors: Record<string, string> = {
   CAD_PHASE: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200',
   QUOTATION_PHASE: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
   BUDGET_PHASE: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
+  VISIT_PHASE: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
   VISUALIZATION_PHASE: 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200',
   CONVERSION: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
   CONTACT_ATTEMPTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
@@ -72,6 +78,11 @@ export function LeadInfoCard({ lead, stage, hasPendingFollowup }: LeadInfoCardPr
             {hasPendingFollowup ? (
               <span className="mt-2 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                 Pending follow-up
+              </span>
+            ) : null}
+            {lead.primaryOwner ? (
+              <span className="mt-2 inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                Primary owner: {lead.primaryOwner.fullName}
               </span>
             ) : null}
           </div>

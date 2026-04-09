@@ -243,6 +243,8 @@ import { logLeadAssignmentChanged, logLeadStatusChanged } from '@/lib/activity-l
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 import { formatServerTiming, timeAsync } from '@/lib/server-timing';
 import { requireDatabaseRoles } from '@/lib/authz';
+import { formatPhoneForStorage } from '@/lib/phone-normalize';
+import { canManagePrimaryLeadFlow } from '@/lib/lead-workflow-auth';
 import {
   canManagePaymentStatus,
   ensureDepartmentAssignment,
@@ -250,6 +252,9 @@ import {
   handoffDepartmentForSubStatus,
   requiresSrCrmAssignment,
 } from '@/lib/lead-handoff';
+import { buildScopedLeadWhere } from '@/lib/lead-access';
+import { ensurePhaseTaskForSubStatus } from '@/lib/lead-phase-task';
+import { createSrCadReviewTodosForCadStart } from '@/lib/sr-cad-todo';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'sin1';
@@ -299,6 +304,20 @@ function toBudget(value: unknown): number | null | undefined {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toPhoneForStorage(value: unknown): string | null {
+  const raw = toOptionalString(value);
+  if (!raw) return null;
+
+  const normalized = formatPhoneForStorage(raw);
+  if (!normalized) return raw.replace(/\D/g, '') || raw;
+
+  if (/^8801[3-9]\d{8}$/.test(normalized)) {
+    return `0${normalized.slice(3)}`;
+  }
+
+  return normalized;
+}
+
 function parseIncludeFlag(value: string | null, defaultValue = true): boolean {
   if (value === null) return defaultValue;
   const normalized = value.trim().toLowerCase();
@@ -313,6 +332,14 @@ function toLeadStage(value: unknown): LeadStage | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') return LeadStage.NEW;
   const normalized = value.trim().toUpperCase();
+  if (
+    normalized === LeadStage.VISIT_SCHEDULED ||
+    normalized === LeadStage.VISIT_RESCHEDULED ||
+    normalized === LeadStage.VISIT_COMPLETED ||
+    normalized === LeadStage.VISIT_CANCELLED
+  ) {
+    return LeadStage.VISIT_PHASE;
+  }
   return Object.values(LeadStage).includes(normalized as LeadStage)
     ? (normalized as LeadStage)
     : LeadStage.NEW;
@@ -347,11 +374,24 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const includeStatusHistory = parseIncludeFlag(_request.nextUrl.searchParams.get('includeStatusHistory'), true);
   const includeVisits = parseIncludeFlag(_request.nextUrl.searchParams.get('includeVisits'), true);
 
+  const authResult = await requireDatabaseRoles([]);
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+  const scopedWhere = buildScopedLeadWhere({
+    leadId: id,
+    actorUserId: authResult.actorUserId,
+    actorDepartments: authResult.actor.userDepartments ?? [],
+  });
+
   const fetchLead = (loadAttachments: boolean) =>
     prisma.lead.findFirst({
-      where: { id },
+      where: scopedWhere,
       include: {
         assignee: {
+          select: { id: true, fullName: true, email: true },
+        },
+        primaryOwner: {
           select: { id: true, fullName: true, email: true },
         },
         ...(includeFollowUps
@@ -424,6 +464,27 @@ export async function GET(_request: NextRequest, context: RouteContext) {
               },
             }
           : {}),
+        phaseTasks: {
+          include: {
+            assignee: { select: { id: true, fullName: true, email: true } },
+            createdBy: { select: { id: true, fullName: true, email: true } },
+            reviews: {
+              include: {
+                reviewedBy: {
+                  select: { id: true, fullName: true, email: true },
+                },
+              },
+              orderBy: { roundNo: 'desc' },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        meetingEvents: {
+          include: {
+            createdBy: { select: { id: true, fullName: true, email: true } },
+          },
+          orderBy: { startsAt: 'desc' },
+        },
       },
     });
 
@@ -502,10 +563,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return authResult.response;
     }
     const actorDepartments = authResult.actor.userDepartments ?? [];
+    const scopedWhere = buildScopedLeadWhere({
+      leadId: id,
+      actorUserId: authResult.actorUserId,
+      actorDepartments,
+    });
 
     const body = (await request.json()) as UpdateLeadBody;
     const name = toRequiredString(body.name);
-    const phone = toRequiredString(body.phone);
+    const phone = toPhoneForStorage(body.phone);
     const email = toOptionalString(body.email)?.toLowerCase();
 
     // For PUT we enforce required primary fields to avoid partial/ambiguous payloads.
@@ -516,7 +582,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const existingLead = await prisma.lead.findFirst({ where: { id } });
+    const existingLead = await prisma.lead.findFirst({ where: scopedWhere });
     if (!existingLead) {
       // console.log('[DEBUG][lead/:id][PUT] Lead not found:', id);
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
@@ -541,6 +607,21 @@ export async function PUT(request: NextRequest, context: RouteContext) {
    
      const stage = toLeadStage(body.stage) ?? existingLead.stage;
     const subStatus = toLeadSubStatus(body.subStatus) ?? null;
+    const isFlowMutation = stage !== existingLead.stage || subStatus !== existingLead.subStatus;
+
+    if (
+      isFlowMutation &&
+      !canManagePrimaryLeadFlow({
+        actorUserId: authResult.actorUserId,
+        actorDepartments,
+        lead: { primaryOwnerUserId: existingLead.primaryOwnerUserId },
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Only primary owner or admin can change lead flow' },
+        { status: 403 },
+      );
+    }
 
     if (!isSubStatusAllowedForStage(stage, subStatus)) {
       return NextResponse.json(
@@ -625,6 +706,21 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           actorUserId: userId,
         });
       }
+      await ensurePhaseTaskForSubStatus({
+        tx,
+        leadId: id,
+        subStatus,
+        actorUserId: userId,
+      });
+      await createSrCadReviewTodosForCadStart({
+        tx,
+        leadId: id,
+        fromStage: existingLead.stage,
+        fromSubStatus: existingLead.subStatus,
+        toStage: stage ?? existingLead.stage,
+        toSubStatus: subStatus,
+        triggeredByUserId: userId,
+      });
 
       await autoCompletePendingFollowups(tx, {
         leadId: id,
@@ -675,9 +771,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return authResult.response;
     }
     const actorDepartments = authResult.actor.userDepartments ?? [];
+    const scopedWhere = buildScopedLeadWhere({
+      leadId: id,
+      actorUserId: authResult.actorUserId,
+      actorDepartments,
+    });
     const body = (await request.json()) as UpdateLeadBody;
 
-    const existingLead = await prisma.lead.findFirst({ where: { id } });
+    const existingLead = await prisma.lead.findFirst({ where: scopedWhere });
     if (!existingLead) {
       return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
     }
@@ -705,6 +806,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const nextStage = stage ?? existingLead.stage;
     const nextSubStatus = body.subStatus !== undefined ? subStatus : existingLead.subStatus;
+    const isFlowMutation =
+      (body.stage !== undefined && nextStage !== existingLead.stage) ||
+      (body.subStatus !== undefined && nextSubStatus !== existingLead.subStatus);
+
+    if (
+      isFlowMutation &&
+      !canManagePrimaryLeadFlow({
+        actorUserId: authResult.actorUserId,
+        actorDepartments,
+        lead: { primaryOwnerUserId: existingLead.primaryOwnerUserId },
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Only primary owner or admin can change lead flow' },
+        { status: 403 },
+      );
+    }
 
     if (!isSubStatusAllowedForStage(nextStage, nextSubStatus)) {
       return NextResponse.json(
@@ -724,7 +842,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         where: { id },
         data: {
           ...(body.name !== undefined ? { name: toRequiredString(body.name) ?? existingLead.name } : {}),
-          ...(body.phone !== undefined ? { phone: toOptionalString(body.phone) } : {}),
+          ...(body.phone !== undefined ? { phone: toPhoneForStorage(body.phone) } : {}),
           ...(nextEmail !== undefined ? { email: nextEmail } : {}),
           ...(body.source !== undefined ? { source: toOptionalString(body.source) } : {}),
            ...(stage !== undefined ? { stage } : {}),
@@ -775,6 +893,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           actorUserId: userId,
         });
       }
+      await ensurePhaseTaskForSubStatus({
+        tx,
+        leadId: id,
+        subStatus: nextSubStatus,
+        actorUserId: userId,
+      });
+      await createSrCadReviewTodosForCadStart({
+        tx,
+        leadId: id,
+        fromStage: existingLead.stage,
+        fromSubStatus: existingLead.subStatus,
+        toStage: nextStage,
+        toSubStatus: nextSubStatus,
+        triggeredByUserId: userId,
+      });
 
       await autoCompletePendingFollowups(tx, {
         leadId: id,

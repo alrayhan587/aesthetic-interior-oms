@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Clock, MapPin, AlertCircle, Loader2, CalendarDays, CheckCircle2, XCircle } from 'lucide-react'
+import { Clock, MapPin, AlertCircle, Loader2, CalendarDays, CheckCircle2, XCircle, Phone } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import { fetchMeCached } from '@/lib/client-me'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
@@ -105,6 +105,22 @@ function formatStatusLabel(status: string) {
   if (status === 'SCHEDULED') return 'PENDING'
   return status.replace(/_/g, ' ')
 }
+
+function buildDialPhoneWithout88(phone: string | null | undefined): string | null {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, '')
+  if (!digits) return null
+
+  let dial = digits
+  if (dial.startsWith('0088')) {
+    dial = dial.slice(4)
+  } else if (dial.startsWith('88')) {
+    dial = dial.slice(2)
+  }
+
+  return dial ? `tel:${dial}` : null
+}
+
 const selectUnsetValue = '__UNSET__'
 
 export default function VisitTodayPage() {
@@ -133,6 +149,7 @@ export default function VisitTodayPage() {
   const [completeTimelineUrgency, setCompleteTimelineUrgency] = useState('')
   const [completeStylePreference, setCompleteStylePreference] = useState('')
   const [supportClientName, setSupportClientName] = useState('')
+  const [supportClientNameAutoFilled, setSupportClientNameAutoFilled] = useState(false)
   const [supportProjectArea, setSupportProjectArea] = useState('')
   const [supportProjectStatus, setSupportProjectStatus] = useState('')
   const [supportExtraConcern, setSupportExtraConcern] = useState('')
@@ -238,6 +255,7 @@ export default function VisitTodayPage() {
       <CardContent className="space-y-3 xl:flex-1 xl:overflow-y-auto">
         {statFilteredVisits.map((visit, index) => {
           const visitDate = new Date(visit.scheduledAt)
+          const dialHref = buildDialPhoneWithout88(visit.lead?.phone)
           return (
             <motion.div
               key={visit.id}
@@ -332,6 +350,14 @@ export default function VisitTodayPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 sm:justify-end">
+                  {dialHref ? (
+                    <Button size="sm" variant="outline" className="sm:hidden" asChild>
+                      <a href={dialHref}>
+                        <Phone className="size-4" />
+                        Call
+                      </a>
+                    </Button>
+                  ) : null}
                   <Button size="sm" variant="outline" asChild>
                     <Link href={`/visit-team/leads/${visit.lead.id}`}>Open Lead</Link>
                   </Button>
@@ -439,7 +465,8 @@ export default function VisitTodayPage() {
     setCompleteBudgetRange('')
     setCompleteTimelineUrgency('')
     setCompleteStylePreference('')
-    setSupportClientName('')
+    setSupportClientName(visit.lead?.name ?? '')
+    setSupportClientNameAutoFilled(Boolean(visit.lead?.name))
     setSupportProjectArea('')
     setSupportProjectStatus('')
     setSupportExtraConcern('')
@@ -875,6 +902,7 @@ export default function VisitTodayPage() {
 
           <DialogFooter className="gap-2">
             <Button
+              type="button"
               variant="outline"
               onClick={() => setRequestOpen(false)}
               className="text-sm"
@@ -882,6 +910,7 @@ export default function VisitTodayPage() {
               Cancel
             </Button>
             <Button
+              type="button"
               onClick={handleSendRequest}
               disabled={sendingRequest}
               className="text-sm gap-2"
@@ -916,7 +945,20 @@ export default function VisitTodayPage() {
               <>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Client Name</Label>
-                  <Input value={supportClientName} onChange={(event) => setSupportClientName(event.target.value)} className="text-sm" />
+                  <Input
+                    value={supportClientName}
+                    onFocus={() => {
+                      if (supportClientNameAutoFilled) {
+                        setSupportClientName('')
+                        setSupportClientNameAutoFilled(false)
+                      }
+                    }}
+                    onChange={(event) => {
+                      setSupportClientName(event.target.value)
+                      setSupportClientNameAutoFilled(false)
+                    }}
+                    className="text-sm"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Project Area</Label>
@@ -924,7 +966,15 @@ export default function VisitTodayPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Project Status</Label>
-                  <Input value={supportProjectStatus} onChange={(event) => setSupportProjectStatus(event.target.value)} className="text-sm" />
+                  <select
+                    value={supportProjectStatus}
+                    onChange={(event) => setSupportProjectStatus(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select project status</option>
+                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
+                    <option value="READY">READY</option>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Extra Concern (optional)</Label>
@@ -1174,10 +1224,11 @@ export default function VisitTodayPage() {
           </div>
 
           <DialogFooter className="gap-2 border-t px-4 py-3 sm:border-0 sm:px-0 sm:py-0">
-            <Button variant="outline" onClick={() => setCompleteOpen(false)} className="text-sm">
+            <Button type="button" variant="outline" onClick={() => setCompleteOpen(false)} className="text-sm">
               Close
             </Button>
             <Button
+              type="button"
               onClick={handleCompleteVisit}
               disabled={
                 submittingComplete ||
@@ -1246,6 +1297,7 @@ export default function VisitTodayPage() {
           </div>
           <DialogFooter className="gap-2">
             <Button
+              type="button"
               onClick={handleAddSupportMember}
               disabled={supportDialogSaving || supportDialogLoading || !supportDialogSelection}
               className="text-sm gap-2"

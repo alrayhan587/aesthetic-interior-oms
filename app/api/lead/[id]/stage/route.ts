@@ -12,6 +12,10 @@ import {
   handoffDepartmentForSubStatus,
   requiresSrCrmAssignment,
 } from '@/lib/lead-handoff';
+import { buildScopedLeadWhere } from '@/lib/lead-access';
+import { canManagePrimaryLeadFlow } from '@/lib/lead-workflow-auth';
+import { ensurePhaseTaskForSubStatus } from '@/lib/lead-phase-task';
+import { createSrCadReviewTodosForCadStart } from '@/lib/sr-cad-todo';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -46,6 +50,14 @@ function toOptionalString(value: unknown): string | null {
 function toLeadStage(value: unknown): LeadStage | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toUpperCase();
+  if (
+    normalized === LeadStage.VISIT_SCHEDULED ||
+    normalized === LeadStage.VISIT_RESCHEDULED ||
+    normalized === LeadStage.VISIT_COMPLETED ||
+    normalized === LeadStage.VISIT_CANCELLED
+  ) {
+    return LeadStage.VISIT_PHASE;
+  }
   return Object.values(LeadStage).includes(normalized as LeadStage)
     ? (normalized as LeadStage)
     : null;
@@ -91,9 +103,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Valid stage is required' }, { status: 400 });
     }
 
-    const existingLead = await prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { id: true, stage: true, subStatus: true },
+    const scopedWhere = buildScopedLeadWhere({
+      leadId,
+      actorUserId: userId,
+      actorDepartments,
+    });
+
+    const existingLead = await prisma.lead.findFirst({
+      where: scopedWhere,
+      select: { id: true, stage: true, subStatus: true, primaryOwnerUserId: true },
     });
 
     if (!existingLead) {
@@ -116,6 +134,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
       return NextResponse.json(
         { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
+        { status: 403 },
+      );
+    }
+    if (
+      !canManagePrimaryLeadFlow({
+        actorUserId: userId,
+        actorDepartments,
+        lead: { primaryOwnerUserId: existingLead.primaryOwnerUserId },
+      })
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Only primary owner or admin can change lead flow' },
         { status: 403 },
       );
     }
@@ -166,6 +196,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           actorUserId: userId,
         });
       }
+      await ensurePhaseTaskForSubStatus({
+        tx,
+        leadId,
+        subStatus: nextSubStatus,
+        actorUserId: userId,
+      });
+      await createSrCadReviewTodosForCadStart({
+        tx,
+        leadId,
+        fromStage: existingLead.stage,
+        fromSubStatus: existingLead.subStatus,
+        toStage: nextStage,
+        toSubStatus: nextSubStatus,
+        triggeredByUserId: userId,
+      });
 
       await autoCompletePendingFollowups(tx, {
         leadId,

@@ -21,6 +21,7 @@ import { LeadNotesTab } from '@/components/crm/junior/lead-notes-tab'
 import { LeadActivityTab } from '@/components/crm/junior/lead-activity-tab'
 import { LeadFollowupsTab } from '@/components/crm/junior/lead-followups-tab'
 import { LeadActionsPanel } from '@/components/crm/junior/lead-actions-panel'
+import { SrCommandPanel } from '@/components/crm/senior/sr-command-panel'
 import { fetchMeCached } from '@/lib/client-me'
 import { FacebookMessagesDialog } from '@/components/crm/shared/facebook-messages-dialog'
 
@@ -43,6 +44,31 @@ type LeadDetails = {
     fullName: string
     email: string
   } | null
+  primaryOwner?: {
+    id: string
+    fullName: string
+    email: string
+  } | null
+  phaseTasks?: Array<{
+    id: string
+    phaseType: 'CAD' | 'QUOTATION'
+    assigneeUserId: string
+    dueAt: string
+    status: 'OPEN' | 'IN_REVIEW' | 'COMPLETED' | 'CANCELLED'
+    currentReviewRound: number
+    assignee?: {
+      id: string
+      fullName: string
+      email: string
+    } | null
+  }>
+  meetingEvents?: Array<{
+    id: string
+    type: 'FIRST_MEETING' | 'BUDGET_MEETING' | 'REVIEW_CHECKPOINT'
+    title: string
+    startsAt: string
+    endsAt: string | null
+  }>
   activities?: Activity[]
   followUps?: Followup[]
   attachments?: LeadAttachment[]
@@ -176,7 +202,14 @@ export default function LeadDetailPage() {
   const [canManageAssignments, setCanManageAssignments] = useState(false)
   const [canManageVisitRequests, setCanManageVisitRequests] = useState(false)
   const isVisitTeamView = pathname?.startsWith('/visit-team/') ?? false
+  const isSeniorCrmView = pathname?.startsWith('/crm/sr/') ?? false
   const blurVisitResult = pathname?.startsWith('/crm/jr/') ?? false
+  const backHref = useMemo(() => {
+    if (pathname?.startsWith('/crm/sr/')) return '/crm/sr/lead-journey'
+    if (pathname?.startsWith('/crm/admin/')) return '/crm/admin/leads'
+    if (pathname?.startsWith('/visit-team/')) return '/visit-team/visit-today'
+    return '/crm/jr/leads'
+  }, [pathname])
 
   // Fetch current user
   useEffect(() => {
@@ -568,7 +601,7 @@ export default function LeadDetailPage() {
   if (loading) {
     return (
       <div className="p-4 sm:p-6">
-        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -584,7 +617,7 @@ export default function LeadDetailPage() {
   if (!lead) {
     return (
       <div className="p-4 sm:p-6">
-        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -597,7 +630,7 @@ export default function LeadDetailPage() {
     <div className="space-y-4 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button onClick={() => router.back()} variant="outline" size="sm" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" size="sm" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -744,6 +777,15 @@ export default function LeadDetailPage() {
 
         {/* Action Panel - Sidebar */}
         <div className="lg:col-span-1">
+          {isSeniorCrmView && lead ? (
+            <div className="mb-4">
+              <SrCommandPanel
+                lead={lead}
+                currentUserId={currentUserId}
+                onRefreshLead={refreshLeadDetails}
+              />
+            </div>
+          ) : null}
           <LeadActionsPanel
             leadId={leadId}
             leadLocation={lead.location}

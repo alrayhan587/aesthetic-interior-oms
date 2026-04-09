@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { ActivityType, LeadAssignmentDepartment, LeadStage, NotificationType, ProjectStatus, VisitStatus } from '@/generated/prisma/client';
+import { ActivityType, LeadAssignmentDepartment, LeadStage, LeadSubStatus, NotificationType, ProjectStatus, VisitStatus } from '@/generated/prisma/client';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
@@ -90,11 +90,11 @@ async function ensureVisitTeamUser(userId: string) {
   return { ok: true as const, user };
 }
 
-function leadStageFromVisitStatus(status: VisitStatus): LeadStage | null {
-  if (status === VisitStatus.SCHEDULED) return LeadStage.VISIT_SCHEDULED;
-  if (status === VisitStatus.COMPLETED) return LeadStage.VISIT_COMPLETED;
-  if (status === VisitStatus.RESCHEDULED) return LeadStage.VISIT_RESCHEDULED;
-  if (status === VisitStatus.CANCELLED) return LeadStage.VISIT_CANCELLED;
+function leadWorkflowFromVisitStatus(status: VisitStatus): { stage: LeadStage; subStatus: LeadSubStatus } | null {
+  if (status === VisitStatus.SCHEDULED) return { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_SCHEDULED };
+  if (status === VisitStatus.COMPLETED) return { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_COMPLETED };
+  if (status === VisitStatus.RESCHEDULED) return { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_RESCHEDULED };
+  if (status === VisitStatus.CANCELLED) return { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_CANCELLED };
   return null;
 }
 
@@ -236,6 +236,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           lead: {
             select: {
               stage: true,
+              subStatus: true,
               name: true,
             },
           },
@@ -336,20 +337,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         });
       }
 
-      const nextLeadStage = statusInput ? leadStageFromVisitStatus(statusInput) : null;
-      if (nextLeadStage && existing.lead.stage !== nextLeadStage) {
+      const nextLeadWorkflow = statusInput ? leadWorkflowFromVisitStatus(statusInput) : null;
+      if (
+        nextLeadWorkflow &&
+        (existing.lead.stage !== nextLeadWorkflow.stage || existing.lead.subStatus !== nextLeadWorkflow.subStatus)
+      ) {
         await tx.lead.update({
           where: { id: visit.leadId },
           data: {
-            stage: nextLeadStage,
-            subStatus: null,
+            stage: nextLeadWorkflow.stage,
+            subStatus: nextLeadWorkflow.subStatus,
           },
         });
         await logLeadStageChanged(tx, {
           leadId: visit.leadId,
           userId: actorUserId,
           from: existing.lead.stage,
-          to: nextLeadStage,
+          to: nextLeadWorkflow.stage,
           reason: `Visit ${visit.id} status updated to ${statusInput}`,
         });
       }

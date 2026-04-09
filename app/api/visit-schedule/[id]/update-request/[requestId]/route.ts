@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { ActivityType, LeadStage, VisitStatus, VisitUpdateRequestStatus, VisitUpdateRequestType } from '@/generated/prisma/client'
+import { ActivityType, LeadStage, LeadSubStatus, VisitStatus, VisitUpdateRequestStatus, VisitUpdateRequestType } from '@/generated/prisma/client'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service'
 import { findVisitConflict, isFutureDate } from '@/lib/visit-guards'
@@ -122,16 +122,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             where: { id: visitId },
             data: { status: VisitStatus.CANCELLED },
           })
-          if (existing.visit.lead.stage !== LeadStage.VISIT_CANCELLED) {
+          if (existing.visit.lead.stage !== LeadStage.VISIT_PHASE || existing.visit.lead.subStatus !== LeadSubStatus.VISIT_CANCELLED) {
             await tx.lead.update({
               where: { id: existing.visit.leadId },
-              data: { stage: LeadStage.VISIT_CANCELLED, subStatus: null },
+              data: { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_CANCELLED },
             })
             await logLeadStageChanged(tx, {
               leadId: existing.visit.leadId,
               userId: actorUserId,
               from: existing.visit.lead.stage,
-              to: LeadStage.VISIT_CANCELLED,
+              to: LeadStage.VISIT_PHASE,
               reason: 'Visit cancel request approved',
             })
           }
@@ -163,16 +163,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               scheduledAt: resolvedScheduleAt,
             },
           })
-          if (existing.visit.lead.stage !== LeadStage.VISIT_RESCHEDULED) {
+          if (existing.visit.lead.stage !== LeadStage.VISIT_PHASE || existing.visit.lead.subStatus !== LeadSubStatus.VISIT_RESCHEDULED) {
             await tx.lead.update({
               where: { id: existing.visit.leadId },
-              data: { stage: LeadStage.VISIT_RESCHEDULED, subStatus: null },
+              data: { stage: LeadStage.VISIT_PHASE, subStatus: LeadSubStatus.VISIT_RESCHEDULED },
             })
             await logLeadStageChanged(tx, {
               leadId: existing.visit.leadId,
               userId: actorUserId,
               from: existing.visit.lead.stage,
-              to: LeadStage.VISIT_RESCHEDULED,
+              to: LeadStage.VISIT_PHASE,
               reason: 'Visit reschedule request approved',
             })
           }

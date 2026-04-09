@@ -20,6 +20,11 @@ const actionLabelMap: Record<ActivityType, string> = {
   VISIT_SCHEDULED: 'Visit Scheduled',
   LEAD_CREATED: 'Lead Created',
   USER_ASSIGNED: 'User Assigned',
+  SR_TAKEOVER: 'SR Takeover',
+  PHASE_DEADLINE_SET: 'Phase Deadline Set',
+  PHASE_REVIEW_ROUND: 'Phase Review Round',
+  MEETING_SCHEDULED: 'Meeting Scheduled',
+  HANDOFF_TRIGGERED: 'Handoff Triggered',
 }
 
 export async function GET(request: NextRequest) {

@@ -109,6 +109,13 @@ export function NotificationBell() {
     if (showLoading) setLoading(true)
     try {
       const response = await fetch('/api/notifications?limit=20', { cache: 'no-store' })
+      if (response.status === 401 || response.status === 403) {
+        setItems([])
+        setUnreadCount(0)
+        visibleUnreadCountRef.current = 0
+        knownIdsRef.current = new Set()
+        return
+      }
       const payload = (await response.json()) as NotificationsResponse
       if (!response.ok || !payload.success || !payload.data) {
         throw new Error(payload.error || 'Failed to load notifications')
@@ -147,7 +154,10 @@ export function NotificationBell() {
 
       visibleUnreadCountRef.current = payload.data.unreadCount
     } catch (error) {
-      console.error('Failed to load notifications:', error)
+      const message = error instanceof Error ? error.message : 'Unknown notification error'
+      if (!/unauthorized|forbidden/i.test(message)) {
+        console.error('Failed to load notifications:', error)
+      }
     } finally {
       if (showLoading) setLoading(false)
     }

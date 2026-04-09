@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { head, put } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
-import { ActivityType, LeadStage, ProjectStatus } from '@/generated/prisma/client'
+import { ActivityType, LeadStage, LeadSubStatus, ProjectStatus } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
@@ -18,6 +18,36 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   'video/mp4',
   'video/quicktime',
 ])
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+  'heic',
+  'heif',
+  'pdf',
+  'doc',
+  'docx',
+  'txt',
+  'mp4',
+  'mov',
+])
+const EXTENSION_CONTENT_TYPE_MAP: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+}
 
 async function resolveVisitId(context: RouteContext): Promise<string | null> {
   const resolvedParams = await context.params
@@ -39,13 +69,21 @@ function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
+function getFileExtension(fileName: string): string {
+  const safeName = (fileName || '').trim().toLowerCase()
+  const dotIndex = safeName.lastIndexOf('.')
+  if (dotIndex === -1 || dotIndex === safeName.length - 1) return ''
+  return safeName.slice(dotIndex + 1)
+}
+
 async function uploadFileToBlob(
   keyPrefix: string,
   file: File,
 ): Promise<{ url: string; fileName: string; fileType: string }> {
   const safeName = sanitizeFileName(file.name || 'attachment')
   const storedFileName = `${Date.now()}-${randomUUID()}-${safeName}`
-  const fileType = file.type || 'application/octet-stream'
+  const extension = getFileExtension(file.name || '')
+  const fileType = file.type || EXTENSION_CONTENT_TYPE_MAP[extension] || 'application/octet-stream'
   const blob = await put(`${keyPrefix}/${storedFileName}`, file, {
     access: 'public',
     contentType: fileType,
@@ -87,6 +125,15 @@ function isAllowedUploadType(fileType: string): boolean {
   if (!fileType) return false
   if (fileType.startsWith('image/')) return true
   return ALLOWED_UPLOAD_MIME_TYPES.has(fileType)
+}
+
+function isAllowedUploadFile(file: File): boolean {
+  const fileType = file.type || ''
+  if (isAllowedUploadType(fileType)) return true
+
+  // iOS/Safari can send empty or generic types; fallback to extension allow-list.
+  const extension = getFileExtension(file.name || '')
+  return ALLOWED_UPLOAD_EXTENSIONS.has(extension)
 }
 
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -238,11 +285,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
           { status: 400 },
         )
       }
-      if (!isAllowedUploadType(file.type || '')) {
+      if (!isAllowedUploadFile(file)) {
         return NextResponse.json(
           {
             success: false,
-            error: `File type "${file.type || 'unknown'}" is not allowed`,
+            error: `File "${file.name}" type "${file.type || 'unknown'}" is not allowed`,
           },
           { status: 400 },
         )
@@ -262,7 +309,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             },
           },
           lead: {
-            select: { stage: true },
+            select: { stage: true, subStatus: true },
           },
           result: {
             select: { id: true },
@@ -463,12 +510,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      if (visit.lead.stage !== LeadStage.VISIT_COMPLETED) {
+      if (visit.lead.stage !== LeadStage.VISIT_PHASE || visit.lead.subStatus !== LeadSubStatus.VISIT_COMPLETED) {
         await tx.lead.update({
           where: { id: visit.leadId },
           data: {
-            stage: LeadStage.VISIT_COMPLETED,
-            subStatus: null,
+            stage: LeadStage.VISIT_PHASE,
+            subStatus: LeadSubStatus.VISIT_COMPLETED,
           },
         })
 
@@ -476,7 +523,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           leadId: visit.leadId,
           userId: authResult.actorUserId,
           from: visit.lead.stage,
-          to: LeadStage.VISIT_COMPLETED,
+          to: LeadStage.VISIT_PHASE,
           reason: 'Visit result submitted',
         })
       }

@@ -81,7 +81,7 @@ const navigationGroups: Record<string, NavGroup[]> = {
       id: 'sr-overview',
       label: 'Overview',
       defaultOpen: true,
-      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/sr/dashboard' }],
+      items: [{ icon: LayoutDashboard, label: 'Today To-Do', href: '/crm/sr/dashboard' }],
     },
     {
       id: 'sr-workflow',
@@ -121,10 +121,22 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const { theme, toggleTheme } = useTheme()
 
   const [mounted, setMounted] = useState(false)
+  const [isLargeScreen, setIsLargeScreen] = useState(false)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+    const updateIsLargeScreen = () => setIsLargeScreen(mediaQuery.matches)
+    updateIsLargeScreen()
+    mediaQuery.addEventListener('change', updateIsLargeScreen)
+
+    return () => {
+      mediaQuery.removeEventListener('change', updateIsLargeScreen)
+    }
   }, [])
 
   // true for any route that lives under /visits
@@ -147,13 +159,19 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
     })
   }, [groups, isVisits])
 
+  const closeOnSmallScreens = () => {
+    if (!isLargeScreen) {
+      onOpenChange(false)
+    }
+  }
+
   return (
     <>
       {/* Mobile overlay */}
       {open && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => onOpenChange(false)}
+          onClick={closeOnSmallScreens}
         />
       )}
 
@@ -212,7 +230,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                           pathname === item.href ||
                           pathname.startsWith(item.href + '/')
                         return (
-                          <Link key={item.href} href={item.href} onClick={() => onOpenChange(false)}>
+                          <Link key={item.href} href={item.href} onClick={closeOnSmallScreens}>
                             <Button
                               variant={isActive ? 'secondary' : 'ghost'}
                               className={cn(

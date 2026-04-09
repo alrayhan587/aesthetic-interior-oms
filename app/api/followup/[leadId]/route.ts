@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { canManagePaymentStatus } from '@/lib/lead-handoff';
+import { buildScopedLeadWhere } from '@/lib/lead-access';
 
 type RouteContext = { params: { leadId: string } | Promise<{ leadId: string }> };
 const debugLog = (...args: unknown[]) => {
@@ -132,8 +133,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Check if lead exists
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const scopedWhere = buildScopedLeadWhere({
+      leadId,
+      actorUserId: authResult.actorUserId,
+      actorDepartments: authResult.actor.userDepartments ?? [],
+    });
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       select: { id: true, stage: true, subStatus: true },
     });
 

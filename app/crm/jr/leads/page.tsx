@@ -53,12 +53,9 @@ const stages = [
   'BUDGET_PHASE',
   'VISUALIZATION_PHASE',
   'CONVERSION',
+  'VISIT_PHASE',
   'CONTACT_ATTEMPTED',
   'NURTURING',
-  'VISIT_SCHEDULED',
-  'VISIT_RESCHEDULED',
-  'VISIT_COMPLETED',
-  'VISIT_CANCELLED',
   'CLOSED',
 ]
 const stageGridStages = [
@@ -69,12 +66,9 @@ const stageGridStages = [
   'BUDGET_PHASE',
   'VISUALIZATION_PHASE',
   'CONVERSION',
+  'VISIT_PHASE',
   'CONTACT_ATTEMPTED',
   'NURTURING',
-  'VISIT_SCHEDULED',
-  'VISIT_RESCHEDULED',
-  'VISIT_COMPLETED',
-  'VISIT_CANCELLED',
   'CLOSED',
 ]
 const sourceFilterOptions = ['ALL', 'WhatsApp', 'Facebook', 'Instagram', 'Website', 'Manual', 'Referral']
@@ -91,12 +85,9 @@ const stageColors: Record<string, string> = {
   BUDGET_PHASE: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200',
   VISUALIZATION_PHASE: 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200',
   CONVERSION: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
+  VISIT_PHASE: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
   CONTACT_ATTEMPTED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
   NURTURING: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200',
-  VISIT_SCHEDULED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
-  VISIT_RESCHEDULED: 'bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-900/40 dark:text-fuchsia-200',
-  VISIT_COMPLETED: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200',
-  VISIT_CANCELLED: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
   CLOSED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
 }
 
@@ -109,12 +100,9 @@ const stageStatConfig: Record<string, { icon: typeof CircleDot; tint: string }> 
   BUDGET_PHASE: { icon: CircleDot, tint: 'text-teal-700 bg-teal-100 dark:bg-teal-900/40 dark:text-teal-200' },
   VISUALIZATION_PHASE: { icon: LayoutGrid, tint: 'text-pink-700 bg-pink-100 dark:bg-pink-900/40 dark:text-pink-200' },
   CONVERSION: { icon: CheckCircle2, tint: 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-200' },
+  VISIT_PHASE: { icon: CalendarCheck, tint: 'text-purple-700 bg-purple-100 dark:bg-purple-900/40 dark:text-purple-200' },
   CONTACT_ATTEMPTED: { icon: Handshake, tint: 'text-blue-700 bg-blue-100 dark:bg-blue-900/40 dark:text-blue-200' },
   NURTURING: { icon: Sprout, tint: 'text-yellow-700 bg-yellow-100 dark:bg-yellow-900/40 dark:text-yellow-200' },
-  VISIT_SCHEDULED: { icon: CalendarCheck, tint: 'text-purple-700 bg-purple-100 dark:bg-purple-900/40 dark:text-purple-200' },
-  VISIT_RESCHEDULED: { icon: CalendarCheck, tint: 'text-fuchsia-700 bg-fuchsia-100 dark:bg-fuchsia-900/40 dark:text-fuchsia-200' },
-  VISIT_COMPLETED: { icon: CheckCircle2, tint: 'text-indigo-700 bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-200' },
-  VISIT_CANCELLED: { icon: Archive, tint: 'text-rose-700 bg-rose-100 dark:bg-rose-900/40 dark:text-rose-200' },
   CLOSED: { icon: Archive, tint: 'text-green-700 bg-green-100 dark:bg-green-900/40 dark:text-green-200' },
 }
 
