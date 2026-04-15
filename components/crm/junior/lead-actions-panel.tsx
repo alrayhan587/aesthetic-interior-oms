@@ -142,6 +142,7 @@ interface LeadActionsPanelProps {
   canAddFollowup?: boolean
   canScheduleVisit?: boolean
   canSubmitVisitResult?: boolean
+  canOverrideVisitLeadRole?: boolean
   currentUserId?: string | null
   blurVisitResult?: boolean
   canManageVisitRequests?: boolean
@@ -197,6 +198,7 @@ export function LeadActionsPanel({
   canAddFollowup = true,
   canScheduleVisit = true,
   canSubmitVisitResult = false,
+  canOverrideVisitLeadRole = false,
   currentUserId = null,
   blurVisitResult = false,
   canManageVisitRequests = false,
@@ -354,7 +356,8 @@ export function LeadActionsPanel({
   const selectedStageRank = stageOrder[stage] ?? -1
   const isForwardMove = selectedStageRank > originalStageRank
   const stageLockedAfterVisitScheduled =
-    originalStageRank >= stageOrder.VISIT_PHASE || localVisitStageLock
+    restrictStagesForJrCrm &&
+    (originalStageRank >= stageOrder.VISIT_PHASE || localVisitStageLock)
   const hasStageChanged = stage !== originalStage || (subStatus ?? null) !== (originalSubStatus ?? null)
   const requiresPhoneForNumberCollected =
     stage === 'NUMBER_COLLECTED' &&
@@ -543,6 +546,7 @@ export function LeadActionsPanel({
 
   const getVisitResultRole = useCallback(
     (visit: LeadVisitRecord): VisitResultRole => {
+      if (canOverrideVisitLeadRole) return 'LEAD'
       if (!currentUserId) return 'NONE'
       if (visit.assignedTo?.id === currentUserId) return 'LEAD'
       const isSupport = (visit.supportAssignments ?? []).some(
@@ -550,7 +554,7 @@ export function LeadActionsPanel({
       )
       return isSupport ? 'SUPPORT' : 'NONE'
     },
-    [currentUserId],
+    [canOverrideVisitLeadRole, currentUserId],
   )
 
   const visitResultCandidates = useMemo(
@@ -583,6 +587,18 @@ export function LeadActionsPanel({
     () => leadVisits.find((visit) => visit.id === visitResultVisitId) ?? null,
     [leadVisits, visitResultVisitId],
   )
+  const latestVisit = leadVisits[0] ?? null
+  const isLatestVisitResultPending = useMemo(() => {
+    if (!latestVisit) return false
+    if (latestVisit.status === 'CANCELLED') return false
+    if (latestVisit.status === 'COMPLETED') {
+      return !latestVisit.result
+    }
+    return latestVisit.status === 'SCHEDULED' || latestVisit.status === 'RESCHEDULED'
+  }, [latestVisit])
+  const scheduleVisitDisabledReason = isLatestVisitResultPending
+    ? 'Schedule is locked until the latest visit result is submitted.'
+    : null
 
   useEffect(() => {
     if (!selectedVisitResult) {
@@ -859,6 +875,26 @@ export function LeadActionsPanel({
       setStageError('Select a substatus to continue.')
       return
     }
+    if (stage === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED') {
+      if (!canSetVisitCompletedStage) {
+        setStageError('Visit Completed can only be set from visit result.')
+        return
+      }
+      if (!canSubmitVisitResult) {
+        setStageError('Visit Completed must be submitted via visit result by the assigned visit lead or admin.')
+        return
+      }
+      if (visitResultCandidates.length === 0) {
+        setStageError('No eligible visit found to complete. Please schedule a visit first.')
+        return
+      }
+      handleVisitResultOpenChange(true)
+      return
+    }
+    if (requiresVisitSchedulingInStageModal && isLatestVisitResultPending) {
+      setStageError(scheduleVisitDisabledReason)
+      return
+    }
     setStageFollowupDate('')
     setStageFollowupNotes('')
     setStagePhone(leadPhone ?? '')
@@ -868,8 +904,8 @@ export function LeadActionsPanel({
   }
 
   const handleStageSubmit = async () => {
-    if (stage === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED' && !canSetVisitCompletedStage) {
-      setStageError('Visit Completed can only be set from visit result.')
+    if (stage === 'VISIT_PHASE' && subStatus === 'VISIT_COMPLETED') {
+      setStageError('Use the Visit Result modal to complete Visit Phase.')
       return
     }
     const finalReason = reason.trim() || defaultStageReason
@@ -1034,6 +1070,10 @@ export function LeadActionsPanel({
   }
 
   const handleScheduleVisit = async () => {
+    if (isLatestVisitResultPending) {
+      setVisitTeamError(scheduleVisitDisabledReason)
+      return
+    }
     if (!visitTeamUserId) {
       setVisitTeamError('Please select a visit team member.')
       return
@@ -2060,10 +2100,15 @@ export function LeadActionsPanel({
               className="w-full justify-start gap-2"
               variant="outline"
               onClick={() => setVisitOpen(true)}
+              disabled={isLatestVisitResultPending}
+              title={scheduleVisitDisabledReason ?? undefined}
             >
               <Plus className="w-4 h-4" />
               Schedule Visit
             </Button>
+          ) : null}
+          {canScheduleVisit && scheduleVisitDisabledReason ? (
+            <p className="text-xs text-muted-foreground">{scheduleVisitDisabledReason}</p>
           ) : null}
           {canSubmitVisitResult ? (
             <Button

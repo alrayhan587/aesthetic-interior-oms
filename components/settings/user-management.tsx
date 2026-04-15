@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Building2, Mail, Power, RefreshCw, Search, UserCheck, UserX, Users2 } from 'lucide-react'
 
 type UserApiItem = {
@@ -48,6 +56,13 @@ type DepartmentsResponse = {
   error?: string
 }
 
+type DepartmentCreateResponse = {
+  success?: boolean
+  data?: DepartmentApiItem
+  error?: string
+  message?: string
+}
+
 type DepartmentUsersResponse = {
   success?: boolean
   data?: {
@@ -69,6 +84,11 @@ export function UserManagement() {
   const [approvalDepartmentByUser, setApprovalDepartmentByUser] = useState<Record<string, string>>({})
   const [openApproveByUser, setOpenApproveByUser] = useState<Record<string, boolean>>({})
   const [approvingIds, setApprovingIds] = useState<Record<string, boolean>>({})
+  const [newDepartmentName, setNewDepartmentName] = useState('')
+  const [newDepartmentDescription, setNewDepartmentDescription] = useState('')
+  const [creatingDepartment, setCreatingDepartment] = useState(false)
+  const [isDepartmentDialogOpen, setIsDepartmentDialogOpen] = useState(false)
+  const [isAccountRequestsDialogOpen, setIsAccountRequestsDialogOpen] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -282,6 +302,46 @@ export function UserManagement() {
     }
   }
 
+  const createDepartment = async () => {
+    const name = newDepartmentName.trim()
+    const description = newDepartmentDescription.trim()
+
+    if (!name) {
+      setStatusError('Department name is required.')
+      return
+    }
+
+    setStatusMessage(null)
+    setStatusError(null)
+    setCreatingDepartment(true)
+
+    try {
+      const response = await fetch('/api/department', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          description: description.length > 0 ? description : null,
+        }),
+      })
+
+      const payload = (await response.json()) as DepartmentCreateResponse
+      if (!response.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error ?? payload.message ?? 'Failed to create department')
+      }
+
+      setNewDepartmentName('')
+      setNewDepartmentDescription('')
+      setStatusMessage(`Department "${payload.data.name}" created successfully.`)
+      await loadData()
+      setIsDepartmentDialogOpen(false)
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'Failed to create department')
+    } finally {
+      setCreatingDepartment(false)
+    }
+  }
+
   if (loading) {
     return (
       <Card className="border-border">
@@ -311,82 +371,141 @@ export function UserManagement() {
 
       <Card className="border-border">
         <CardHeader>
-          <CardTitle className="text-base">Pending Approval Requests</CardTitle>
+          <CardTitle className="text-base">Department & Account Actions</CardTitle>
           <CardDescription>
-            New signups are listed here until an admin assigns their department.
+            Manage department creation and review pending account requests from one place.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {pendingUsers.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-              No pending signup requests.
-            </div>
-          ) : (
-            pendingUsers.map((user) => (
-              <div
-                key={user.id}
-                className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground">{user.fullName}</p>
-                  <p className="truncate text-sm text-muted-foreground">{user.email}</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  {openApproveByUser[user.id] ? (
-                    <>
-                      <Select
-                        value={approvalDepartmentByUser[user.id] ?? ''}
-                        onValueChange={(value) =>
-                          setApprovalDepartmentByUser((prev) => ({ ...prev, [user.id]: value }))
-                        }
-                      >
-                        <SelectTrigger className="w-full sm:w-[220px]">
-                          <SelectValue placeholder="Assign department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {departments.map((department) => (
-                            <SelectItem key={department.key} value={department.key}>
-                              {department.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void approvePendingUser(user)}
-                        disabled={Boolean(approvingIds[user.id])}
-                      >
-                        {approvingIds[user.id] ? 'Approving...' : 'Approve'}
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() =>
-                          setOpenApproveByUser((prev) => ({ ...prev, [user.id]: true }))
-                        }
-                        disabled={Boolean(approvingIds[user.id])}
-                      >
-                        Yes
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void rejectPendingUser(user)}
-                        disabled={Boolean(approvingIds[user.id])}
-                      >
-                        {approvingIds[user.id] ? 'Saving...' : 'No'}
-                      </Button>
-                    </>
-                  )}
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Dialog open={isDepartmentDialogOpen} onOpenChange={setIsDepartmentDialogOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" className="justify-start sm:justify-center">
+                Add Department
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>Department Management</DialogTitle>
+                <DialogDescription>
+                  Create departments that can be assigned during signup approval.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <Input
+                  value={newDepartmentName}
+                  onChange={(event) => setNewDepartmentName(event.target.value)}
+                  placeholder="Department name (e.g. JR_CRM)"
+                  disabled={creatingDepartment}
+                />
+                <Input
+                  value={newDepartmentDescription}
+                  onChange={(event) => setNewDepartmentDescription(event.target.value)}
+                  placeholder="Description (optional)"
+                  disabled={creatingDepartment}
+                />
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => void createDepartment()}
+                    disabled={creatingDepartment}
+                  >
+                    {creatingDepartment ? 'Creating...' : 'Create Department'}
+                  </Button>
                 </div>
               </div>
-            ))
-          )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isAccountRequestsDialogOpen} onOpenChange={setIsAccountRequestsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" className="gap-2 justify-start sm:justify-center">
+                Account Requests
+                <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[10px]">
+                  {pendingUsers.length}
+                </Badge>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Pending Approval Requests</DialogTitle>
+                <DialogDescription>
+                  New signups are listed here until an admin assigns their department.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+                {pendingUsers.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
+                    No pending signup requests.
+                  </div>
+                ) : (
+                  pendingUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">{user.fullName}</p>
+                        <p className="truncate text-sm text-muted-foreground">{user.email}</p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {openApproveByUser[user.id] ? (
+                          <>
+                            <Select
+                              value={approvalDepartmentByUser[user.id] ?? ''}
+                              onValueChange={(value) =>
+                                setApprovalDepartmentByUser((prev) => ({ ...prev, [user.id]: value }))
+                              }
+                            >
+                              <SelectTrigger className="w-full sm:w-[220px]">
+                                <SelectValue placeholder="Assign department" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {departments.map((department) => (
+                                  <SelectItem key={department.key} value={department.key}>
+                                    {department.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void approvePendingUser(user)}
+                              disabled={Boolean(approvingIds[user.id])}
+                            >
+                              {approvingIds[user.id] ? 'Approving...' : 'Approve'}
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() =>
+                                setOpenApproveByUser((prev) => ({ ...prev, [user.id]: true }))
+                              }
+                              disabled={Boolean(approvingIds[user.id])}
+                            >
+                              Yes
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void rejectPendingUser(user)}
+                              disabled={Boolean(approvingIds[user.id])}
+                            >
+                              {approvingIds[user.id] ? 'Saving...' : 'No'}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 

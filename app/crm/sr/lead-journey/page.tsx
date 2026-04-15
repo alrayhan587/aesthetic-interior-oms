@@ -123,30 +123,30 @@ const sourceVisualMap: Record<
 > = {
   facebook: {
     icon: Facebook,
-    bgClass: 'bg-blue-100',
-    iconClass: 'text-blue-700',
-    dotClass: 'bg-blue-500',
+    bgClass: 'bg-blue-100 dark:bg-blue-900/35',
+    iconClass: 'text-blue-700 dark:text-blue-200',
+    dotClass: 'bg-blue-500 dark:bg-blue-300',
     label: 'Facebook',
   },
   instagram: {
     icon: Instagram,
-    bgClass: 'bg-pink-100',
-    iconClass: 'text-pink-700',
-    dotClass: 'bg-pink-500',
+    bgClass: 'bg-pink-100 dark:bg-pink-900/35',
+    iconClass: 'text-pink-700 dark:text-pink-200',
+    dotClass: 'bg-pink-500 dark:bg-pink-300',
     label: 'Instagram',
   },
   whatsapp: {
     icon: MessageCircle,
-    bgClass: 'bg-emerald-100',
-    iconClass: 'text-emerald-700',
-    dotClass: 'bg-emerald-500',
+    bgClass: 'bg-emerald-100 dark:bg-emerald-900/35',
+    iconClass: 'text-emerald-700 dark:text-emerald-200',
+    dotClass: 'bg-emerald-500 dark:bg-emerald-300',
     label: 'WhatsApp',
   },
   website: {
     icon: Globe,
-    bgClass: 'bg-slate-100',
-    iconClass: 'text-slate-700',
-    dotClass: 'bg-slate-500',
+    bgClass: 'bg-slate-100 dark:bg-slate-800/60',
+    iconClass: 'text-slate-700 dark:text-slate-200',
+    dotClass: 'bg-slate-500 dark:bg-slate-300',
     label: 'Website',
   },
 }
@@ -156,9 +156,9 @@ function getSourceVisual(source: string | null | undefined) {
   return (
     sourceVisualMap[key] ?? {
       icon: UserCircle2,
-      bgClass: 'bg-zinc-100',
-      iconClass: 'text-zinc-700',
-      dotClass: 'bg-zinc-500',
+      bgClass: 'bg-zinc-100 dark:bg-zinc-800/60',
+      iconClass: 'text-zinc-700 dark:text-zinc-200',
+      dotClass: 'bg-zinc-500 dark:bg-zinc-300',
       label: source?.trim() || 'Unknown',
     }
   )
@@ -862,17 +862,17 @@ export default function SeniorCrmLeadJourneyPage() {
           </div>
 
           {batchAssignMessage ? (
-            <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+            <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-800/70 dark:bg-green-950/35 dark:text-green-200">
               {batchAssignMessage}
             </div>
           ) : null}
           {batchAssignError ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/70 dark:bg-red-950/35 dark:text-red-200">
               {batchAssignError}
             </div>
           ) : null}
           {!canBatchAssign ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/35 dark:text-amber-200">
               Batch assignment is available only for users mapped to the ADMIN department.
             </div>
           ) : null}
@@ -910,7 +910,7 @@ export default function SeniorCrmLeadJourneyPage() {
                                   <div className={`flex h-9 w-9 items-center justify-center rounded-full ${sourceVisual.bgClass}`}>
                                     <SourceIcon className={`h-4 w-4 ${sourceVisual.iconClass}`} />
                                   </div>
-                                  <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white ${sourceVisual.dotClass}`} />
+                                  <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-background ${sourceVisual.dotClass}`} />
                                 </div>
                               )
                             })()}
@@ -984,7 +984,7 @@ export default function SeniorCrmLeadJourneyPage() {
                                     <div className={`flex h-8 w-8 items-center justify-center rounded-full ${sourceVisual.bgClass}`}>
                                       <SourceIcon className={`h-4 w-4 ${sourceVisual.iconClass}`} />
                                     </div>
-                                    <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-white ${sourceVisual.dotClass}`} />
+                                    <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-background ${sourceVisual.dotClass}`} />
                                   </div>
                                 )
                               })()}

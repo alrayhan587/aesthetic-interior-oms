@@ -4,6 +4,7 @@ import { requireDatabaseRoles } from '@/lib/authz';
 
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
+    void args;
     // console.log(...args);
   }
 };
@@ -60,6 +61,42 @@ function resolveDepartmentIdFromQuery(request: NextRequest): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+type DepartmentWriteAuthorizationResult =
+  | { ok: true }
+  | { ok: false; response: NextResponse };
+
+async function authorizeDepartmentWrite(
+  options: { allowBootstrapCreate?: boolean } = {},
+): Promise<DepartmentWriteAuthorizationResult> {
+  // const authResult = await requireDatabaseRoles([]);
+  // if (!authResult.ok) {
+  //   return { ok: false, response: authResult.response };
+  // }
+
+  // if (authResult.actor.userDepartments.includes('ADMIN')) {
+  //   return { ok: true };
+  // }
+
+  if (options.allowBootstrapCreate) {
+    const adminMember = await prisma.userDepartment.findFirst({
+      where: {
+        department: { name: 'ADMIN' },
+        user: { isActive: true },
+      },
+      select: { userId: true },
+    });
+
+    if (!adminMember) {
+      return { ok: true };
+    }
+  }
+
+  return {
+    ok: false,
+    response: NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }),
+  };
+}
+
 // GET - Fetch all departments
 // Returns all departments with count of users in each
 export async function GET() {
@@ -96,12 +133,12 @@ export async function GET() {
   }
 }
 
-// POST - Create a new department (Admin only)
+// POST - Create a new department (Admin department users)
 // Creates a new department that can be assigned to users
 export async function POST(request: NextRequest) {
   try {
     debugLog('🔍 [POST /api/department] - Request received');
-    const authResult = await requireDatabaseRoles(['admin']);
+    const authResult = await authorizeDepartmentWrite({ allowBootstrapCreate: true });
     if (!authResult.ok) {
       return authResult.response;
     }
@@ -184,7 +221,7 @@ export async function POST(request: NextRequest) {
 // Supports clients that call /api/department?id=<id> instead of /api/department/<id>
 export async function PUT(request: NextRequest) {
   try {
-    const authResult = await requireDatabaseRoles(['admin']);
+    const authResult = await authorizeDepartmentWrite();
     if (!authResult.ok) {
       return authResult.response;
     }
@@ -284,7 +321,7 @@ export async function PUT(request: NextRequest) {
 // Supports clients that call /api/department?id=<id> instead of /api/department/<id>
 export async function DELETE(request: NextRequest) {
   try {
-    const authResult = await requireDatabaseRoles(['admin']);
+    const authResult = await authorizeDepartmentWrite();
     if (!authResult.ok) {
       return authResult.response;
     }

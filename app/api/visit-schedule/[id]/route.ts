@@ -245,6 +245,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!existing) {
         throw new Error('NOT_FOUND');
       }
+      if (
+        statusInput &&
+        (statusInput === VisitStatus.RESCHEDULED || statusInput === VisitStatus.CANCELLED) &&
+        (existing.status === VisitStatus.COMPLETED || existing.lead.subStatus === LeadSubStatus.VISIT_COMPLETED)
+      ) {
+        throw new Error('VISIT_COMPLETED_LOCKED');
+      }
 
       if (isVisitTeam && !isAdmin && existing.assignedToId !== actorUserId) {
         throw new Error('NOT_ASSIGNED');
@@ -399,6 +406,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message === 'VISIT_CONFLICT') {
       return NextResponse.json(
         { success: false, error: 'Selected visit team member already has a nearby scheduled visit' },
+        { status: 409 },
+      );
+    }
+    if (error instanceof Error && error.message === 'VISIT_COMPLETED_LOCKED') {
+      return NextResponse.json(
+        { success: false, error: 'Reschedule or cancel is disabled after visit phase is completed' },
         { status: 409 },
       );
     }

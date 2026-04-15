@@ -100,7 +100,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         lead: { primaryOwnerUserId: lead.primaryOwnerUserId },
       })
     ) {
-      return NextResponse.json({ success: false, error: 'Only primary owner or admin can schedule meetings' }, { status: 403 })
+      return NextResponse.json(
+        { success: false, error: 'Only primary owner, Senior CRM, or admin can schedule meetings' },
+        { status: 403 },
+      )
     }
 
     const meeting = await prisma.$transaction(async (tx) => {

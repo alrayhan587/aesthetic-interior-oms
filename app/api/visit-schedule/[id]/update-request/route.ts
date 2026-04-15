@@ -120,10 +120,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const visit = await prisma.visit.findUnique({
       where: { id: visitId },
-      select: { id: true, leadId: true, assignedToId: true },
+      select: {
+        id: true,
+        leadId: true,
+        assignedToId: true,
+        status: true,
+        lead: {
+          select: {
+            subStatus: true,
+          },
+        },
+      },
     })
     if (!visit) {
       return NextResponse.json({ success: false, error: 'Visit not found' }, { status: 404 })
+    }
+    if (visit.status === 'COMPLETED' || visit.lead.subStatus === 'VISIT_COMPLETED') {
+      return NextResponse.json(
+        { success: false, error: 'Reschedule or cancel is disabled after visit phase is completed' },
+        { status: 409 },
+      )
     }
 
     const isAssignedByVisit = visit.assignedToId === actorUserId

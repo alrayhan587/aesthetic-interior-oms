@@ -39,8 +39,10 @@ model Lead {
   assignments   LeadAssignment[]
   visits        Visit[]
   attachments   LeadAttachment[]
+  cadWorkSubmissions CadWorkSubmission[]
   notifications Notification[]
   phaseTasks    LeadPhaseTask[]
+  jrArchitectRequests LeadJrArchitectRequest[]
   meetingEvents LeadMeetingEvent[]
 
   @@index([assignedTo])
@@ -154,8 +156,11 @@ model User {
   supportVisitResults       VisitSupportResult[]
   phaseTasksAssigned        LeadPhaseTask[]      @relation("LeadPhaseTaskAssignee")
   phaseTasksCreated         LeadPhaseTask[]      @relation("LeadPhaseTaskCreator")
+  jrArchitectRequests       LeadJrArchitectRequest[] @relation("LeadJrArchitectRequestRequestedBy")
+  jrArchitectReviewedRequests LeadJrArchitectRequest[] @relation("LeadJrArchitectRequestReviewedBy")
   phaseReviews              LeadPhaseReview[]
   meetingEventsCreated      LeadMeetingEvent[]
+  cadWorkSubmissions        CadWorkSubmission[] @relation("CadWorkSubmittedBy")
   notifications Notification[]
   signupNotifications Notification[] @relation("NotificationSubjectUser")
 }
@@ -171,6 +176,7 @@ model LeadPhaseTask {
   status             LeadPhaseTaskStatus @default(OPEN)
   completedAt        DateTime?
   lastSrActionAt     DateTime?
+  sourceVisitId      String?
   currentReviewRound Int                 @default(0)
   createdById        String
   createdAt          DateTime            @default(now())
@@ -179,6 +185,7 @@ model LeadPhaseTask {
   lead      Lead              @relation(fields: [leadId], references: [id], onDelete: Cascade)
   assignee  User              @relation("LeadPhaseTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: Cascade)
   createdBy User              @relation("LeadPhaseTaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  sourceVisit Visit?          @relation("LeadPhaseTaskSourceVisit", fields: [sourceVisitId], references: [id], onDelete: SetNull)
   reviews   LeadPhaseReview[]
 
   @@index([leadId])
@@ -187,6 +194,28 @@ model LeadPhaseTask {
   @@index([status])
   @@index([startedAt])
   @@index([dueAt])
+  @@index([sourceVisitId])
+}
+
+model LeadJrArchitectRequest {
+  id            String                       @id @default(cuid())
+  leadId         String
+  requestedById  String
+  status         LeadJrArchitectRequestStatus @default(PENDING)
+  note           String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  lead         Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  requestedBy  User  @relation("LeadJrArchitectRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy   User? @relation("LeadJrArchitectRequestReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([requestedById])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model LeadPhaseReview {
@@ -227,6 +256,40 @@ model LeadMeetingEvent {
   @@index([createdById])
 }
 
+model CadWorkSubmission {
+  id           String   @id @default(cuid())
+  leadId       String
+  submittedById String
+  note         String?
+  submittedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lead        Lead                    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  submittedBy User                    @relation("CadWorkSubmittedBy", fields: [submittedById], references: [id], onDelete: Cascade)
+  files       CadWorkSubmissionFile[]
+
+  @@index([leadId])
+  @@index([submittedById])
+  @@index([submittedAt])
+}
+
+model CadWorkSubmissionFile {
+  id          String                @id @default(cuid())
+  submissionId String
+  url         String
+  fileName    String
+  fileType    String
+  cadFileType CadSubmissionFileType
+  sizeBytes   Int?
+  createdAt   DateTime              @default(now())
+
+  submission CadWorkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([cadFileType])
+}
+
 model Visit {
   id           String      @id @default(cuid())
   leadId        String
@@ -245,6 +308,7 @@ model Visit {
   assignedTo User?        @relation("VisitAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdBy  User         @relation("VisitCreator", fields: [createdById], references: [id], onDelete: Cascade)
   result     VisitResult?
+  cadPhaseTasks LeadPhaseTask[] @relation("LeadPhaseTaskSourceVisit")
   updateRequests VisitUpdateRequest[]
   supportAssignments VisitSupportAssignment[]
   supportResults VisitSupportResult[]
@@ -640,6 +704,12 @@ enum LeadPhaseTaskStatus {
   CANCELLED
 }
 
+enum LeadJrArchitectRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum LeadPhaseReviewDecision {
   APPROVED
   REWORK
@@ -649,6 +719,18 @@ enum LeadMeetingEventType {
   FIRST_MEETING
   BUDGET_MEETING
   REVIEW_CHECKPOINT
+}
+
+enum CadSubmissionFileType {
+  FLOOR_PLAN
+  FURNITURE_LAYOUT
+  BEAM_LAYOUT
+  COLUMN_LAYOUT
+  LANDSCAPING
+  ROOF_TOP_DESIGN
+  ELECTRICAL_PLUMBING
+  WORKING_DETAILS
+  OTHERS
 }
 
 enum ActivityType {

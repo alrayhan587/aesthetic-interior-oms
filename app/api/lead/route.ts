@@ -269,6 +269,7 @@ export async function GET(request: NextRequest) {
     const stageParam = toLeadStageParam(searchParams.get('stage'));
     const searchParam = toOptionalString(searchParams.get('search'));
     const sourceParam = toOptionalString(searchParams.get('source'));
+    const includeAttachmentPreview = toBooleanParam(searchParams.get('includeAttachmentPreview'));
     const unassignedOnly = toBooleanParam(searchParams.get('unassigned'));
     const createdFrom = parseDateAtStartOfDayUtc(searchParams.get('createdFrom'));
     const createdTo = parseDateAtEndOfDayUtc(searchParams.get('createdTo'));
@@ -373,21 +374,39 @@ export async function GET(request: NextRequest) {
     }
 
     const timedDb = await timeAsync(async () => {
+      const leadInclude: Prisma.LeadInclude = {
+        assignments: {
+          where: { department: LeadAssignmentDepartment.JR_CRM },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: {
+            user: { select: { id: true, fullName: true, email: true } },
+          },
+        },
+        ...(includeAttachmentPreview
+          ? {
+              attachments: {
+                orderBy: { createdAt: 'desc' },
+                take: 6,
+                select: {
+                  id: true,
+                  url: true,
+                  fileName: true,
+                  fileType: true,
+                  category: true,
+                  sizeBytes: true,
+                  createdAt: true,
+                },
+              },
+            }
+          : {}),
+      };
       const [total, leads, groupedStageCounts] = await Promise.all([
         prisma.lead.count({ where }),
         prisma.lead.findMany({
           where,
           orderBy: { created_at: 'desc' },
-          include: {
-            assignments: {
-              where: { department: LeadAssignmentDepartment.JR_CRM },
-              orderBy: { createdAt: 'desc' },
-              take: 1,
-              include: {
-                user: { select: { id: true, fullName: true, email: true } },
-              },
-            },
-          },
+          include: leadInclude,
           skip: offset,
           take: limit,
         }),

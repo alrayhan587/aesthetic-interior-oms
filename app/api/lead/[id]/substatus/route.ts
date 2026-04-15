@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
     ) {
       return NextResponse.json(
-        { success: false, error: 'Only primary owner or admin can change lead flow' },
+        { success: false, error: 'Only primary owner, Senior CRM, or admin can change lead flow' },
         { status: 403 },
       );
     }

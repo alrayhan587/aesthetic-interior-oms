@@ -24,6 +24,7 @@ import {
   Ban,
   Target,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type VisitStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED'
 
@@ -69,6 +70,7 @@ type VisitHistoryViewProps = {
   subtitle: string
   emptyPastText: string
   emptyUpcomingText: string
+  enableJrAssignAction?: boolean
 }
 
 const fallbackVisits: VisitRecord[] = [
@@ -204,7 +206,25 @@ function getPresetLabel(preset: VisitDatePreset) {
   return 'Custom'
 }
 
-function VisitRecordCard({ visit }: { visit: VisitRecord }) {
+function VisitRecordCard({
+  visit,
+  enableJrAssignAction,
+  jrArchitectUsers,
+  selectedJrArchitectUserId,
+  assigning,
+  onSelectJrArchitect,
+  onAssignJrArchitect,
+}: {
+  visit: VisitRecord
+  enableJrAssignAction: boolean
+  jrArchitectUsers: Array<{ id: string; fullName: string }>
+  selectedJrArchitectUserId: string
+  assigning: boolean
+  onSelectJrArchitect: (leadId: string, userId: string) => void
+  onAssignJrArchitect: (leadId: string) => void
+}) {
+  const canAssignFromVisit = enableJrAssignAction && visit.status === 'COMPLETED'
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -250,6 +270,31 @@ function VisitRecordCard({ visit }: { visit: VisitRecord }) {
               <Link href={`/visit-team/leads/${visit.lead.id}`}>Open Lead</Link>
             </Button>
           </div>
+          {canAssignFromVisit ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <Select
+                value={selectedJrArchitectUserId}
+                onValueChange={(value) => onSelectJrArchitect(visit.lead.id, value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select JR Architect" />
+                </SelectTrigger>
+                <SelectContent>
+                  {jrArchitectUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                disabled={assigning || !selectedJrArchitectUserId}
+                onClick={() => onAssignJrArchitect(visit.lead.id)}
+              >
+                {assigning ? 'Assigning...' : 'Assign JR Architect'}
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </motion.div>
@@ -262,6 +307,7 @@ export function VisitHistoryView({
   subtitle,
   emptyPastText,
   emptyUpcomingText,
+  enableJrAssignAction = false,
 }: VisitHistoryViewProps) {
   const [visits, setVisits] = useState<VisitRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -276,6 +322,9 @@ export function VisitHistoryView({
   const initialRange = useMemo(() => getPresetRange('THIS_MONTH'), [])
   const [visitDateFrom, setVisitDateFrom] = useState(initialRange.from)
   const [visitDateTo, setVisitDateTo] = useState(initialRange.to)
+  const [jrArchitectUsers, setJrArchitectUsers] = useState<Array<{ id: string; fullName: string }>>([])
+  const [selectedJrByLead, setSelectedJrByLead] = useState<Record<string, string>>({})
+  const [assigningLeadId, setAssigningLeadId] = useState<string | null>(null)
 
   useEffect(() => {
     const loadVisits = async () => {
@@ -307,6 +356,76 @@ export function VisitHistoryView({
 
     loadVisits()
   }, [mode])
+
+  useEffect(() => {
+    if (!enableJrAssignAction) return
+
+    let cancelled = false
+
+    const loadJrArchitects = async () => {
+      try {
+        const response = await fetch('/api/visit-complete-queue', { cache: 'no-store' })
+        const payload = await response.json()
+        if (!response.ok || !payload?.success || !Array.isArray(payload?.jrArchitectUsers)) return
+
+        if (!cancelled) {
+          const users = payload.jrArchitectUsers
+            .filter((user: { id?: unknown; fullName?: unknown }) =>
+              typeof user?.id === 'string' && typeof user?.fullName === 'string',
+            )
+            .map((user: { id: string; fullName: string }) => ({
+              id: user.id,
+              fullName: user.fullName,
+            }))
+
+          setJrArchitectUsers(users)
+          setSelectedJrByLead((prev) => {
+            const next = { ...prev }
+            for (const visit of visits) {
+              if (!next[visit.lead.id] && users[0]?.id) {
+                next[visit.lead.id] = users[0].id
+              }
+            }
+            return next
+          })
+        }
+      } catch {
+        // no-op; assignment button will just remain unusable
+      }
+    }
+
+    loadJrArchitects()
+
+    return () => {
+      cancelled = true
+    }
+  }, [enableJrAssignAction, visits])
+
+  const assignJrArchitectFromVisit = async (leadId: string) => {
+    const jrArchitectUserId = selectedJrByLead[leadId]
+    if (!jrArchitectUserId) {
+      toast.error('Select a JR Architect first')
+      return
+    }
+
+    setAssigningLeadId(leadId)
+    try {
+      const response = await fetch('/api/visit-complete-queue/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId, jrArchitectUserId }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error ?? 'Failed to assign JR Architect')
+      }
+      toast.success(payload?.message ?? 'JR Architect assigned')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to assign JR Architect')
+    } finally {
+      setAssigningLeadId(null)
+    }
+  }
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
 
@@ -630,7 +749,18 @@ export function VisitHistoryView({
                 <CardContent>
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                     {recentHistory.slice(0, 8).map((visit) => (
-                      <VisitRecordCard key={visit.id} visit={visit} />
+                      <VisitRecordCard
+                        key={visit.id}
+                        visit={visit}
+                        enableJrAssignAction={enableJrAssignAction}
+                        jrArchitectUsers={jrArchitectUsers}
+                        selectedJrArchitectUserId={selectedJrByLead[visit.lead.id] ?? ''}
+                        assigning={assigningLeadId === visit.lead.id}
+                        onSelectJrArchitect={(leadId, userId) =>
+                          setSelectedJrByLead((prev) => ({ ...prev, [leadId]: userId }))
+                        }
+                        onAssignJrArchitect={assignJrArchitectFromVisit}
+                      />
                     ))}
                   </div>
                   {recentHistory.length === 0 ? (
@@ -643,7 +773,18 @@ export function VisitHistoryView({
             <TabsContent value="upcoming" className="mt-4" ref={upcomingRef}>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                 {upcomingVisits.map((visit) => (
-                  <VisitRecordCard key={visit.id} visit={visit} />
+                  <VisitRecordCard
+                    key={visit.id}
+                    visit={visit}
+                    enableJrAssignAction={enableJrAssignAction}
+                    jrArchitectUsers={jrArchitectUsers}
+                    selectedJrArchitectUserId={selectedJrByLead[visit.lead.id] ?? ''}
+                    assigning={assigningLeadId === visit.lead.id}
+                    onSelectJrArchitect={(leadId, userId) =>
+                      setSelectedJrByLead((prev) => ({ ...prev, [leadId]: userId }))
+                    }
+                    onAssignJrArchitect={assignJrArchitectFromVisit}
+                  />
                 ))}
               </div>
               {upcomingVisits.length === 0 ? (
@@ -662,7 +803,18 @@ export function VisitHistoryView({
                   </div>
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                     {monthVisits.map((visit) => (
-                      <VisitRecordCard key={visit.id} visit={visit} />
+                      <VisitRecordCard
+                        key={visit.id}
+                        visit={visit}
+                        enableJrAssignAction={enableJrAssignAction}
+                        jrArchitectUsers={jrArchitectUsers}
+                        selectedJrArchitectUserId={selectedJrByLead[visit.lead.id] ?? ''}
+                        assigning={assigningLeadId === visit.lead.id}
+                        onSelectJrArchitect={(leadId, userId) =>
+                          setSelectedJrByLead((prev) => ({ ...prev, [leadId]: userId }))
+                        }
+                        onAssignJrArchitect={assignJrArchitectFromVisit}
+                      />
                     ))}
                   </div>
                 </div>

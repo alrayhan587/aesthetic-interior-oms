@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignInButton, useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 const DEFAULT_REDIRECT = "/";
 const DEPARTMENT_ROUTES: Record<string, string> = {
@@ -43,10 +44,18 @@ type MeResponse = {
   needsOnboarding?: boolean;
   canSelfAssignDepartment?: boolean;
   requiresAdminApproval?: boolean;
+  bootstrapMode?: boolean;
   isRejected?: boolean;
   accountStatus?: "ACTIVE" | "PENDING_APPROVAL" | "REJECTED";
   userDepartments?: Array<{ department: { id: string; name: string } }>;
   clerkDepartment?: { id: string | null; name: string | null };
+};
+
+type DepartmentCreateResponse = {
+  success?: boolean;
+  data?: Department;
+  error?: string;
+  message?: string;
 };
 
 export default function OnboardingPage() {
@@ -62,6 +71,13 @@ export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const [requiresAdminApproval, setRequiresAdminApproval] = useState(false);
   const [isRejected, setIsRejected] = useState(false);
+  const [bootstrapMode, setBootstrapMode] = useState(false);
+  const [canCreateDepartment, setCanCreateDepartment] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [newDepartmentDescription, setNewDepartmentDescription] = useState("");
+  const [creatingDepartment, setCreatingDepartment] = useState(false);
+  const [departmentNotice, setDepartmentNotice] = useState<string | null>(null);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
   
   // console.log('[OnboardingPage] State:', { loading, saving, departmentsCount: departments.length, selectedDepartmentId });
 
@@ -79,6 +95,28 @@ export default function OnboardingPage() {
     // console.log('[OnboardingPage] resolveRedirect:', { departmentName, redirect });
     return redirect;
   };
+
+  const loadDepartments = useCallback(async () => {
+    setDepartmentsLoading(true);
+    try {
+      const departmentsRes = await fetch("/api/department", { cache: "no-store" });
+      if (!departmentsRes.ok) {
+        throw new Error("Unable to load departments.");
+      }
+
+      const payload = await departmentsRes.json();
+      if (!payload?.success || !Array.isArray(payload.data)) {
+        throw new Error("Unable to load departments.");
+      }
+
+      setDepartments(payload.data as Department[]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      setError(message);
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     // console.log('[OnboardingPage] useEffect triggered:', { isLoaded, isSignedIn });
@@ -112,6 +150,8 @@ export default function OnboardingPage() {
           me.userDepartments?.[0]?.department?.name ?? me.clerkDepartment?.name ?? null;
         setRequiresAdminApproval(Boolean(me.requiresAdminApproval));
         setIsRejected(Boolean(me.isRejected));
+        setBootstrapMode(Boolean(me.bootstrapMode));
+        setCanCreateDepartment(Boolean(me.canSelfAssignDepartment || me.bootstrapMode));
         // console.log('[OnboardingPage] existingDepartmentName:', existingDepartmentName);
 
         if (me.needsOnboarding === false && existingDepartmentName) {
@@ -120,28 +160,12 @@ export default function OnboardingPage() {
           return;
         }
 
-        if (me.requiresAdminApproval) {
+        if (me.requiresAdminApproval || me.isRejected) {
           setDepartments([]);
           return;
         }
 
-        // console.log('[OnboardingPage] Fetching /api/department');
-        const departmentsRes = await fetch("/api/department", { cache: "no-store" });
-        // console.log('[OnboardingPage] /api/department response:', { status: departmentsRes.status, ok: departmentsRes.ok });
-        
-        if (!departmentsRes.ok) {
-          console.error('[OnboardingPage] /api/department failed with status', departmentsRes.status);
-          throw new Error("Unable to load departments.");
-        }
-
-        const payload = await departmentsRes.json();
-        if (!payload?.success || !Array.isArray(payload.data)) {
-          console.error('[OnboardingPage] Invalid departments payload');
-          throw new Error("Unable to load departments.");
-        }
-
-        setDepartments(payload.data as Department[]);
-        // console.log('[OnboardingPage] Departments state updated');
+        void loadDepartments();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong.";
         console.error('[OnboardingPage] Error during load:', message, err);
@@ -153,7 +177,7 @@ export default function OnboardingPage() {
     };
 
     load();
-  }, [isLoaded, isSignedIn, router]);
+  }, [isLoaded, isSignedIn, loadDepartments, router]);
 
   const handleSubmit = async () => {
     // console.log('[OnboardingPage] handleSubmit called:', { selectedDepartmentId });
@@ -189,7 +213,7 @@ export default function OnboardingPage() {
       // console.log('[OnboardingPage] PATCH /api/me response:', { status: res.status, ok: res.ok });
 
       if (!res.ok) {
-        let payload: any = {};
+        let payload: { error?: string; message?: string } = {};
         const contentType = res.headers.get('content-type');
         // console.log('[OnboardingPage] Response content-type:', contentType);
         
@@ -197,7 +221,11 @@ export default function OnboardingPage() {
           const text = await res.text();
           // console.log('[OnboardingPage] Raw response body:', text);
           if (text && contentType?.includes('application/json')) {
-            payload = JSON.parse(text);
+            const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+            payload = {
+              error: typeof parsed.error === "string" ? parsed.error : undefined,
+              message: typeof parsed.message === "string" ? parsed.message : undefined,
+            };
           }
         } catch (parseErr) {
           console.error('[OnboardingPage] Failed to parse response:', parseErr);
@@ -208,7 +236,7 @@ export default function OnboardingPage() {
         throw new Error(message);
       }
 
-      const responseData = await res.json();
+      await res.json();
       const redirectPath = resolveRedirect(selectedDepartment?.name ?? null);
       // console.log('[OnboardingPage] Redirecting to:', redirectPath);
       router.replace(redirectPath);
@@ -222,6 +250,52 @@ export default function OnboardingPage() {
     }
   };
 
+  const handleCreateDepartment = async () => {
+    const normalizedName = newDepartmentName.trim();
+    const normalizedDescription = newDepartmentDescription.trim();
+
+    if (!normalizedName) {
+      setError("Department name is required.");
+      return;
+    }
+
+    setCreatingDepartment(true);
+    setError(null);
+    setDepartmentNotice(null);
+
+    try {
+      const res = await fetch("/api/department", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: normalizedName,
+          description: normalizedDescription.length > 0 ? normalizedDescription : null,
+        }),
+      });
+
+      const payload = (await res.json()) as DepartmentCreateResponse;
+      if (!res.ok || !payload.success || !payload.data) {
+        throw new Error(payload.error || payload.message || "Unable to create department.");
+      }
+      const createdDepartment: Department = payload.data;
+
+      setDepartments((prev) => {
+        const next = [...prev, createdDepartment];
+        next.sort((a, b) => a.name.localeCompare(b.name));
+        return next;
+      });
+      setSelectedDepartmentId(createdDepartment.id);
+      setNewDepartmentName("");
+      setNewDepartmentDescription("");
+      setDepartmentNotice(`Department "${createdDepartment.name}" created and selected.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to create department.";
+      setError(message);
+    } finally {
+      setCreatingDepartment(false);
+    }
+  };
+
   if (!isLoaded || loading) {
     // console.log('[OnboardingPage] Rendering loading state:', { isLoaded, loading });
     return (
@@ -229,7 +303,7 @@ export default function OnboardingPage() {
         <Card className="w-full max-w-xl border-border">
           <CardHeader>
             <CardTitle>Setting up your workspace</CardTitle>
-            <CardDescription>Loading your profile and available departments...</CardDescription>
+            <CardDescription>Loading your profile...</CardDescription>
           </CardHeader>
         </Card>
       </main>
@@ -284,6 +358,7 @@ export default function OnboardingPage() {
                 <Label>Department</Label>
                 <Select 
                   value={selectedDepartmentId} 
+                  disabled={departmentsLoading}
                   onValueChange={(value) => {
                     // console.log('[OnboardingPage] Department selected:', { value });
                     setSelectedDepartmentId(value);
@@ -303,12 +378,60 @@ export default function OnboardingPage() {
                 {selectedDepartment?.description ? (
                   <p className="text-xs text-muted-foreground">{selectedDepartment.description}</p>
                 ) : null}
+                {departmentsLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading departments...</p>
+                ) : null}
               </div>
 
-              {departments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No departments are available yet. Please contact an administrator.
+              {!departmentsLoading && departments.length === 0 ? (
+                canCreateDepartment ? (
+                  <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+                    <p className="text-sm text-muted-foreground">
+                      No departments found. Create your first department to continue.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-department-name">Department name</Label>
+                      <Input
+                        id="new-department-name"
+                        value={newDepartmentName}
+                        onChange={(event) => setNewDepartmentName(event.target.value)}
+                        placeholder="e.g. JR_CRM"
+                        disabled={creatingDepartment}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-department-description">Description (optional)</Label>
+                      <Input
+                        id="new-department-description"
+                        value={newDepartmentDescription}
+                        onChange={(event) => setNewDepartmentDescription(event.target.value)}
+                        placeholder="What this department handles"
+                        disabled={creatingDepartment}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCreateDepartment}
+                      disabled={creatingDepartment}
+                    >
+                      {creatingDepartment ? "Creating..." : "Create Department"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No departments are available yet. Please contact an administrator.
+                  </p>
+                )
+              ) : null}
+              {bootstrapMode ? (
+                <p className="text-xs text-muted-foreground">
+                  First account setup is enabled. Once saved, this account also gets ADMIN access
+                  so you can approve future signups.
                 </p>
+              ) : null}
+              {departmentNotice ? (
+                <p className="text-sm text-emerald-700">{departmentNotice}</p>
               ) : null}
             </>
           )}
@@ -325,7 +448,7 @@ export default function OnboardingPage() {
               <Button
                 className="w-full"
                 onClick={handleSubmit}
-                disabled={saving || !selectedDepartmentId || departments.length === 0}
+                disabled={saving || departmentsLoading || !selectedDepartmentId || departments.length === 0}
               >
                 {saving ? "Saving..." : "Continue"}
               </Button>

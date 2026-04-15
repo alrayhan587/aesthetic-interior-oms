@@ -745,6 +745,9 @@ export default function LeadDetailPage() {
             canManageAssignments={canManageAssignments}
             canManageVisitRequests={canManageVisitRequests}
             canSetVisitCompletedStage={true}
+            canSubmitVisitResult={canManageAssignments}
+            canOverrideVisitLeadRole={canManageAssignments}
+            currentUserId={currentUserId}
             stage={stage}
             originalStage={lead.stage}
             subStatus={subStatus}

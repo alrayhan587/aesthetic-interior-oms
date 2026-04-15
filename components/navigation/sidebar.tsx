@@ -64,6 +64,9 @@ const navigationGroups: Record<string, NavGroup[]> = {
       items: [
         { icon: Users, label: 'Leads', href: '/crm/admin/leads' },
         { icon: Calendar, label: 'Visits', href: '/crm/admin/visits' },
+        { icon: ClipboardList, label: 'Visit Queue', href: '/crm/admin/queue' },
+        { icon: ListTodo, label: 'Senior Tasks', href: '/crm/admin/today-tasks' },
+        { icon: CalendarClock, label: 'Senior Calendar', href: '/crm/admin/calendar' },
       ],
     },
     {
@@ -88,7 +91,9 @@ const navigationGroups: Record<string, NavGroup[]> = {
       label: 'Workflow',
       defaultOpen: true,
       items: [
+        { icon: ClipboardList, label: 'Visit Queue', href: '/crm/sr/queue' },
         { icon: Users, label: 'Lead Journey', href: '/crm/sr/lead-journey' },
+        { icon: ClipboardList, label: 'Review Center', href: '/crm/sr/review-center' },
         { icon: CalendarClock, label: 'Calendar', href: '/crm/sr/meetings' },
         { icon: ClipboardList, label: 'Handoff Center', href: '/crm/sr/handoffs' },
         { icon: CheckSquare, label: 'Conversion & Payment', href: '/crm/sr/conversion-payment' },
@@ -126,6 +131,7 @@ const navigationGroups: Record<string, NavGroup[]> = {
       label: 'Workflow',
       defaultOpen: true,
       items: [
+        { icon: ClipboardList, label: 'Visit Queue', href: '/crm/jr-architecture/queue' },
         { icon: Users, label: 'Assigned Leads', href: '/crm/jr-architecture/leads' },
       ],
     },

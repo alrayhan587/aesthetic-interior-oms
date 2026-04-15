@@ -1,6 +1,7 @@
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import 'dotenv/config'
+import { normalizeDatabaseUrlSslMode } from '@/lib/database-url'
 
 const globalForPrisma = global as unknown as {
     prisma: PrismaClient
@@ -9,7 +10,7 @@ const globalForPrisma = global as unknown as {
 // console.log('[DEBUG lib/prisma.ts] Loading DATABASE_URL:', process.env.DATABASE_URL ? '***' : 'undefined');
 
 const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: normalizeDatabaseUrlSslMode(process.env.DATABASE_URL),
 })
 
 const prisma = globalForPrisma.prisma || new PrismaClient({

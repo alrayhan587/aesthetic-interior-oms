@@ -13,7 +13,7 @@ export function canManagePrimaryLeadFlow(input: {
   actorDepartments: string[]
   lead: Pick<Lead, 'primaryOwnerUserId'>
 }): boolean {
-  if (isAdminDepartment(input.actorDepartments)) return true
+  if (isSrOrAdmin(input.actorDepartments)) return true
   if (!input.lead.primaryOwnerUserId) return true
   return input.lead.primaryOwnerUserId === input.actorUserId
 }

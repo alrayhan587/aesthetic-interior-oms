@@ -15,7 +15,7 @@ import {
 } from '@/lib/activity-log-service';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
-import { findVisitConflict, isFutureDate } from '@/lib/visit-guards';
+import { findVisitConflict } from '@/lib/visit-guards';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -241,13 +241,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
-    if (!isFutureDate(parsedScheduledAt)) {
-      return NextResponse.json(
-        { success: false, error: 'scheduledAt must be in the future' },
-        { status: 400 },
-      );
-    }
-
     if (hasValue(body.projectSqft) && (projectSqft === null || projectSqft <= 0)) {
       return NextResponse.json(
         { success: false, error: 'projectSqft must be greater than 0' },
@@ -263,12 +256,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // console.log('[POST] Querying lead and validating visit team user...');
-    const [lead, visitTeamUserResult] = await Promise.all([
+    const [lead, visitTeamUserResult, latestVisit] = await Promise.all([
       prisma.lead.findUnique({
         where: { id: leadId },
         select: { id: true, name: true, stage: true, subStatus: true, location: true },
       }),
       validateVisitAssignee(visitTeamUserId),
+      prisma.visit.findFirst({
+        where: { leadId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          result: { select: { id: true } },
+        },
+      }),
     ]);
 
     // console.log('[POST] Lead found:', lead);
@@ -282,6 +284,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!visitTeamUserResult.ok) {
       // console.log('[POST] Visit team user validation failed');
       return visitTeamUserResult.response;
+    }
+    const latestVisitHasResult = Boolean(latestVisit?.result?.id);
+    const latestVisitBlocksScheduling = Boolean(
+      latestVisit &&
+      (latestVisit.status === 'SCHEDULED' ||
+        latestVisit.status === 'RESCHEDULED' ||
+        (latestVisit.status === 'COMPLETED' && !latestVisitHasResult)),
+    );
+    if (latestVisitBlocksScheduling) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Cannot schedule a new visit until the latest visit result is submitted.',
+        },
+        { status: 409 },
+      );
     }
 
     const locationToUse = explicitLocation ?? lead.location;

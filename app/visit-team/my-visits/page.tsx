@@ -10,6 +10,7 @@ export default function MyVisitsPage() {
       subtitle="Your lead visits timeline with filters and performance snapshots."
       emptyPastText="No completed/past lead visits found for the selected filters."
       emptyUpcomingText="No upcoming lead visits for the current filters."
+      enableJrAssignAction
     />
   )
 }

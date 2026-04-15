@@ -159,6 +159,14 @@ export function VisitsPageView({
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [actorDepartments, setActorDepartments] = useState<Set<string>>(new Set())
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [requestVisitId, setRequestVisitId] = useState('')
+  const [requestType, setRequestType] = useState<'RESCHEDULE' | 'CANCEL'>('RESCHEDULE')
+  const [requestReason, setRequestReason] = useState('')
+  const [requestScheduleAt, setRequestScheduleAt] = useState('')
+  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestSaving, setRequestSaving] = useState(false)
   const [completeOpen, setCompleteOpen] = useState(false)
   const [completeVisitId, setCompleteVisitId] = useState('')
   const [completeRole, setCompleteRole] = useState<'LEAD' | 'SUPPORT'>('LEAD')
@@ -266,6 +274,12 @@ export function VisitsPageView({
         if (data?.id) {
           setCurrentUserId(String(data.id))
         }
+        const departments = Array.isArray(data?.userDepartments)
+          ? data.userDepartments
+              .map((row) => row?.department?.name)
+              .filter((name): name is string => Boolean(name))
+          : []
+        setActorDepartments(new Set(departments))
       })
       .catch((error) => {
         console.error('Error loading current user:', error)
@@ -415,6 +429,12 @@ export function VisitsPageView({
     if (!currentUserId) return false
     return visit.assignedTo?.id === currentUserId
   }
+  const canRequestVisitUpdate = (visit: VisitRecord) => {
+    if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
+    const isElevatedCrm = actorDepartments.has('JR_CRM') || actorDepartments.has('ADMIN')
+    if (isElevatedCrm) return true
+    return getVisitRole(visit) === 'LEAD'
+  }
 
   const shouldIgnoreCardNavigation = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -453,6 +473,69 @@ export function VisitsPageView({
     setCompleteFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
+  }
+
+  const openRequestDialog = (visit: VisitRecord, type: 'RESCHEDULE' | 'CANCEL') => {
+    if (!canRequestVisitUpdate(visit)) return
+    setRequestVisitId(visit.id)
+    setRequestType(type)
+    setRequestReason('')
+    setRequestScheduleAt('')
+    setRequestError(null)
+    setRequestOpen(true)
+  }
+
+  const submitVisitUpdateRequest = async () => {
+    if (!requestVisitId) return
+    if (!requestReason.trim()) {
+      setRequestError('Reason is required.')
+      return
+    }
+    if (requestType === 'RESCHEDULE' && !requestScheduleAt) {
+      setRequestError('Reschedule date & time is required.')
+      return
+    }
+
+    setRequestSaving(true)
+    setRequestError(null)
+    try {
+      const response = await fetch(`/api/visit-schedule/${requestVisitId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: requestType === 'RESCHEDULE' ? 'RESCHEDULED' : 'CANCELLED',
+          reason: requestReason.trim(),
+          scheduledAt: requestType === 'RESCHEDULE' ? new Date(requestScheduleAt).toISOString() : undefined,
+        }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to update visit')
+      }
+
+      visitsCacheByScope = {}
+      const refreshResponse = await fetch(`/api/visit-schedule${visitScope === 'all' ? '?scope=all' : ''}`, {
+        cache: 'no-store',
+      })
+      const refreshPayload = (await refreshResponse.json()) as ApiResponse
+      if (!refreshResponse.ok || !refreshPayload.success) {
+        throw new Error(refreshPayload?.error || 'Failed to refresh visits')
+      }
+      visitsCacheByScope[visitScope] = { data: refreshPayload.data ?? [], savedAt: Date.now() }
+      setVisits(refreshPayload.data ?? [])
+
+      setRequestOpen(false)
+      setRequestVisitId('')
+      setRequestReason('')
+      setRequestScheduleAt('')
+      toast.success(requestType === 'RESCHEDULE' ? 'Visit rescheduled.' : 'Visit cancelled.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update visit'
+      setRequestError(message)
+      toast.error(message)
+    } finally {
+      setRequestSaving(false)
+    }
   }
 
   const openAssignDialog = async (visit: VisitRecord) => {
@@ -740,6 +823,11 @@ export function VisitsPageView({
     const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
     const visitRole = getVisitRole(visit)
     const canComplete = allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE'
+    const canRequestUpdate = canRequestVisitUpdate(visit)
+    const updateDisabledReason =
+      visit.status === 'COMPLETED' || visit.status === 'CANCELLED'
+        ? 'Reschedule and cancel are disabled after visit completion/cancellation.'
+        : 'Only assigned visit lead, JR CRM, or Admin can reschedule/cancel.'
     const canNavigateFromCard = cardNavigatesToLead && isVisible
 
     const handleCardNavigation = (event: MouseEvent<HTMLDivElement>) => {
@@ -856,6 +944,26 @@ export function VisitsPageView({
                         {visit.assignedTo ? 'Reassign' : 'Assign'}
                       </Button>
                     ) : null}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() => openRequestDialog(visit, 'RESCHEDULE')}
+                      disabled={!canRequestUpdate}
+                      title={!canRequestUpdate ? updateDisabledReason : undefined}
+                    >
+                      Reschedule
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full sm:w-auto text-destructive hover:text-destructive"
+                      onClick={() => openRequestDialog(visit, 'CANCEL')}
+                      disabled={!canRequestUpdate}
+                      title={!canRequestUpdate ? updateDisabledReason : undefined}
+                    >
+                      Cancel
+                    </Button>
                     {canComplete && (
                       <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => openCompleteDialog(visit)}>
                         {visitRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
@@ -1382,6 +1490,70 @@ export function VisitsPageView({
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={requestOpen}
+        onOpenChange={(open) => {
+          setRequestOpen(open)
+          if (!open) {
+            setRequestVisitId('')
+            setRequestType('RESCHEDULE')
+            setRequestReason('')
+            setRequestScheduleAt('')
+            setRequestError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{requestType === 'RESCHEDULE' ? 'Reschedule Visit' : 'Cancel Visit'}</DialogTitle>
+            <DialogDescription>
+              {requestType === 'RESCHEDULE'
+                ? 'Update the visit schedule with a reason.'
+                : 'Cancel this visit with a reason.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {requestType === 'RESCHEDULE' ? (
+              <div className="space-y-2">
+                <Label>Rescheduled Date & Time</Label>
+                <Input
+                  type="datetime-local"
+                  value={requestScheduleAt}
+                  onChange={(event) => setRequestScheduleAt(event.target.value)}
+                />
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label>Reason</Label>
+              <Textarea
+                rows={3}
+                value={requestReason}
+                onChange={(event) => setRequestReason(event.target.value)}
+                placeholder="Add reason..."
+              />
+            </div>
+            {requestError ? <p className="text-sm text-destructive">{requestError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRequestOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={submitVisitUpdateRequest} disabled={requestSaving}>
+              {requestSaving ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Saving...
+                </>
+              ) : requestType === 'RESCHEDULE' ? (
+                'Save Reschedule'
+              ) : (
+                'Confirm Cancel'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={completeOpen} onOpenChange={setCompleteOpen}>
         <DialogContent className="top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col rounded-none p-0 sm:top-[50%] sm:left-[50%] sm:h-auto sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">

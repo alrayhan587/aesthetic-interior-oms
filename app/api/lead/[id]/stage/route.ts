@@ -131,6 +131,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       );
     }
+    if (nextStage === LeadStage.VISIT_PHASE && nextSubStatus === LeadSubStatus.VISIT_COMPLETED) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Visit Completed must be submitted from the visit result flow after support member data is submitted.',
+        },
+        { status: 409 },
+      );
+    }
     if (!canManagePaymentStatus({ actorDepartments, nextSubStatus })) {
       return NextResponse.json(
         { success: false, error: 'Only Senior CRM, Accounts, or Admin can update payment statuses' },
@@ -145,7 +155,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
     ) {
       return NextResponse.json(
-        { success: false, error: 'Only primary owner or admin can change lead flow' },
+        { success: false, error: 'Only primary owner, Senior CRM, or admin can change lead flow' },
         { status: 403 },
       );
     }

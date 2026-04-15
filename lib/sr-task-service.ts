@@ -10,6 +10,8 @@ export type SrTaskCard = {
   leadName: string
   leadStage: string
   leadSubStatus: string | null
+  srAssigneeUserId: string | null
+  srAssigneeName: string | null
   phaseType: string
   workDetails: string | null
   workerUserId: string
@@ -19,6 +21,13 @@ export type SrTaskCard = {
   status: string
   completedAt: Date | null
   lastSrActionAt: Date | null
+  sourceVisitId: string | null
+  sourceVisitScheduledAt: Date | null
+  sourceVisitCompletedAt: Date | null
+  sourceVisitLocation: string | null
+  sourceVisitProjectSqft: number | null
+  sourceVisitProjectStatus: string | null
+  sourceVisitSummary: string | null
   lastNote: string | null
   lastNoteAt: Date | null
 }
@@ -92,15 +101,6 @@ export async function listSrTaskCards(input: {
           AND la."userId" = ${input.actorUserId}
       )
     `)
-  } else {
-    whereParts.push(Prisma.sql`
-      EXISTS (
-        SELECT 1
-        FROM "LeadAssignment" la
-        WHERE la."leadId" = l."id"
-          AND la."department" = 'SR_CRM'
-      )
-    `)
   }
 
   const whereClause = Prisma.sql`WHERE ${Prisma.join(whereParts, ' AND ')}`
@@ -112,6 +112,8 @@ export async function listSrTaskCards(input: {
       l."name" AS "leadName",
       l."stage"::text AS "leadStage",
       l."subStatus"::text AS "leadSubStatus",
+      sr."userId" AS "srAssigneeUserId",
+      sr."fullName" AS "srAssigneeName",
       t."phaseType"::text AS "phaseType",
       t."workDetails",
       t."assigneeUserId" AS "workerUserId",
@@ -121,11 +123,29 @@ export async function listSrTaskCards(input: {
       t."status"::text AS "status",
       t."completedAt",
       t."lastSrActionAt",
+      t."sourceVisitId",
+      sv."scheduledAt" AS "sourceVisitScheduledAt",
+      svr."completedAt" AS "sourceVisitCompletedAt",
+      sv."location" AS "sourceVisitLocation",
+      sv."projectSqft" AS "sourceVisitProjectSqft",
+      sv."projectStatus"::text AS "sourceVisitProjectStatus",
+      svr."summary" AS "sourceVisitSummary",
       ln."content" AS "lastNote",
       ln."createdAt" AS "lastNoteAt"
     FROM "LeadPhaseTask" t
     INNER JOIN "Lead" l ON l."id" = t."leadId"
     INNER JOIN "User" worker ON worker."id" = t."assigneeUserId"
+    LEFT JOIN LATERAL (
+      SELECT la."userId", u."fullName"
+      FROM "LeadAssignment" la
+      INNER JOIN "User" u ON u."id" = la."userId"
+      WHERE la."leadId" = l."id"
+        AND la."department" = 'SR_CRM'
+      ORDER BY la."createdAt" DESC
+      LIMIT 1
+    ) sr ON true
+    LEFT JOIN "Visit" sv ON sv."id" = t."sourceVisitId"
+    LEFT JOIN "VisitResult" svr ON svr."visitId" = sv."id"
     LEFT JOIN LATERAL (
       SELECT n."content", n."createdAt"
       FROM "Note" n
@@ -284,4 +304,3 @@ export async function ensureSrDeadlineAlerts(): Promise<void> {
     data: notifications,
   })
 }
-

@@ -83,6 +83,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             id: true,
             leadId: true,
             assignedToId: true,
+            status: true,
             lead: {
               select: {
                 stage: true,
@@ -117,6 +118,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
 
       if (action === 'APPROVE') {
+        if (
+          (existing.type === VisitUpdateRequestType.CANCEL || existing.type === VisitUpdateRequestType.RESCHEDULE) &&
+          (existing.visit.status === VisitStatus.COMPLETED || existing.visit.lead.subStatus === LeadSubStatus.VISIT_COMPLETED)
+        ) {
+          throw new Error('VISIT_COMPLETED_LOCKED')
+        }
         if (existing.type === VisitUpdateRequestType.CANCEL) {
           await tx.visit.update({
             where: { id: visitId },
@@ -211,6 +218,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message === 'VISIT_CONFLICT') {
       return NextResponse.json(
         { success: false, error: 'Assigned visit team member already has a nearby scheduled visit' },
+        { status: 409 },
+      )
+    }
+    if (error instanceof Error && error.message === 'VISIT_COMPLETED_LOCKED') {
+      return NextResponse.json(
+        { success: false, error: 'Reschedule or cancel is disabled after visit phase is completed' },
         { status: 409 },
       )
     }

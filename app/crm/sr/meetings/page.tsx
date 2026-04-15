@@ -78,16 +78,24 @@ function formatHourLabel(hour: number) {
 }
 
 function getTypeClass(type: Meeting['type']) {
-  if (type === 'FIRST_MEETING') return 'bg-blue-100 text-blue-800 border-blue-200'
-  if (type === 'BUDGET_MEETING') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-  return 'bg-violet-100 text-violet-800 border-violet-200'
+  if (type === 'FIRST_MEETING') {
+    return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800/70'
+  }
+  if (type === 'BUDGET_MEETING') {
+    return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800/70'
+  }
+  return 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:border-violet-800/70'
 }
 
 function getEventClass(event: Meeting) {
   if (event.source === 'TASK') {
-    if (event.taskStatus === 'COMPLETED') return 'bg-green-100 text-green-800 border-green-200'
-    if (event.taskStatus === 'IN_REVIEW') return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-    return 'bg-amber-100 text-amber-900 border-amber-300'
+    if (event.taskStatus === 'COMPLETED') {
+      return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-200 dark:border-green-800/70'
+    }
+    if (event.taskStatus === 'IN_REVIEW') {
+      return 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-200 dark:border-indigo-800/70'
+    }
+    return 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/45 dark:text-amber-200 dark:border-amber-800/70'
   }
   return getTypeClass(event.type)
 }
@@ -95,6 +103,26 @@ function getEventClass(event: Meeting) {
 function getEventLabel(event: Meeting): string {
   if (event.source === 'TASK') return 'Task Deadline'
   return event.type.replace(/_/g, ' ')
+}
+
+function formatEventTime(value: Date): string {
+  return value.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+}
+
+function CompactEventCard({ event, dense = false }: { event: Meeting; dense?: boolean }) {
+  return (
+    <div
+      className={`rounded-md border px-2 py-1.5 leading-tight ${getEventClass(event)} ${
+        dense ? 'text-[10px]' : 'text-[11px]'
+      }`}
+    >
+      <p className="truncate font-semibold">{event.title}</p>
+      <p className="truncate text-[10px] opacity-90">{event.leadName}</p>
+      <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wide opacity-80">
+        {event.source === 'TASK' ? 'Task' : 'Meeting'} - {formatEventTime(event.start)}
+      </p>
+    </div>
+  )
 }
 
 function getStartOfSaturdayWeek(date: Date) {
@@ -149,6 +177,13 @@ type SrTasksApiResponse = {
   error?: string
 }
 
+type SeniorCrmMeetingsViewProps = {
+  title?: string
+  subtitle?: string
+  initialMyLeadsOnly?: boolean
+  lockMyLeadsOnly?: boolean
+}
+
 function toMeeting(item: MeetingsApiItem): Meeting {
   const start = new Date(item.startsAt)
   const end = item.endsAt ? new Date(item.endsAt) : new Date(start.getTime() + 60 * 60 * 1000)
@@ -180,12 +215,17 @@ function toDeadlineMeeting(item: SrTaskApiItem): Meeting {
   }
 }
 
-export default function SeniorCrmMeetingsPage() {
+export function SeniorCrmMeetingsView({
+  title = 'Calendar',
+  subtitle = 'Calendar view for meetings and Senior CRM task deadlines.',
+  initialMyLeadsOnly = true,
+  lockMyLeadsOnly = false,
+}: SeniorCrmMeetingsViewProps) {
   const today = useMemo(() => startOfDay(new Date()), [])
   const [focusDate, setFocusDate] = useState(today)
   const [view, setView] = useState<CalendarView>('DAILY')
   const [showAgenda, setShowAgenda] = useState(true)
-  const [myLeadsOnly, setMyLeadsOnly] = useState(true)
+  const [myLeadsOnly, setMyLeadsOnly] = useState(initialMyLeadsOnly)
   const [dayDialogOpen, setDayDialogOpen] = useState(false)
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [meetings, setMeetings] = useState<Meeting[]>([])
@@ -349,6 +389,9 @@ export default function SeniorCrmMeetingsPage() {
                       <p className="font-semibold">{event.title}</p>
                       <p className="text-[10px] font-semibold uppercase tracking-wide">{getEventLabel(event)}</p>
                       <p>{event.leadName}</p>
+                      <p className="text-[10px] text-current/80">
+                        {formatEventTime(event.start)} - {formatEventTime(event.end)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -392,16 +435,18 @@ export default function SeniorCrmMeetingsPage() {
                 .get(formatDayKey(day))
                 ?.filter((item) => item.start.getHours() === hour) ?? []
             return (
-              <div key={`${formatDayKey(day)}-${hour}`} className="border-r border-border px-1.5 py-1.5 last:border-r-0 min-h-[56px]">
-                {events.map((event) => (
-                  <div
-                    key={event.id}
-                    className={`mb-1 rounded border px-1.5 py-1 text-[10px] leading-tight ${getEventClass(event)}`}
-                  >
-                    {event.source === 'TASK' ? 'Task: ' : ''}
-                    {event.title}
-                  </div>
-                ))}
+              <div
+                key={`${formatDayKey(day)}-${hour}`}
+                className="min-h-[72px] border-r border-border px-1.5 py-1.5 last:border-r-0"
+              >
+                <div className="space-y-1">
+                  {events.slice(0, 2).map((event) => (
+                    <CompactEventCard key={event.id} event={event} dense />
+                  ))}
+                  {events.length > 2 ? (
+                    <p className="text-[10px] font-medium text-muted-foreground">+{events.length - 2} more</p>
+                  ) : null}
+                </div>
               </div>
             )
           })}
@@ -441,14 +486,11 @@ export default function SeniorCrmMeetingsPage() {
                 {day.getDate()}
               </p>
               <div className="space-y-1">
-                {events.slice(0, 3).map((event) => (
-                  <div key={event.id} className={`truncate rounded border px-1.5 py-1 text-[10px] ${getEventClass(event)}`}>
-                    {event.source === 'TASK' ? 'Task: ' : ''}
-                    {event.title}
-                  </div>
+                {events.slice(0, 2).map((event) => (
+                  <CompactEventCard key={event.id} event={event} dense />
                 ))}
-                {events.length > 3 ? (
-                  <p className="text-[10px] text-muted-foreground">+{events.length - 3} more</p>
+                {events.length > 2 ? (
+                  <p className="text-[10px] text-muted-foreground">+{events.length - 2} more</p>
                 ) : null}
               </div>
             </div>
@@ -549,8 +591,8 @@ export default function SeniorCrmMeetingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <CrmPageHeader
-        title="Calendar"
-        subtitle="Calendar view for meetings and Senior CRM task deadlines."
+        title={title}
+        subtitle={subtitle}
       />
 
       <main className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">
@@ -599,10 +641,12 @@ export default function SeniorCrmMeetingsPage() {
                   <Switch checked={showAgenda} onCheckedChange={setShowAgenda} />
                 </label>
 
-                <label className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm">
-                  <span>My Leads Only</span>
-                  <Switch checked={myLeadsOnly} onCheckedChange={setMyLeadsOnly} />
-                </label>
+                {!lockMyLeadsOnly ? (
+                  <label className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm">
+                    <span>My Leads Only</span>
+                    <Switch checked={myLeadsOnly} onCheckedChange={setMyLeadsOnly} />
+                  </label>
+                ) : null}
               </div>
             </div>
           </CardContent>
@@ -638,7 +682,9 @@ export default function SeniorCrmMeetingsPage() {
                       <div
                         key={meeting.id}
                         className={`rounded-md border p-3 ${
-                          meeting.source === 'TASK' ? 'border-amber-300 bg-amber-50/50' : 'border-border'
+                          meeting.source === 'TASK'
+                            ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800/70 dark:bg-amber-950/25'
+                            : 'border-border'
                         }`}
                       >
                         <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
@@ -649,7 +695,7 @@ export default function SeniorCrmMeetingsPage() {
                         <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                           <Clock className="size-3.5" />
                           {meeting.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
-                          {meeting.start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {formatEventTime(meeting.start)} - {formatEventTime(meeting.end)}
                         </p>
                         <Badge className={`mt-2 border ${getEventClass(meeting)}`}>
                           {meeting.source === 'TASK'
@@ -689,7 +735,9 @@ export default function SeniorCrmMeetingsPage() {
                 <div
                   key={meeting.id}
                   className={`rounded-md border p-3 ${
-                    meeting.source === 'TASK' ? 'border-amber-300 bg-amber-50/50' : 'border-border'
+                    meeting.source === 'TASK'
+                      ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800/70 dark:bg-amber-950/25'
+                      : 'border-border'
                   }`}
                 >
                   <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
@@ -698,8 +746,7 @@ export default function SeniorCrmMeetingsPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">{meeting.leadName}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {meeting.start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} -{' '}
-                    {meeting.end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    {formatEventTime(meeting.start)} - {formatEventTime(meeting.end)}
                   </p>
                   <Badge className={`mt-2 border ${getEventClass(meeting)}`}>
                     {meeting.source === 'TASK'
@@ -714,4 +761,8 @@ export default function SeniorCrmMeetingsPage() {
       </Dialog>
     </div>
   )
+}
+
+export default function SeniorCrmMeetingsPage() {
+  return <SeniorCrmMeetingsView />
 }
