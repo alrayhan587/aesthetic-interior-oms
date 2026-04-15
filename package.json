@@ -7,6 +7,8 @@
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
+    "db:backup": "bash scripts/db/backup.sh",
+    "db:restore": "bash scripts/db/restore.sh",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && prisma migrate deploy && next build"
   },

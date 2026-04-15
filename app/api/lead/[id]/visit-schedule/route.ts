@@ -27,6 +27,7 @@ type ScheduleVisitBody = {
   reason?: unknown;
   projectSqft?: unknown;
   projectStatus?: unknown;
+  visitFee?: unknown;
 };
 
 async function resolveLeadId(context: RouteContext): Promise<string | null> {
@@ -226,6 +227,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const notes = toOptionalString(body.notes);
     const reason = toOptionalString(body.reason) ?? 'Visit has been scheduled.';
     const projectSqft = toOptionalNumber(body.projectSqft);
+    const visitFee = toOptionalNumber(body.visitFee);
     const projectStatus = toProjectStatus(body.projectStatus);
     const scheduledAtRaw = toOptionalString(body.scheduledAt);
     const parsedScheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
@@ -244,6 +246,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (hasValue(body.projectSqft) && (projectSqft === null || projectSqft <= 0)) {
       return NextResponse.json(
         { success: false, error: 'projectSqft must be greater than 0' },
+        { status: 400 },
+      );
+    }
+    if (hasValue(body.visitFee) && (visitFee === null || visitFee < 0)) {
+      return NextResponse.json(
+        { success: false, error: 'visitFee must be a non-negative number' },
         { status: 400 },
       );
     }
@@ -342,6 +350,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           assignedToId: visitTeamUserId,
           createdById: actorUserId,
           scheduledAt: parsedScheduledAt,
+          visitFee: visitFee ?? 0,
           projectSqft,
           projectStatus,
           location: locationToUse,

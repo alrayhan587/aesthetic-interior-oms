@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
         leadId: visit.leadId,
         leadName: visit.lead?.name ?? 'Unknown',
         location: visit.location,
+        visitFee: visit.visitFee,
         projectSqft: visit.projectSqft,
         projectStatus: visit.projectStatus,
         scheduledAt: visit.scheduledAt,

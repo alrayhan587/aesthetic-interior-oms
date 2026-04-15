@@ -41,6 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 /generated/prisma
+/backups/
+*.dump
+*.backup
 
 # clerk configuration (can include secrets)
 /.clerk/

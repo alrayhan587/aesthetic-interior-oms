@@ -43,6 +43,7 @@ export function VisitScheduleCard() {
       id: string
       leadName: string
       location: string
+      visitFee?: number | null
       projectSqft?: number | null
       projectStatus?: string | null
       scheduledAt: string
@@ -176,6 +177,9 @@ export function VisitScheduleCard() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {visit.scheduledDate} &middot; {visit.assignedTeamMember}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Visit Fee: Tk {visit.visitFee ?? 0}
                     </p>
                     {(visit.projectSqft || visit.projectStatus) ? (
                       <p className="text-xs text-muted-foreground mt-1">

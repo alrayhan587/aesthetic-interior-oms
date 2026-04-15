@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { ActivityType, LeadAssignmentDepartment, LeadStage, LeadSubStatus, NotificationType, ProjectStatus, VisitStatus } from '@/generated/prisma/client';
+import { ActivityType, LeadAssignmentDepartment, LeadStage, LeadSubStatus, NotificationType, Prisma, ProjectStatus, VisitStatus } from '@/generated/prisma/client';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
@@ -17,6 +17,7 @@ type UpdateVisitBody = {
   reason?: unknown;
   projectSqft?: unknown;
   projectStatus?: unknown;
+  visitFee?: unknown;
 };
 
 async function resolveVisitId(context: RouteContext): Promise<string | null> {
@@ -170,6 +171,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const parsedScheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
     const statusInput = toVisitStatus(toOptionalString(body.status));
     const projectSqft = toOptionalNumber(body.projectSqft);
+    const visitFee = toOptionalNumber(body.visitFee);
     const projectStatus = toProjectStatus(body.projectStatus);
 
     if (scheduledAtRaw && (!parsedScheduledAt || Number.isNaN(parsedScheduledAt.getTime()))) {
@@ -196,6 +198,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (hasValue(body.projectSqft) && (projectSqft === null || projectSqft <= 0)) {
       return NextResponse.json({ success: false, error: 'projectSqft must be greater than 0' }, { status: 400 });
+    }
+    if (hasValue(body.visitFee) && (visitFee === null || visitFee < 0)) {
+      return NextResponse.json({ success: false, error: 'visitFee must be a non-negative number' }, { status: 400 });
     }
     if (hasValue(body.projectStatus) && !projectStatus) {
       return NextResponse.json(
@@ -271,17 +276,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
       }
 
+      const visitUpdateData: Prisma.VisitUncheckedUpdateInput = {
+        ...(visitTeamUserId ? { assignedToId: visitTeamUserId } : {}),
+        ...(location ? { location } : {}),
+        ...(notes !== null ? { notes } : {}),
+        ...(parsedScheduledAt ? { scheduledAt: parsedScheduledAt } : {}),
+        ...(statusInput ? { status: statusInput } : {}),
+        ...(body.projectSqft !== undefined ? { projectSqft } : {}),
+        ...(hasValue(body.visitFee) ? { visitFee: visitFee ?? 0 } : {}),
+        ...(body.projectStatus !== undefined ? { projectStatus } : {}),
+      };
+
       const visit = await tx.visit.update({
         where: { id: visitId },
-        data: {
-          ...(visitTeamUserId ? { assignedToId: visitTeamUserId } : {}),
-          ...(location ? { location } : {}),
-          ...(notes !== null ? { notes } : {}),
-          ...(parsedScheduledAt ? { scheduledAt: parsedScheduledAt } : {}),
-          ...(statusInput ? { status: statusInput } : {}),
-          ...(body.projectSqft !== undefined ? { projectSqft } : {}),
-          ...(body.projectStatus !== undefined ? { projectStatus } : {}),
-        },
+        data: visitUpdateData,
       });
 
       if (visitTeamUserId) {

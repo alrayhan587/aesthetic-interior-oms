@@ -295,6 +295,7 @@ model Visit {
   leadId        String
   assignedToId  String?
   scheduledAt   DateTime
+  visitFee      Float       @default(0)
   status        VisitStatus @default(SCHEDULED)
   projectSqft   Float?
   projectStatus ProjectStatus?

@@ -58,6 +58,7 @@ type ScheduledVisitCard = {
   id: string
   scheduledAt: string
   location: string
+  visitFee?: number | null
   projectSqft?: number | null
   projectStatus?: string | null
   notes?: string | null
@@ -69,6 +70,7 @@ type LeadVisitRecord = {
   scheduledAt: string
   status: string
   location: string
+  visitFee?: number | null
   projectSqft?: number | null
   projectStatus?: string | null
   notes: string | null
@@ -241,6 +243,7 @@ export function LeadActionsPanel({
   const [visitTeamUserId, setVisitTeamUserId] = useState('')
   const [visitScheduledAt, setVisitScheduledAt] = useState('')
   const [visitLocation, setVisitLocation] = useState('')
+  const [visitFee, setVisitFee] = useState('0')
   const [visitProjectSqft, setVisitProjectSqft] = useState('')
   const [visitProjectStatus, setVisitProjectStatus] = useState('')
   const [visitAttachmentFile, setVisitAttachmentFile] = useState<File | null>(null)
@@ -519,6 +522,7 @@ export function LeadActionsPanel({
               id: latestVisit.id,
               scheduledAt: latestVisit.scheduledAt,
               location: latestVisit.location,
+              visitFee: latestVisit.visitFee ?? 0,
               projectSqft: latestVisit.projectSqft ?? null,
               projectStatus: latestVisit.projectStatus ?? null,
               notes: latestVisit.notes ?? null,
@@ -937,6 +941,10 @@ export function LeadActionsPanel({
         setStageError('Project sqft must be greater than 0.')
         return
       }
+      if (visitFee.trim() && Number(visitFee) < 0) {
+        setStageError('Visit fee must be 0 or more.')
+        return
+      }
     }
 
     setSavingStage(true)
@@ -963,6 +971,7 @@ export function LeadActionsPanel({
             visitTeamUserId,
             scheduledAt: scheduledIso,
             location: visitLocation.trim(),
+            visitFee: visitFee.trim() ? Number(visitFee) : 0,
             projectSqft: visitProjectSqft.trim() ? Number(visitProjectSqft) : undefined,
             projectStatus: visitProjectStatus || undefined,
             notes: visitNotes.trim() || undefined,
@@ -982,6 +991,7 @@ export function LeadActionsPanel({
             id: createdVisit.id,
             scheduledAt: createdVisit.scheduledAt,
             location: createdVisit.location,
+            visitFee: createdVisit.visitFee ?? 0,
             projectSqft: createdVisit.projectSqft ?? null,
             projectStatus: createdVisit.projectStatus ?? null,
             notes: createdVisit.notes ?? null,
@@ -1048,6 +1058,7 @@ export function LeadActionsPanel({
     setVisitTeamUserId('')
     setVisitScheduledAt('')
     setVisitLocation(leadLocation ?? '')
+    setVisitFee('0')
     setVisitProjectSqft('')
     setVisitProjectStatus('')
     setVisitAttachmentFile(null)
@@ -1092,6 +1103,10 @@ export function LeadActionsPanel({
       setVisitTeamError('Project sqft must be greater than 0.')
       return
     }
+    if (visitFee.trim() && Number(visitFee) < 0) {
+      setVisitTeamError('Visit fee must be 0 or more.')
+      return
+    }
 
     const scheduledIso = new Date(visitScheduledAt).toISOString()
 
@@ -1106,6 +1121,7 @@ export function LeadActionsPanel({
           visitTeamUserId,
           scheduledAt: scheduledIso,
           location: visitLocation.trim(),
+          visitFee: visitFee.trim() ? Number(visitFee) : 0,
           projectSqft: visitProjectSqft.trim() ? Number(visitProjectSqft) : undefined,
           projectStatus: visitProjectStatus || undefined,
           notes: visitNotes.trim() || undefined,
@@ -1138,6 +1154,7 @@ export function LeadActionsPanel({
           id: createdVisit.id,
           scheduledAt: createdVisit.scheduledAt,
           location: createdVisit.location,
+          visitFee: createdVisit.visitFee ?? 0,
           projectSqft: createdVisit.projectSqft ?? null,
           projectStatus: createdVisit.projectStatus ?? null,
           notes: createdVisit.notes ?? null,
@@ -1779,6 +1796,18 @@ export function LeadActionsPanel({
                     </div>
 
                     <div className="space-y-2">
+                      <Label>Visit Fee (Tk)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={visitFee}
+                        onChange={(event) => setVisitFee(event.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
                       <Label>Project Sqft (optional)</Label>
                       <Input
                         type="number"
@@ -1904,6 +1933,7 @@ export function LeadActionsPanel({
                   })}
                 </div>
                 <div className="text-muted-foreground">{visit.location}</div>
+                <div className="text-muted-foreground">Visit Fee: Tk {visit.visitFee ?? 0}</div>
                 {visit.projectSqft ? (
                   <div className="text-muted-foreground">Sqft: {visit.projectSqft}</div>
                 ) : null}
@@ -2076,6 +2106,7 @@ export function LeadActionsPanel({
               })}
             </div>
             <div className="text-muted-foreground">{scheduledVisitCard.location}</div>
+            <div className="text-muted-foreground">Visit Fee: Tk {scheduledVisitCard.visitFee ?? 0}</div>
             {scheduledVisitCard.projectSqft ? (
               <div className="text-muted-foreground">Sqft: {scheduledVisitCard.projectSqft}</div>
             ) : null}
@@ -2711,6 +2742,18 @@ export function LeadActionsPanel({
                   setVisitLocation(event.target.value)
                 }}
                 placeholder="Location (will update lead location)"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Visit Fee (Tk)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={visitFee}
+                onChange={(event) => setVisitFee(event.target.value)}
+                placeholder="0"
               />
             </div>
 

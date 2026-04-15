@@ -44,6 +44,7 @@ type VisitRecord = {
   leadId: string
   scheduledAt: string
   location: string
+  visitFee: number | null
   projectSqft: number | null
   projectStatus: string | null
   status: string
@@ -882,6 +883,7 @@ export function VisitsPageView({
                   <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>{visit.location}</span>
                 </div>
+                <p className="text-xs text-muted-foreground">Visit Fee: Tk {visit.visitFee ?? 0}</p>
                 {visit.projectSqft ? (
                   <p className="text-xs text-muted-foreground">Sqft: {visit.projectSqft}</p>
                 ) : null}
