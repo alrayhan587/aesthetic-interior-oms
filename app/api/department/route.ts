@@ -68,14 +68,14 @@ type DepartmentWriteAuthorizationResult =
 async function authorizeDepartmentWrite(
   options: { allowBootstrapCreate?: boolean } = {},
 ): Promise<DepartmentWriteAuthorizationResult> {
-  // const authResult = await requireDatabaseRoles([]);
-  // if (!authResult.ok) {
-  //   return { ok: false, response: authResult.response };
-  // }
+  const authResult = await requireDatabaseRoles([]);
+  if (!authResult.ok) {
+    return { ok: false, response: authResult.response };
+  }
 
-  // if (authResult.actor.userDepartments.includes('ADMIN')) {
-  //   return { ok: true };
-  // }
+  if (authResult.actor.userDepartments.includes('ADMIN')) {
+    return { ok: true };
+  }
 
   if (options.allowBootstrapCreate) {
     const adminMember = await prisma.userDepartment.findFirst({
