@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -78,6 +78,7 @@ export default function VisitScheduleQueuePage() {
   const [cancelReason, setCancelReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [loadingMembers, setLoadingMembers] = useState(false)
+  const queueListRef = useRef<HTMLDivElement | null>(null)
 
   const loadVisits = async () => {
     setLoading(true)
@@ -129,6 +130,13 @@ export default function VisitScheduleQueuePage() {
   const goNextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))
 
   const dayKey = (day: number) => formatDateKey(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day))
+
+  const handleSelectDate = (dateKey: string) => {
+    setSelectedDate(dateKey)
+    requestAnimationFrame(() => {
+      queueListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
 
   const openReassign = async (visit: VisitRecord) => {
     setActiveVisit(visit)
@@ -264,7 +272,7 @@ export default function VisitScheduleQueuePage() {
                       <button
                         key={key}
                         type="button"
-                        onClick={() => setSelectedDate(key)}
+                        onClick={() => handleSelectDate(key)}
                         className={`h-14 rounded-md border px-1 py-1 text-center transition sm:h-16 ${
                           isSelected
                             ? 'border-primary bg-primary/10'
@@ -286,7 +294,7 @@ export default function VisitScheduleQueuePage() {
               </CardContent>
             </Card>
 
-            <Card className="xl:col-span-5">
+            <Card className="xl:col-span-5" ref={queueListRef}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base sm:text-lg">
                   Queue for {new Date(selectedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -417,4 +425,3 @@ export default function VisitScheduleQueuePage() {
     </div>
   )
 }
-

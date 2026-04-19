@@ -165,8 +165,15 @@ export default function VisitTodayPage() {
   const [supportDialogSaving, setSupportDialogSaving] = useState(false)
   const [statFilter, setStatFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [mobileTab, setMobileTab] = useState<'timeline' | 'queue' | 'summary'>('timeline')
-  const queueRef = useRef<HTMLDivElement | null>(null)
+  const mobileQueueRef = useRef<HTMLDivElement | null>(null)
+  const desktopQueueRef = useRef<HTMLDivElement | null>(null)
   const shouldScrollToQueueRef = useRef(false)
+
+  const scrollToQueueSection = () => {
+    const isDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
+    const target = isDesktop ? desktopQueueRef.current : mobileQueueRef.current
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     fetchMeCached()
@@ -245,14 +252,14 @@ export default function VisitTodayPage() {
     setStatFilter(filter)
     setMobileTab('queue')
     requestAnimationFrame(() => {
-      queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      scrollToQueueSection()
     })
   }
 
   useEffect(() => {
     if (!shouldScrollToQueueRef.current) return
     requestAnimationFrame(() => {
-      queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      scrollToQueueSection()
       shouldScrollToQueueRef.current = false
     })
   }, [mobileTab, statFilter])
@@ -852,7 +859,7 @@ export default function VisitTodayPage() {
                 <TabsContent value="timeline" className="mt-4">
                   {quickTimelineContent}
                 </TabsContent>
-                <TabsContent value="queue" className="mt-4" ref={queueRef}>
+                <TabsContent value="queue" className="mt-4" ref={mobileQueueRef}>
                   {visitQueueContent}
                 </TabsContent>
                 <TabsContent value="summary" className="mt-4">
@@ -861,7 +868,7 @@ export default function VisitTodayPage() {
               </Tabs>
             </div>
 
-            <div className="hidden xl:grid grid-cols-12 gap-6 xl:h-[calc(100vh-19rem)]" ref={queueRef}>
+            <div className="hidden xl:grid grid-cols-12 gap-6 xl:h-[calc(100vh-19rem)]" ref={desktopQueueRef}>
               {visitQueueContent}
               <div className="space-y-6 xl:col-span-4 xl:flex xl:flex-col xl:overflow-hidden">
                 {quickTimelineContent}
