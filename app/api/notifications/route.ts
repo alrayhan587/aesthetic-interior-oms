@@ -106,7 +106,10 @@ async function ensureVisitScheduleNotifications(userId: string) {
         },
       },
     },
-    include: {
+    select: {
+      id: true,
+      leadId: true,
+      scheduledAt: true,
       lead: {
         select: { id: true, name: true },
       },
@@ -130,7 +133,10 @@ async function ensureVisitScheduleNotifications(userId: string) {
         },
       },
     },
-    include: {
+    select: {
+      id: true,
+      leadId: true,
+      scheduledAt: true,
       lead: {
         select: { id: true, name: true },
       },

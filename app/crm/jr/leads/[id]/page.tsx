@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, usePathname, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -158,6 +158,9 @@ export default function LeadDetailPage() {
   const pathname = usePathname()
   const router = useRouter()
   const leadId = params.id as string
+
+  const searchParams = useSearchParams()
+  const openScheduleOnMount = Boolean(searchParams.get('openSchedule'))
 
   const [lead, setLead] = useState<LeadDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -826,6 +829,7 @@ export default function LeadDetailPage() {
             onAddLeadDetails={handleAddLeadDetails}
             onAddAttachment={() => setAddAttachmentOpen(true)}
             onLeadRefresh={refreshLeadDetails}
+            openScheduleOnMount={openScheduleOnMount}
           />
         </div>
       </div>

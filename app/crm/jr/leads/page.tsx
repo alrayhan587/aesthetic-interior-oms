@@ -568,6 +568,11 @@ export default function LeadsPage() {
     fetchLeads(0, true)
   }, [fetchLeads])
 
+  const getSeniorAssignmentName = (lead: LeadSummary) => {
+    const senior = lead.assignments?.find((a) => a.department === 'SR_CRM')
+    return senior?.user?.fullName ?? 'Unassigned'
+  }
+
   const applyDatePreset = useCallback((preset: LeadDatePreset) => {
     if (preset === 'CUSTOM') {
       setDatePreset('CUSTOM')
@@ -923,16 +928,21 @@ export default function LeadsPage() {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           <p>Phone: {lead.phone || '—'}</p>
-                          <p>JR CRM: {lead.assignments?.[0]?.user?.fullName || 'Unassigned'}</p>
+                              <p>Senior CRM: {getSeniorAssignmentName(lead)}</p>
                           <p>Location: {lead.location || '—'}</p>
                         </div>
                         <div className="flex items-center justify-between gap-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${stageColors[lead.stage]}`}>
                             {lead.stage}
                           </span>
-                          <Link href={`/crm/jr/leads/${lead.id}`}>
-                            <Button variant="outline" size="sm">View</Button>
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link href={`/crm/jr/leads/${lead.id}?openSchedule=1`}>
+                              <Button variant="outline" size="sm">Schedule Visit</Button>
+                            </Link>
+                            <Link href={`/crm/jr/leads/${lead.id}`}>
+                              <Button variant="outline" size="sm">View</Button>
+                            </Link>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -955,7 +965,7 @@ export default function LeadsPage() {
                         </th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Lead Name</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted-foreground">JR CRM</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Senior CRM</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Location</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Stage</th>
                         <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Action</th>
@@ -996,7 +1006,7 @@ export default function LeadsPage() {
                             </div>
                           </td>
                           <td className="py-4 px-4">{lead.phone || '—'}</td>
-                          <td className="py-4 px-4">{lead.assignments?.[0]?.user?.fullName || 'Unassigned'}</td>
+                          <td className="py-4 px-4">{getSeniorAssignmentName(lead)}</td>
                           <td className="py-4 px-4">{lead.location || '—'}</td>
                           <td className="py-4 px-4">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${stageColors[lead.stage]}`}>
@@ -1004,9 +1014,14 @@ export default function LeadsPage() {
                             </span>
                           </td>
                           <td className="py-4 px-4 text-center">
-                            <Link href={`/crm/jr/leads/${lead.id}`}>
-                              <Button variant="outline" size="sm">View</Button>
-                            </Link>
+                            <div className="inline-flex items-center justify-center gap-2">
+                              <Link href={`/crm/jr/leads/${lead.id}?openSchedule=1`}>
+                                <Button variant="outline" size="sm">Schedule Visit</Button>
+                              </Link>
+                              <Link href={`/crm/jr/leads/${lead.id}`}>
+                                <Button variant="outline" size="sm">View</Button>
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       ))}

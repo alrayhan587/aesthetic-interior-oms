@@ -976,7 +976,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           <p>Phone: {lead.phone || '—'}</p>
-                          <p>JR CRM: {lead.assignments?.[0]?.user?.fullName || 'Unassigned'}</p>
+                          <p>Senior CRM: {lead.assignments?.[0]?.user?.fullName || 'Unassigned'}</p>
                           <p>Location: {lead.location || '—'}</p>
                         </div>
                         <div className="flex items-center justify-between gap-3">
@@ -1008,7 +1008,7 @@ export default function LeadsPage() {
                         </th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Lead Name</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Phone</th>
-                        <th className="px-4 py-3 text-left font-semibold text-muted-foreground">JR CRM</th>
+                        <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Senior CRM</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Location</th>
                         <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Stage</th>
                         <th className="px-4 py-3 text-center font-semibold text-muted-foreground">Action</th>

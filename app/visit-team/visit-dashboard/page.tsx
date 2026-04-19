@@ -15,7 +15,7 @@ export default function DashboardPage() {
   const metrics = generateMetrics()
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-card">
       <CrmPageHeader
         title="Visit Team Dashboard"
         subtitle="Welcome back! Here is your daily overview."

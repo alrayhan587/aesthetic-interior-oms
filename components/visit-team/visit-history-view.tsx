@@ -73,47 +73,6 @@ type VisitHistoryViewProps = {
   enableJrAssignAction?: boolean
 }
 
-const fallbackVisits: VisitRecord[] = [
-  {
-    id: 'demo_visit_1',
-    scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    location: 'Koregaon Park, Pune',
-    notes: 'Client asked for modern living room concepts.',
-    status: 'SCHEDULED',
-    lead: {
-      id: 'demo_lead_1',
-      name: 'Priya Patel',
-      phone: '+91 99999 00001',
-      location: 'Koregaon Park, Pune',
-    },
-    assignedTo: {
-      id: 'demo_user_1',
-      fullName: 'Visit Team Member',
-      email: 'visit1@example.com',
-      phone: '+91 88888 11111',
-    },
-  },
-  {
-    id: 'demo_visit_2',
-    scheduledAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    location: 'Baner, Pune',
-    notes: 'Site measured successfully and layout captured.',
-    status: 'COMPLETED',
-    lead: {
-      id: 'demo_lead_2',
-      name: 'Rajesh Sharma',
-      phone: '+91 99999 00002',
-      location: 'Baner, Pune',
-    },
-    assignedTo: {
-      id: 'demo_user_1',
-      fullName: 'Visit Team Member',
-      email: 'visit1@example.com',
-      phone: '+91 88888 11111',
-    },
-  },
-]
-
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -338,16 +297,10 @@ export function VisitHistoryView({
         const payload = (await visitsRes.json()) as ApiResponse
         const data = payload.data ?? []
 
-        if (data.length === 0) {
-          setVisits(fallbackVisits)
-          setSource('fallback')
-          return
-        }
-
         setVisits(data)
         setSource('api')
       } catch {
-        setVisits(fallbackVisits)
+        setVisits([])
         setSource('fallback')
       } finally {
         setLoading(false)
@@ -547,7 +500,7 @@ export function VisitHistoryView({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-card">
       <CrmPageHeader title={title} subtitle={subtitle} />
 
       <main className="mx-auto max-w-[1440px] overflow-x-hidden px-4 py-6 sm:px-6">

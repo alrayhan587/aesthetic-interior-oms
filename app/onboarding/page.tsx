@@ -28,7 +28,7 @@ const DEPARTMENT_ROUTES: Record<string, string> = {
   JR_CRM: "/crm/jr/dashboard",
   JR_ARCHITECT: "/crm/jr-architecture/dashboard",
   SR_CRM: "/crm/sr/dashboard",
-  VISIT_TEAM: "/visit-team/visit-dashboard",
+  VISIT_TEAM: "/visit-team/visit-today",
 };
 
 type Department = {

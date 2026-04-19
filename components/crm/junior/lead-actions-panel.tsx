@@ -164,6 +164,7 @@ interface LeadActionsPanelProps {
   onAddAttachment?: () => void
   onAddLeadDetails?: () => void
   onLeadRefresh?: () => void
+  openScheduleOnMount?: boolean
 }
 
 function toHourPrecisionLocalDateTime(value: string): string {
@@ -220,6 +221,7 @@ export function LeadActionsPanel({
   onAddAttachment,
   onAddLeadDetails,
   onLeadRefresh,
+  openScheduleOnMount,
 }: LeadActionsPanelProps) {
   const [assignOpen, setAssignOpen] = useState(false)
   const [department, setDepartment] = useState('')
@@ -471,6 +473,11 @@ export function LeadActionsPanel({
     }
   }, [leadId, normalizedPhone, whatsappUrl])
   const shouldLoadVisitMetadata = visitOpen || (reasonOpen && requiresVisitSchedulingInStageModal)
+  useEffect(() => {
+    if (openScheduleOnMount) {
+      setVisitOpen(true)
+    }
+  }, [openScheduleOnMount])
   useEffect(() => {
     if (!shouldLoadVisitMetadata) {
       locationTouchedRef.current = false

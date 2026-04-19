@@ -21,7 +21,7 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname() || ''
-  const isVisits = pathname.startsWith('/visits')
+  const isVisits = pathname.startsWith('/visits') || pathname.startsWith('/visit-team')
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -29,11 +29,14 @@ export function Header({ onMenuClick }: HeaderProps) {
   }
 
   const headerClasses = cn(
-    'flex h-16 items-center justify-between px-6',
+    'sticky top-0 z-40 flex h-16 items-center justify-between px-6',
     isVisits
-      ? 'border-b border-slate-800 bg-slate-900'
+      ? 'border-b border-sidebar-border bg-sidebar text-sidebar-foreground'
       : 'border-b border-border bg-background'
   )
+  const iconButtonClass = isVisits
+    ? 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+    : ''
 
   return (
     <header className={headerClasses}>
@@ -42,7 +45,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         variant="ghost"
         size="icon"
         onClick={onMenuClick}
-        className=""
+        className={iconButtonClass}
       >
         <Menu className="w-5 h-5" />
       </Button>
@@ -62,11 +65,11 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <SignedIn>
           <NotificationBell />
-          <UserButton/>
+          <UserButton />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className={iconButtonClass}>
                 <Settings className="w-5 h-5" />
               </Button>
             </DropdownMenuTrigger>

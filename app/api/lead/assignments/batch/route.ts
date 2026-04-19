@@ -112,11 +112,15 @@ export async function POST(request: NextRequest) {
     const existingLeadIds = new Set(leads.map((lead) => lead.id))
     const missingLeadIds = leadIds.filter((id) => !existingLeadIds.has(id))
 
+    const activityLogInputs: Array<{ leadId: string; leadName: string }> = []
+    const followupLeadIds: string[] = []
+
     const result = await prisma.$transaction(async (tx) => {
       let created = 0
       let updated = 0
 
       for (const lead of leads) {
+        let changed = false
         const existingAssignment = await tx.leadAssignment.findFirst({
           where: {
             leadId: lead.id,
@@ -132,6 +136,7 @@ export async function POST(request: NextRequest) {
               data: { userId: user.id },
             })
             updated += 1
+            changed = true
           }
         } else {
           await tx.leadAssignment.create({
@@ -142,6 +147,7 @@ export async function POST(request: NextRequest) {
             },
           })
           created += 1
+          changed = true
         }
 
         if (department === LeadAssignmentDepartment.SR_CRM) {
@@ -154,17 +160,13 @@ export async function POST(request: NextRequest) {
           })
         }
 
-        await logUserAssigned(tx, {
-          leadId: lead.id,
-          userId: authResult.actorUserId,
-          leadName: `${user.fullName} assigned to ${department} department`,
-        })
-
-        await autoCompletePendingFollowups(tx, {
-          leadId: lead.id,
-          userId: authResult.actorUserId,
-          action: 'batch assignment update',
-        })
+        if (changed) {
+          activityLogInputs.push({
+            leadId: lead.id,
+            leadName: `${user.fullName} assigned to ${department} department`,
+          })
+          followupLeadIds.push(lead.id)
+        }
       }
 
       return {
@@ -172,7 +174,28 @@ export async function POST(request: NextRequest) {
         created,
         updated,
       }
-    })
+    }, { timeout: 20_000 })
+
+    // Keep post-write side effects out of transaction to avoid interactive timeout rollbacks.
+    await Promise.allSettled(
+      activityLogInputs.map((item) =>
+        logUserAssigned(prisma, {
+          leadId: item.leadId,
+          userId: authResult.actorUserId,
+          leadName: item.leadName,
+        }),
+      ),
+    )
+
+    await Promise.allSettled(
+      followupLeadIds.map((leadId) =>
+        autoCompletePendingFollowups(prisma, {
+          leadId,
+          userId: authResult.actorUserId,
+          action: 'batch assignment update',
+        }),
+      ),
+    )
 
     return NextResponse.json({
       success: true,

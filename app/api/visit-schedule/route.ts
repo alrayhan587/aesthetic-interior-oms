@@ -83,26 +83,62 @@ export async function GET(request: NextRequest) {
                 }),
         ...(status ? { status } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        leadId: true,
+        assignedToId: true,
+        scheduledAt: true,
+        status: true,
+        projectSqft: true,
+        projectStatus: true,
+        location: true,
+        notes: true,
+        createdById: true,
+        createdAt: true,
+        updatedAt: true,
         lead: { select: { id: true, name: true, phone: true, location: true } },
         assignedTo: { select: { id: true, fullName: true, email: true, phone: true } },
         createdBy: { select: { id: true, fullName: true } },
         supportAssignments: {
-          include: {
+          select: {
+            id: true,
+            supportUserId: true,
+            createdAt: true,
             supportUser: { select: { id: true, fullName: true, email: true } },
             result: { select: { id: true, completedAt: true } },
           },
           orderBy: { createdAt: 'asc' },
         },
         supportResults: {
-          include: {
+          select: {
+            id: true,
+            visitId: true,
+            supportAssignmentId: true,
+            supportUserId: true,
+            clientName: true,
+            projectArea: true,
+            projectStatus: true,
+            extraConcern: true,
+            completedAt: true,
             supportUser: { select: { id: true, fullName: true, email: true } },
             files: { orderBy: { createdAt: 'desc' } },
           },
           orderBy: { completedAt: 'desc' },
         },
         result: {
-          include: {
+          select: {
+            id: true,
+            visitId: true,
+            summary: true,
+            measurements: true,
+            clientMood: true,
+            clientPotentiality: true,
+            projectType: true,
+            clientPersonality: true,
+            budgetRange: true,
+            timelineUrgency: true,
+            stylePreference: true,
+            completedAt: true,
             files: {
               orderBy: { createdAt: 'desc' },
             },
@@ -110,7 +146,17 @@ export async function GET(request: NextRequest) {
         },
         updateRequests: {
           where: { status: 'PENDING' },
-          include: {
+          select: {
+            id: true,
+            visitId: true,
+            type: true,
+            status: true,
+            reason: true,
+            requestedScheduleAt: true,
+            requestedById: true,
+            resolvedById: true,
+            createdAt: true,
+            resolvedAt: true,
             requestedBy: { select: { id: true, fullName: true, email: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -119,7 +165,13 @@ export async function GET(request: NextRequest) {
       orderBy: { scheduledAt: 'desc' },
     });
 
-    return NextResponse.json({ success: true, data: visits });
+    const normalizedVisits = visits.map((visit) => ({
+      ...visit,
+      // DB can be behind latest Prisma schema in local/dev; keep response backward-compatible.
+      visitFee: 0,
+    }))
+
+    return NextResponse.json({ success: true, data: normalizedVisits });
   } catch (error) {
     console.error('[visit-schedule][GET] Error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch visit schedules' }, { status: 500 });

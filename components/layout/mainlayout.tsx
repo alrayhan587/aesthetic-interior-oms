@@ -22,8 +22,10 @@ export function MainLayout({
     setSidebarOpen(isDesktop)
   }, [])
 
+  const rootBgClass = 'bg-background'
+
   return (
-    <div className="flex h-screen bg-background">
+    <div className={`flex h-screen ${rootBgClass}`}>
       {/* shared sidebar – it determines its own links based on pathname */}
       <Sidebar
         open={sidebarOpen}

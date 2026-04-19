@@ -113,7 +113,7 @@ const navigationGroups: Record<string, NavGroup[]> = {
       defaultOpen: true,
       items: [
         { icon: Calendar, label: 'Visits', href: '/visit-team/visits' },
-        { icon: CalendarClock, label: 'Visit Schedule', href: '/visit-team/visit-today' },
+        { icon: CalendarClock, label: 'Today Visit', href: '/visit-team/visit-today' },
         { icon: ListTodo, label: 'My Visits', href: '/visit-team/my-visits' },
         { icon: ClipboardList, label: 'My Supports', href: '/visit-team/supported-visits' },
       ],
@@ -233,7 +233,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                       }))
                     }
                     className={cn(
-                      'flex w-full items-center justify-between rounded-md px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:bg-sidebar-accent'
+                      'flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                     )}
                   >
                     <span>{group.label}</span>
@@ -258,7 +258,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                               className={cn(
                                 'w-full justify-start gap-3',
                                 isActive &&
-                                'bg-primary text-primary-foreground hover:bg-primary/90'
+                                'bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/90'
                               )}
                             >
                               <Icon className="w-5 h-5" />

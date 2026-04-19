@@ -288,7 +288,7 @@ export default function VisitTodayPage() {
                       </Badge>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <Clock className="size-3.5" />
                       {visitDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
@@ -299,7 +299,7 @@ export default function VisitTodayPage() {
                     </span>
                   </div>
                   {(visit.projectSqft || visit.projectStatus || visit.notes) && (
-                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                       {visit.projectSqft ? (
                         <p>Sqft: <span className="font-medium text-foreground">{visit.projectSqft.toLocaleString()}</span></p>
                       ) : null}
@@ -309,7 +309,7 @@ export default function VisitTodayPage() {
                       {visit.notes ? <p className="italic">{visit.notes}</p> : null}
                     </div>
                   )}
-                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+                  <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
                     <p className="font-semibold text-foreground">Support Members</p>
                     {(visit.supportAssignments ?? []).length > 0 ? (
                       <div className="mt-1 space-y-1">
@@ -321,7 +321,7 @@ export default function VisitTodayPage() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-6 px-2 text-[10px]"
+                                className="h-7 px-2 text-xs"
                                 onClick={() => void handleRemoveSupportMember(visit.id, item.supportUserId)}
                               >
                                 Remove
@@ -340,7 +340,7 @@ export default function VisitTodayPage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="mt-2 h-7 px-2 text-[11px]"
+                        className="mt-2 h-8 px-3 text-xs"
                         onClick={() => void openSupportDialog(visit)}
                       >
                         Manage Support Members
@@ -407,12 +407,12 @@ export default function VisitTodayPage() {
               const visitDate = new Date(visit.scheduledAt)
               return (
                 <div key={`${visit.id}-timeline`} className="relative rounded-lg border border-border bg-card p-3">
-                  <span className="absolute -left-[13px] top-4 size-3 rounded-full border-2 border-primary bg-background" />
-                  <p className="text-xs font-semibold text-foreground">
+                  <span className="absolute -left-[13px] top-4 size-3 rounded-full border-2 border-primary bg-card" />
+                  <p className="text-sm font-semibold text-foreground">
                     {visitDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                   <p className="text-sm font-medium text-card-foreground">{visit.lead?.name || 'Unknown Lead'}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-1">{visit.location}</p>
+                  <p className="text-sm text-muted-foreground line-clamp-1">{visit.location}</p>
                 </div>
               )
             })}
@@ -729,20 +729,35 @@ export default function VisitTodayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-card">
       <CrmPageHeader
-        title="Visit Schedule"
+        title="Today Visit"
         subtitle="Track today&apos;s visit queue and complete outcomes quickly."
       />
       <div className="mx-auto max-w-[1440px] overflow-x-hidden px-4 py-5 sm:px-6 sm:py-6">
         <div className="mb-6 flex justify-end">
-          <Badge variant="secondary" className="w-fit gap-1.5 px-3 py-1 text-xs font-semibold">
+          <Badge variant="secondary" className="w-fit gap-1.5 px-3 py-1 text-sm font-semibold">
             <CalendarDays className="size-3.5" />
             {todayVisits.length} {todayVisits.length === 1 ? 'visit' : 'visits'} scheduled
           </Badge>
         </div>
 
-        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Card
+            role="button"
+            tabIndex={0}
+            onClick={() => openStatData('ALL')}
+            onKeyDown={(event) => event.key === 'Enter' && openStatData('ALL')}
+            className="cursor-pointer transition hover:border-primary/40"
+          >
+            <CardContent className="flex items-center justify-between p-4">
+              <div>
+                <p className="text-sm text-muted-foreground">All</p>
+                <p className="text-xl font-semibold text-card-foreground">{todayVisits.length}</p>
+              </div>
+              <CalendarDays className="size-4 text-muted-foreground" />
+            </CardContent>
+          </Card>
           <Card
             role="button"
             tabIndex={0}
@@ -752,7 +767,7 @@ export default function VisitTodayPage() {
           >
             <CardContent className="flex items-center justify-between p-4">
               <div>
-                <p className="text-xs text-muted-foreground">Pending</p>
+                <p className="text-sm text-muted-foreground">Pending</p>
                 <p className="text-xl font-semibold text-card-foreground">{pendingCount}</p>
               </div>
               <Clock className="size-4 text-muted-foreground" />
@@ -767,7 +782,7 @@ export default function VisitTodayPage() {
           >
             <CardContent className="flex items-center justify-between p-4">
               <div>
-                <p className="text-xs text-muted-foreground">Completed</p>
+                <p className="text-sm text-muted-foreground">Completed</p>
                 <p className="text-xl font-semibold text-card-foreground">{completedCount}</p>
               </div>
               <CheckCircle2 className="size-4 text-chart-2" />
@@ -782,7 +797,7 @@ export default function VisitTodayPage() {
           >
             <CardContent className="flex items-center justify-between p-4">
               <div>
-                <p className="text-xs text-muted-foreground">Cancelled</p>
+                <p className="text-sm text-muted-foreground">Cancelled</p>
                 <p className="text-xl font-semibold text-card-foreground">{cancelledCount}</p>
               </div>
               <XCircle className="size-4 text-destructive" />
@@ -823,10 +838,10 @@ export default function VisitTodayPage() {
           <>
             <div className="xl:hidden">
               <Tabs value={mobileTab} onValueChange={(value) => setMobileTab(value as typeof mobileTab)} className="w-full">
-                <TabsList className="w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="timeline">Quick Timeline</TabsTrigger>
-                  <TabsTrigger value="queue">Visit Queue</TabsTrigger>
-                  <TabsTrigger value="summary">Today Summary</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 rounded-lg bg-muted p-1">
+                  <TabsTrigger value="timeline" className="text-sm">Quick Timeline</TabsTrigger>
+                  <TabsTrigger value="queue" className="text-sm">Visit Queue</TabsTrigger>
+                  <TabsTrigger value="summary" className="text-sm">Today Summary</TabsTrigger>
                 </TabsList>
                 <TabsContent value="timeline" className="mt-4">
                   {quickTimelineContent}
@@ -969,7 +984,7 @@ export default function VisitTodayPage() {
                   <select
                     value={supportProjectStatus}
                     onChange={(event) => setSupportProjectStatus(event.target.value)}
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="h-9 w-full rounded-md border border-input bg-input px-3 text-sm"
                   >
                     <option value="">Select project status</option>
                     <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
@@ -1048,7 +1063,7 @@ export default function VisitTodayPage() {
                       <select
                         value={completeProjectStatus}
                         onChange={(event) => setCompleteProjectStatus(event.target.value)}
-                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        className="h-9 w-full rounded-md border border-input bg-input px-3 text-sm"
                       >
                         <option value="">Select project status</option>
                         <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
@@ -1272,7 +1287,7 @@ export default function VisitTodayPage() {
               <select
                 value={supportDialogSelection}
                 onChange={(event) => setSupportDialogSelection(event.target.value)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="h-9 w-full rounded-md border border-input bg-input px-3 text-sm"
                 disabled={supportDialogLoading}
               >
                 <option value="">

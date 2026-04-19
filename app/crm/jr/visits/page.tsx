@@ -844,7 +844,7 @@ export function VisitsPageView({
         )}
       >
         {!isVisible ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs font-semibold text-muted-foreground bg-background/70">
+          <div className="absolute inset-0 z-10 flex items-center justify-center text-sm font-semibold text-muted-foreground bg-background/70">
             {restrictedMessage}
           </div>
         ) : null}
@@ -854,14 +854,14 @@ export function VisitsPageView({
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <span
-              className={`self-start px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColors[visit.status]}`}
+              className={`self-start px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap ${statusColors[visit.status]}`}
             >
               {formatVisitStatus(visit.status)}
             </span>
             <div className="flex-1">
               <div className="flex flex-col gap-1">
                 <h3 className="font-semibold text-foreground">{visit.lead?.name || 'Unknown'}</h3>
-                <p className="text-xs text-muted-foreground">{visit.lead?.location || 'N/A'}</p>
+                <p className="text-sm text-muted-foreground">{visit.lead?.location || 'N/A'}</p>
               </div>
               <div className="mt-3 flex flex-col gap-2 text-sm">
                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -883,20 +883,20 @@ export function VisitsPageView({
                   <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>{visit.location}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">Visit Fee: Tk {visit.visitFee ?? 0}</p>
+                <p className="text-sm text-muted-foreground">Visit Fee: Tk {visit.visitFee ?? 0}</p>
                 {visit.projectSqft ? (
-                  <p className="text-xs text-muted-foreground">Sqft: {visit.projectSqft}</p>
+                  <p className="text-sm text-muted-foreground">Sqft: {visit.projectSqft}</p>
                 ) : null}
                 {visit.projectStatus ? (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Project Status: {visit.projectStatus.replace(/_/g, ' ')}
                   </p>
                 ) : null}
-                {visit.notes && <p className="text-xs text-muted-foreground italic mt-2">{visit.notes}</p>}
-                <p className="text-xs text-muted-foreground">
+                {visit.notes && <p className="text-sm text-muted-foreground italic mt-2">{visit.notes}</p>}
+                <p className="text-sm text-muted-foreground">
                   Assigned: {visit.assignedTo?.fullName || 'Unassigned'}
                 </p>
-                <div className="rounded-md border border-border bg-muted/40 p-2 text-xs">
+                <div className="rounded-md border border-border bg-muted/40 p-2 text-sm">
                   <p className="font-semibold text-foreground">Support Members</p>
                   {(visit.supportAssignments ?? []).length > 0 ? (
                     <div className="mt-1 space-y-1">
@@ -908,7 +908,7 @@ export function VisitsPageView({
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-6 px-2 text-[10px]"
+                              className="h-7 px-2 text-xs"
                               onClick={() => void removeSupportMember(visit.id, item.supportUserId)}
                             >
                               Remove
@@ -927,7 +927,7 @@ export function VisitsPageView({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="mt-2 h-7 px-2 text-[11px]"
+                      className="mt-2 h-8 px-3 text-xs"
                       onClick={() => void openSupportDialog(visit)}
                     >
                       Manage Support Members
@@ -979,7 +979,7 @@ export function VisitsPageView({
           {visitRole !== 'NONE' ? (
             <div className="pt-2">
               <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                   visitRole === 'LEAD'
                     ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
                     : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
@@ -1017,7 +1017,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('ALL')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">All</p>
+              <p className="text-sm font-medium text-muted-foreground">All</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{filteredVisits.length}</p>
             </button>
             <button
@@ -1025,7 +1025,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('SCHEDULED')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Pending</p>
+              <p className="text-sm font-medium text-muted-foreground">Pending</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{scheduledVisits.length}</p>
             </button>
             <button
@@ -1033,7 +1033,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('COMPLETED')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Completed</p>
+              <p className="text-sm font-medium text-muted-foreground">Completed</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{completedVisits.length}</p>
             </button>
             <button
@@ -1041,7 +1041,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('RESCHEDULED')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Rescheduled</p>
+              <p className="text-sm font-medium text-muted-foreground">Rescheduled</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{rescheduledVisits.length}</p>
             </button>
             <button
@@ -1049,7 +1049,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('CANCELLED')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Cancelled</p>
+              <p className="text-sm font-medium text-muted-foreground">Cancelled</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{cancelledVisits.length}</p>
             </button>
             <button
@@ -1057,7 +1057,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('LEAD')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Leading</p>
+              <p className="text-sm font-medium text-muted-foreground">Leading</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{leadRoleVisits.length}</p>
             </button>
             <button
@@ -1065,7 +1065,7 @@ export function VisitsPageView({
               onClick={() => openListDetails('SUPPORT')}
               className="rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/40"
             >
-              <p className="text-[11px] font-medium text-muted-foreground">Supporting</p>
+              <p className="text-sm font-medium text-muted-foreground">Supporting</p>
               <p className="mt-1 text-xl font-semibold text-foreground">{supportRoleVisits.length}</p>
             </button>
           </div>
@@ -1076,11 +1076,31 @@ export function VisitsPageView({
         <p className="text-sm text-destructive">{error}</p>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="calendar">Calendar View</TabsTrigger>
-          <TabsTrigger value="list">List View</TabsTrigger>
-        </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex items-center justify-between gap-3">
+          <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 md:hidden">
+            <TabsTrigger value="calendar" className="text-sm">Calendar View</TabsTrigger>
+            <TabsTrigger value="list" className="text-sm">List View</TabsTrigger>
+          </TabsList>
+          <div className="hidden md:flex items-center gap-2 rounded-lg border border-border bg-card p-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={activeTab === 'calendar' ? 'default' : 'ghost'}
+              onClick={() => setActiveTab('calendar')}
+            >
+              Calendar View
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeTab === 'list' ? 'default' : 'ghost'}
+              onClick={() => setActiveTab('list')}
+            >
+              List View
+            </Button>
+          </div>
+        </div>
 
         <TabsContent value="calendar" className="mt-6">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -1183,16 +1203,16 @@ export function VisitsPageView({
                               >
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <p className="text-xs text-muted-foreground">{row.dayLabel}</p>
-                                    <p className="text-sm font-semibold text-foreground">
+                                    <p className="text-sm text-muted-foreground">{row.dayLabel}</p>
+                                    <p className="text-base font-semibold text-foreground">
                                       {monthYear.split(' ')[0]} {row.day}
                                     </p>
                                   </div>
-                                  <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                                  <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-primary/10 px-2 py-1 text-sm font-semibold text-primary">
                                     {row.visits.length}
                                   </span>
                                 </div>
-                                <div className="mt-1 flex items-center gap-1 text-[10px]">
+                                <div className="mt-1 flex items-center gap-1 text-xs">
                                   <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-700">Lead {leadCount}</span>
                                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">Support {supportCount}</span>
                                 </div>
@@ -1209,7 +1229,7 @@ export function VisitsPageView({
                                       <div
                                         key={visit.id}
                                         className={cn(
-                                          'rounded-md border border-border bg-card p-2 text-xs relative overflow-hidden',
+                                          'rounded-md border border-border bg-card p-2 text-sm relative overflow-hidden',
                                           canNavigateFromCard ? 'cursor-pointer transition hover:border-primary/40' : '',
                                         )}
                                         onClick={(event) => {
@@ -1218,7 +1238,7 @@ export function VisitsPageView({
                                         }}
                                       >
                                         {!isVisible ? (
-                                          <div className="absolute inset-0 z-10 flex items-center justify-center text-[10px] font-semibold text-muted-foreground bg-background/70">
+                                          <div className="absolute inset-0 z-10 flex items-center justify-center text-xs font-semibold text-muted-foreground bg-background/70">
                                             {restrictedMessage}
                                           </div>
                                         ) : null}
@@ -1230,7 +1250,7 @@ export function VisitsPageView({
                                               minute: '2-digit',
                                             })}
                                           </p>
-                                          <p className="text-[10px] text-muted-foreground">
+                                          <p className="text-xs text-muted-foreground">
                                             Support:{' '}
                                             {(visit.supportAssignments ?? []).length > 0
                                               ? (visit.supportAssignments ?? []).map((item) => item.supportUser.fullName).join(', ')
@@ -1238,13 +1258,13 @@ export function VisitsPageView({
                                           </p>
                                           {!cardNavigatesToLead ? (
                                             <div>
-                                              <Button size="sm" variant="outline" asChild className="h-6 px-2 text-[10px]">
+                                              <Button size="sm" variant="outline" asChild className="h-7 px-2 text-xs">
                                                 <Link href={leadHref}>Open Lead</Link>
                                               </Button>
                                             </div>
                                           ) : null}
                                           {role !== 'NONE' ? (
-                                            <p className="text-[10px] font-semibold text-muted-foreground">
+                                            <p className="text-xs font-semibold text-muted-foreground">
                                               {role === 'LEAD' ? 'Leading' : 'Supporting'}
                                             </p>
                                           ) : null}
@@ -1253,7 +1273,7 @@ export function VisitsPageView({
                                     )
                                   })}
                                   {row.visits.length > 3 ? (
-                                    <p className="text-[11px] text-muted-foreground font-medium">
+                                    <p className="text-xs text-muted-foreground font-medium">
                                       +{row.visits.length - 3} more visit(s)
                                     </p>
                                   ) : null}
@@ -1399,38 +1419,40 @@ export function VisitsPageView({
               ) : null}
             </div>
             {showSummaryDashboard ? (
-              <div className="flex flex-wrap gap-2">
-                {[
-                  ['ALL', 'All'],
-                  ['SCHEDULED', 'Pending'],
-                  ['COMPLETED', 'Completed'],
-                  ['RESCHEDULED', 'Rescheduled'],
-                  ['CANCELLED', 'Cancelled'],
-                  ['LEAD', 'Leading'],
-                  ['SUPPORT', 'Supporting'],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={listFilter === value ? 'default' : 'outline'}
-                    className="h-7"
-                    onClick={() =>
-                      setListFilter(
-                        value as
-                          | 'ALL'
-                          | 'SCHEDULED'
-                          | 'COMPLETED'
-                          | 'RESCHEDULED'
-                          | 'CANCELLED'
-                          | 'LEAD'
-                          | 'SUPPORT',
-                      )
-                    }
-                  >
-                    {label}
-                  </Button>
-                ))}
+              <div className="-mx-1 overflow-x-auto pb-1">
+                <div className="flex w-max min-w-full gap-2 px-1 sm:min-w-0 sm:flex-wrap">
+                  {[
+                    ['ALL', 'All'],
+                    ['SCHEDULED', 'Pending'],
+                    ['COMPLETED', 'Completed'],
+                    ['RESCHEDULED', 'Rescheduled'],
+                    ['CANCELLED', 'Cancelled'],
+                    ['LEAD', 'Leading'],
+                    ['SUPPORT', 'Supporting'],
+                  ].map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      size="sm"
+                      variant={listFilter === value ? 'default' : 'outline'}
+                      className="h-7 shrink-0"
+                      onClick={() =>
+                        setListFilter(
+                          value as
+                            | 'ALL'
+                            | 'SCHEDULED'
+                            | 'COMPLETED'
+                            | 'RESCHEDULED'
+                            | 'CANCELLED'
+                            | 'LEAD'
+                            | 'SUPPORT',
+                        )
+                      }
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             ) : null}
             <div className="space-y-6">
