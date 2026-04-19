@@ -1,7 +1,8 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { requireDatabaseRoles } from "@/lib/authz";
-import { LeadAssignmentDepartment, NotificationType } from "@/generated/prisma/client";
+import { LeadAssignmentDepartment, NotificationType, Prisma } from "@/generated/prisma/client";
+import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from "@/lib/visit-team-roles";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -14,6 +15,55 @@ type UpdateUserBody = {
   roleNames?: string[];
   departmentNames?: string[];
 };
+
+async function resolveRolesWithAutoCreate(tx: Prisma.TransactionClient, roleNames: string[]) {
+  if (roleNames.length === 0) return [];
+
+  let roles = await tx.role.findMany({
+    where: { name: { in: roleNames } },
+    select: { id: true, name: true },
+  });
+
+  if (roles.length === roleNames.length) return roles;
+
+  const found = new Set(roles.map((role) => role.name));
+  const missing = roleNames.filter((name) => !found.has(name));
+  const autoCreatable = new Set([VISIT_TEAM_LEADER_ROLE, VISIT_TEAM_CO_LEADER_ROLE]);
+
+  const creatableMissing = missing.filter((name) => autoCreatable.has(name));
+  const nonCreatableMissing = missing.filter((name) => !autoCreatable.has(name));
+
+  if (nonCreatableMissing.length > 0) {
+    throw new Error(`Unknown role(s): ${nonCreatableMissing.join(", ")}`);
+  }
+
+  for (const roleName of creatableMissing) {
+    await tx.role.upsert({
+      where: { name: roleName },
+      update: {},
+      create: {
+        name: roleName,
+        description:
+          roleName === VISIT_TEAM_LEADER_ROLE
+            ? "Visit Team leader with schedule queue oversight access"
+            : "Visit Team co-leader with schedule queue oversight access",
+      },
+    });
+  }
+
+  roles = await tx.role.findMany({
+    where: { name: { in: roleNames } },
+    select: { id: true, name: true },
+  });
+
+  if (roles.length !== roleNames.length) {
+    const refreshedFound = new Set(roles.map((role) => role.name));
+    const refreshedMissing = roleNames.filter((name) => !refreshedFound.has(name));
+    throw new Error(`Unknown role(s): ${refreshedMissing.join(", ")}`);
+  }
+
+  return roles;
+}
 
 export async function GET(_req: Request, { params: paramsPromise }: RouteParams) {
   try {
@@ -83,18 +133,7 @@ export async function PATCH(req: Request, { params: paramsPromise }: RouteParams
       });
 
       if (roleNames !== undefined) {
-        const roles = roleNames.length
-          ? await tx.role.findMany({
-              where: { name: { in: roleNames } },
-              select: { id: true, name: true },
-            })
-          : [];
-
-        if (roles.length !== roleNames.length) {
-          const found = new Set(roles.map((r) => r.name));
-          const missing = roleNames.filter((name) => !found.has(name));
-          throw new Error(`Unknown role(s): ${missing.join(", ")}`);
-        }
+        const roles = await resolveRolesWithAutoCreate(tx, roleNames);
 
         await tx.userRole.deleteMany({ where: { userId: id } });
         if (roles.length > 0) {

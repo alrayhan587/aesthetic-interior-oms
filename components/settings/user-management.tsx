@@ -15,12 +15,19 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Building2, Mail, Power, RefreshCw, Search, UserCheck, UserX, Users2 } from 'lucide-react'
+import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from '@/lib/visit-team-roles'
 
 type UserApiItem = {
   id: string
   fullName: string
   email: string
   isActive: boolean
+  userRoles?: Array<{
+    role?: {
+      id?: string
+      name?: string
+    } | null
+  }>
   approvedBy?: {
     id: string
     fullName: string
@@ -89,6 +96,7 @@ export function UserManagement() {
   const [creatingDepartment, setCreatingDepartment] = useState(false)
   const [isDepartmentDialogOpen, setIsDepartmentDialogOpen] = useState(false)
   const [isAccountRequestsDialogOpen, setIsAccountRequestsDialogOpen] = useState(false)
+  const [updatingVisitTeamRoleByUser, setUpdatingVisitTeamRoleByUser] = useState<Record<string, boolean>>({})
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -193,6 +201,29 @@ export function UserManagement() {
     return parts[parts.length - 1]
   }
 
+  const getUserRoleNames = (user: UserApiItem) =>
+    (user.userRoles ?? [])
+      .map((item) => item?.role?.name)
+      .filter((name): name is string => Boolean(name))
+
+  const getVisitTeamLeadershipRole = (user: UserApiItem): 'LEADER' | 'CO_LEADER' | 'MEMBER' => {
+    const roleNames = new Set(getUserRoleNames(user).map((name) => name.toUpperCase()))
+    if (roleNames.has(VISIT_TEAM_LEADER_ROLE)) return 'LEADER'
+    if (roleNames.has(VISIT_TEAM_CO_LEADER_ROLE)) return 'CO_LEADER'
+    return 'MEMBER'
+  }
+
+  const isVisitTeamDepartment = (departmentName: string) => {
+    const normalized = departmentName.trim().toUpperCase().replace(/\s+/g, '_')
+    return normalized === 'VISIT_TEAM'
+  }
+
+  const leadershipRoleLabel = (role: 'LEADER' | 'CO_LEADER' | 'MEMBER') => {
+    if (role === 'LEADER') return 'Leader'
+    if (role === 'CO_LEADER') return 'Co-Leader'
+    return 'Member'
+  }
+
   const toggleUserStatus = async (user: UserApiItem) => {
     setStatusMessage(null)
     setStatusError(null)
@@ -231,6 +262,64 @@ export function UserManagement() {
       setStatusError(error instanceof Error ? error.message : 'Failed to update user status')
     } finally {
       setTogglingIds((prev) => ({ ...prev, [user.id]: false }))
+    }
+  }
+
+  const updateVisitTeamLeadershipRole = async (
+    sectionKey: string,
+    user: UserApiItem,
+    nextRole: 'LEADER' | 'CO_LEADER' | 'MEMBER',
+  ) => {
+    setStatusMessage(null)
+    setStatusError(null)
+    setUpdatingVisitTeamRoleByUser((prev) => ({ ...prev, [user.id]: true }))
+    try {
+      const existingRoleNames = getUserRoleNames(user)
+      const preservedRoleNames = existingRoleNames.filter((roleName) => {
+        const upper = roleName.toUpperCase()
+        return upper !== VISIT_TEAM_LEADER_ROLE && upper !== VISIT_TEAM_CO_LEADER_ROLE
+      })
+
+      const nextRoleNames = [...preservedRoleNames]
+      if (nextRole === 'LEADER') nextRoleNames.push(VISIT_TEAM_LEADER_ROLE)
+      if (nextRole === 'CO_LEADER') nextRoleNames.push(VISIT_TEAM_CO_LEADER_ROLE)
+
+      const response = await fetch(`/api/user/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleNames: nextRoleNames }),
+      })
+      const payload = (await response.json()) as { error?: string; userRoles?: UserApiItem['userRoles'] }
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Failed to update role for ${user.fullName}`)
+      }
+
+      setDepartments((prev) =>
+        prev.map((section) =>
+          section.key !== sectionKey
+            ? section
+            : {
+                ...section,
+                users: section.users.map((sectionUser) =>
+                  sectionUser.id === user.id
+                    ? {
+                        ...sectionUser,
+                        userRoles: Array.isArray(payload.userRoles)
+                          ? payload.userRoles
+                          : sectionUser.userRoles,
+                      }
+                    : sectionUser,
+                ),
+              },
+        ),
+      )
+      setStatusMessage(
+        `${user.fullName} is now ${nextRole === 'MEMBER' ? 'a member' : nextRole === 'LEADER' ? 'a leader' : 'a co-leader'} in VISIT_TEAM.`,
+      )
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'Failed to update visit team role')
+    } finally {
+      setUpdatingVisitTeamRoleByUser((prev) => ({ ...prev, [user.id]: false }))
     }
   }
 
@@ -611,6 +700,33 @@ export function UserManagement() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {isVisitTeamDepartment(section.name) ? (
+                      <>
+                        <Badge variant="outline">
+                          {leadershipRoleLabel(getVisitTeamLeadershipRole(user))}
+                        </Badge>
+                        <Select
+                          value={getVisitTeamLeadershipRole(user)}
+                          onValueChange={(value) =>
+                            void updateVisitTeamLeadershipRole(
+                              section.key,
+                              user,
+                              value as 'LEADER' | 'CO_LEADER' | 'MEMBER',
+                            )
+                          }
+                          disabled={Boolean(updatingVisitTeamRoleByUser[user.id])}
+                        >
+                          <SelectTrigger className="h-8 w-[170px]">
+                            <SelectValue placeholder="Set Visit Team Role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MEMBER">Member</SelectItem>
+                            <SelectItem value="CO_LEADER">Co-Leader</SelectItem>
+                            <SelectItem value="LEADER">Leader</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </>
+                    ) : null}
                     <Badge variant={user.isActive ? 'default' : 'secondary'}>
                       {user.isActive ? 'Active' : 'Inactive'}
                     </Badge>

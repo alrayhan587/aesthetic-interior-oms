@@ -5,6 +5,7 @@ import { requireDatabaseRoles } from '@/lib/authz';
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
 import { findVisitConflict, isFutureDate } from '@/lib/visit-guards';
+import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles';
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> };
 
@@ -231,6 +232,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const isAdmin = departmentNames.has('ADMIN');
       const isJuniorCrm = departmentNames.has('JR_CRM');
       const isVisitTeam = departmentNames.has('VISIT_TEAM');
+      const isVisitTeamLeader = hasVisitTeamLeadershipRole(authResult.actorRoles);
       if (!isAdmin && !isJuniorCrm && !isVisitTeam) {
         throw new Error('FORBIDDEN');
       }
@@ -258,7 +260,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         throw new Error('VISIT_COMPLETED_LOCKED');
       }
 
-      if (isVisitTeam && !isAdmin && existing.assignedToId !== actorUserId) {
+      if (isVisitTeam && !isAdmin && !isVisitTeamLeader && existing.assignedToId !== actorUserId) {
         throw new Error('NOT_ASSIGNED');
       }
 

@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/theme-provider'
 import { useEffect, useState } from 'react'
+import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles'
 
 interface SidebarProps {
   open: boolean
@@ -145,6 +146,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const [mounted, setMounted] = useState(false)
   const [isLargeScreen, setIsLargeScreen] = useState(false)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const [canViewVisitTeamQueue, setCanViewVisitTeamQueue] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -164,12 +166,54 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   // true for any route that lives under /visits
   const isVisits = pathname.startsWith('/visit-team')
 
-  const groups = isVisits
+  const baseGroups = isVisits
     ? navigationGroups['Visit Team']
     : navigationGroups[role as keyof typeof navigationGroups] || []
 
+  const groups = isVisits
+    ? baseGroups.map((group) => {
+        if (group.id !== 'visit-overview') return group
+        return {
+          ...group,
+          items: canViewVisitTeamQueue
+            ? [
+                ...group.items,
+                { icon: ClipboardList, label: 'Visit Schedule Queue', href: '/visit-team/visit-schedule-queue' },
+              ]
+            : group.items,
+        }
+      })
+    : baseGroups
+
   useEffect(() => {
-    if (isVisits) return
+    if (!isVisits) return
+    let active = true
+    fetch('/api/me', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null
+        const payload = (await response.json()) as {
+          userRoles?: Array<{ role?: { name?: string | null } | null }>
+        }
+        if (!active) return null
+        const roleNames = Array.isArray(payload?.userRoles)
+          ? payload.userRoles
+              .map((entry) => entry?.role?.name)
+              .filter((name): name is string => Boolean(name))
+          : []
+        setCanViewVisitTeamQueue(hasVisitTeamLeadershipRole(roleNames))
+        return null
+      })
+      .catch(() => {
+        if (!active) return
+        setCanViewVisitTeamQueue(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [isVisits])
+
+  useEffect(() => {
     setOpenGroups((prev) => {
       const next = { ...prev }
       groups.forEach((group) => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireDatabaseRoles } from '@/lib/authz';
 import { VisitStatus } from '@/generated/prisma/client';
+import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles';
 
 function toOptionalString(value: string | null): string | null {
   if (!value) return null;
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
     const isAdmin = departmentNames.has('ADMIN');
     const isVisitTeam = departmentNames.has('VISIT_TEAM');
     const isJuniorCrm = departmentNames.has('JR_CRM');
+    const isVisitTeamLeader = hasVisitTeamLeadershipRole(authResult.actorRoles);
 
     if (!isAdmin && !isVisitTeam && !isJuniorCrm) {
       return NextResponse.json(
@@ -55,6 +57,12 @@ export async function GET(request: NextRequest) {
     const scope = toOptionalString(request.nextUrl.searchParams.get('scope'));
     const statusParam = toOptionalString(request.nextUrl.searchParams.get('status'));
     const status = toVisitStatus(statusParam);
+    if (isVisitTeam && scope === 'all' && !isVisitTeamLeader) {
+      return NextResponse.json(
+        { success: false, error: 'Only visit team leaders can view all visit schedules' },
+        { status: 403 },
+      );
+    }
 
     if (statusParam && !status) {
       return NextResponse.json({ success: false, error: 'Invalid visit status filter' }, { status: 400 });
