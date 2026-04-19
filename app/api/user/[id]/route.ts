@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseRoles } from "@/lib/authz";
 import { LeadAssignmentDepartment, NotificationType, Prisma } from "@/generated/prisma/client";
 import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from "@/lib/visit-team-roles";
+import { JR_ARCHITECT_CO_LEADER_ROLE, JR_ARCHITECT_LEADER_ROLE } from "@/lib/jr-architecture-roles";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -28,7 +29,12 @@ async function resolveRolesWithAutoCreate(tx: Prisma.TransactionClient, roleName
 
   const found = new Set(roles.map((role) => role.name));
   const missing = roleNames.filter((name) => !found.has(name));
-  const autoCreatable = new Set([VISIT_TEAM_LEADER_ROLE, VISIT_TEAM_CO_LEADER_ROLE]);
+  const autoCreatable = new Set([
+    VISIT_TEAM_LEADER_ROLE,
+    VISIT_TEAM_CO_LEADER_ROLE,
+    JR_ARCHITECT_LEADER_ROLE,
+    JR_ARCHITECT_CO_LEADER_ROLE,
+  ]);
 
   const creatableMissing = missing.filter((name) => autoCreatable.has(name));
   const nonCreatableMissing = missing.filter((name) => !autoCreatable.has(name));
@@ -46,7 +52,11 @@ async function resolveRolesWithAutoCreate(tx: Prisma.TransactionClient, roleName
         description:
           roleName === VISIT_TEAM_LEADER_ROLE
             ? "Visit Team leader with schedule queue oversight access"
-            : "Visit Team co-leader with schedule queue oversight access",
+            : roleName === VISIT_TEAM_CO_LEADER_ROLE
+              ? "Visit Team co-leader with schedule queue oversight access"
+              : roleName === JR_ARCHITECT_LEADER_ROLE
+                ? "JR Architect leader with visit-complete queue assignment oversight access"
+                : "JR Architect co-leader role",
       },
     });
   }

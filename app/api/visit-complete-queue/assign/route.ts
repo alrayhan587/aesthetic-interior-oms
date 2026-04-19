@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
     const result = await assignJrArchitectFromVisitComplete({
       actorUserId: authResult.actorUserId,
       actorDepartments: authResult.actor.userDepartments ?? [],
+      actorRoles: authResult.actorRoles ?? [],
       leadId,
       jrArchitectUserId,
       requestId,
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
       return NextResponse.json(
-        { success: false, error: 'Only Admin, Senior CRM, or Visit Team can assign JR Architect' },
+        { success: false, error: 'Only Admin, Senior CRM, Visit Team, or JR Architect leaders can assign JR Architect' },
         { status: 403 },
       )
     }

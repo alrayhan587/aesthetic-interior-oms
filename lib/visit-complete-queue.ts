@@ -13,12 +13,14 @@ import { logActivity, logLeadStageChanged, logLeadSubStatusChanged, logUserAssig
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
 import { DEFAULT_CAD_WORK_DETAILS } from '@/lib/sr-task-service'
 import { createSrCadReviewTodosForCadStart } from '@/lib/sr-cad-todo'
+import { hasJrArchitectureLeaderRole } from '@/lib/jr-architecture-roles'
 
 type QueuePermissionFlags = {
   isAdmin: boolean
   isSeniorCrm: boolean
   isJrArchitect: boolean
   isVisitTeam: boolean
+  isJrArchitectureLeader: boolean
 }
 
 export type VisitCompleteQueueItem = {
@@ -58,13 +60,17 @@ export type VisitCompleteQueueItem = {
   }>
 }
 
-export function getQueuePermissionFlags(actorDepartments: string[]): QueuePermissionFlags {
+export function getQueuePermissionFlags(
+  actorDepartments: string[],
+  actorRoles: string[] = [],
+): QueuePermissionFlags {
   const departmentSet = new Set(actorDepartments)
   return {
     isAdmin: departmentSet.has('ADMIN'),
     isSeniorCrm: departmentSet.has('SR_CRM'),
     isJrArchitect: departmentSet.has('JR_ARCHITECT'),
     isVisitTeam: departmentSet.has('VISIT_TEAM'),
+    isJrArchitectureLeader: hasJrArchitectureLeaderRole(actorRoles),
   }
 }
 
@@ -73,7 +79,7 @@ export function canViewVisitCompleteQueue(flags: QueuePermissionFlags): boolean 
 }
 
 export function canAssignJrArchitect(flags: QueuePermissionFlags): boolean {
-  return flags.isAdmin || flags.isSeniorCrm || flags.isVisitTeam
+  return flags.isAdmin || flags.isSeniorCrm || flags.isVisitTeam || flags.isJrArchitectureLeader
 }
 
 export function canRequestJrArchitectWork(flags: QueuePermissionFlags): boolean {
@@ -83,6 +89,7 @@ export function canRequestJrArchitectWork(flags: QueuePermissionFlags): boolean 
 type AssignJrArchitectInput = {
   actorUserId: string
   actorDepartments: string[]
+  actorRoles: string[]
   leadId: string
   jrArchitectUserId: string
   requestId?: string | null
@@ -319,10 +326,11 @@ export async function listVisitCompleteQueueItems(): Promise<VisitCompleteQueueI
 export async function createVisitCompleteRequest(input: {
   actorUserId: string
   actorDepartments: string[]
+  actorRoles?: string[]
   leadId: string
   note?: string | null
 }) {
-  const flags = getQueuePermissionFlags(input.actorDepartments)
+  const flags = getQueuePermissionFlags(input.actorDepartments, input.actorRoles ?? [])
   if (!canRequestJrArchitectWork(flags)) {
     throw new Error('FORBIDDEN')
   }
@@ -384,7 +392,7 @@ export async function createVisitCompleteRequest(input: {
 }
 
 export async function assignJrArchitectFromVisitComplete(input: AssignJrArchitectInput) {
-  const flags = getQueuePermissionFlags(input.actorDepartments)
+  const flags = getQueuePermissionFlags(input.actorDepartments, input.actorRoles)
   if (!canAssignJrArchitect(flags)) {
     throw new Error('FORBIDDEN')
   }

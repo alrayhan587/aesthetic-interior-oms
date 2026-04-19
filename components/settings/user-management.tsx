@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Building2, Mail, Power, RefreshCw, Search, UserCheck, UserX, Users2 } from 'lucide-react'
 import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from '@/lib/visit-team-roles'
+import { JR_ARCHITECT_CO_LEADER_ROLE, JR_ARCHITECT_LEADER_ROLE } from '@/lib/jr-architecture-roles'
 
 type UserApiItem = {
   id: string
@@ -76,6 +77,14 @@ type DepartmentUsersResponse = {
     users?: UserApiItem[]
   }
   error?: string
+}
+
+type LeadershipRole = 'LEADER' | 'CO_LEADER' | 'MEMBER'
+
+type DepartmentLeadershipConfig = {
+  departmentName: string
+  leaderRoleName: string
+  coLeaderRoleName: string
 }
 
 export function UserManagement() {
@@ -206,19 +215,41 @@ export function UserManagement() {
       .map((item) => item?.role?.name)
       .filter((name): name is string => Boolean(name))
 
-  const getVisitTeamLeadershipRole = (user: UserApiItem): 'LEADER' | 'CO_LEADER' | 'MEMBER' => {
+  const toDepartmentToken = (departmentName: string) => {
+    const normalized = departmentName.trim().toUpperCase().replace(/\s+/g, '_')
+    return normalized
+  }
+
+  const getDepartmentLeadershipConfig = (departmentName: string): DepartmentLeadershipConfig | null => {
+    const normalized = toDepartmentToken(departmentName)
+    if (normalized === 'VISIT_TEAM') {
+      return {
+        departmentName: 'VISIT_TEAM',
+        leaderRoleName: VISIT_TEAM_LEADER_ROLE,
+        coLeaderRoleName: VISIT_TEAM_CO_LEADER_ROLE,
+      }
+    }
+    if (normalized === 'JR_ARCHITECT') {
+      return {
+        departmentName: 'JR_ARCHITECT',
+        leaderRoleName: JR_ARCHITECT_LEADER_ROLE,
+        coLeaderRoleName: JR_ARCHITECT_CO_LEADER_ROLE,
+      }
+    }
+    return null
+  }
+
+  const getDepartmentLeadershipRole = (
+    user: UserApiItem,
+    config: DepartmentLeadershipConfig,
+  ): LeadershipRole => {
     const roleNames = new Set(getUserRoleNames(user).map((name) => name.toUpperCase()))
-    if (roleNames.has(VISIT_TEAM_LEADER_ROLE)) return 'LEADER'
-    if (roleNames.has(VISIT_TEAM_CO_LEADER_ROLE)) return 'CO_LEADER'
+    if (roleNames.has(config.leaderRoleName)) return 'LEADER'
+    if (roleNames.has(config.coLeaderRoleName)) return 'CO_LEADER'
     return 'MEMBER'
   }
 
-  const isVisitTeamDepartment = (departmentName: string) => {
-    const normalized = departmentName.trim().toUpperCase().replace(/\s+/g, '_')
-    return normalized === 'VISIT_TEAM'
-  }
-
-  const leadershipRoleLabel = (role: 'LEADER' | 'CO_LEADER' | 'MEMBER') => {
+  const leadershipRoleLabel = (role: LeadershipRole) => {
     if (role === 'LEADER') return 'Leader'
     if (role === 'CO_LEADER') return 'Co-Leader'
     return 'Member'
@@ -265,10 +296,11 @@ export function UserManagement() {
     }
   }
 
-  const updateVisitTeamLeadershipRole = async (
+  const updateDepartmentLeadershipRole = async (
     sectionKey: string,
     user: UserApiItem,
-    nextRole: 'LEADER' | 'CO_LEADER' | 'MEMBER',
+    nextRole: LeadershipRole,
+    config: DepartmentLeadershipConfig,
   ) => {
     setStatusMessage(null)
     setStatusError(null)
@@ -277,12 +309,12 @@ export function UserManagement() {
       const existingRoleNames = getUserRoleNames(user)
       const preservedRoleNames = existingRoleNames.filter((roleName) => {
         const upper = roleName.toUpperCase()
-        return upper !== VISIT_TEAM_LEADER_ROLE && upper !== VISIT_TEAM_CO_LEADER_ROLE
+        return upper !== config.leaderRoleName && upper !== config.coLeaderRoleName
       })
 
       const nextRoleNames = [...preservedRoleNames]
-      if (nextRole === 'LEADER') nextRoleNames.push(VISIT_TEAM_LEADER_ROLE)
-      if (nextRole === 'CO_LEADER') nextRoleNames.push(VISIT_TEAM_CO_LEADER_ROLE)
+      if (nextRole === 'LEADER') nextRoleNames.push(config.leaderRoleName)
+      if (nextRole === 'CO_LEADER') nextRoleNames.push(config.coLeaderRoleName)
 
       const response = await fetch(`/api/user/${user.id}`, {
         method: 'PATCH',
@@ -314,10 +346,10 @@ export function UserManagement() {
         ),
       )
       setStatusMessage(
-        `${user.fullName} is now ${nextRole === 'MEMBER' ? 'a member' : nextRole === 'LEADER' ? 'a leader' : 'a co-leader'} in VISIT_TEAM.`,
+        `${user.fullName} is now ${nextRole === 'MEMBER' ? 'a member' : nextRole === 'LEADER' ? 'a leader' : 'a co-leader'} in ${config.departmentName}.`,
       )
     } catch (error) {
-      setStatusError(error instanceof Error ? error.message : 'Failed to update visit team role')
+      setStatusError(error instanceof Error ? error.message : 'Failed to update department leadership role')
     } finally {
       setUpdatingVisitTeamRoleByUser((prev) => ({ ...prev, [user.id]: false }))
     }
@@ -676,11 +708,17 @@ export function UserManagement() {
                 </div>
               )}
 
-              {section.users.map((user) => (
-                <div
-                  key={`${section.key}-${user.id}`}
-                  className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 md:flex-row md:items-center md:justify-between"
-                >
+              {section.users.map((user) => {
+                const leadershipConfig = getDepartmentLeadershipConfig(section.name)
+                const currentLeadershipRole = leadershipConfig
+                  ? getDepartmentLeadershipRole(user, leadershipConfig)
+                  : null
+
+                return (
+                  <div
+                    key={`${section.key}-${user.id}`}
+                    className="flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 md:flex-row md:items-center md:justify-between"
+                  >
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-semibold">
                       {getInitials(user.fullName)}
@@ -700,24 +738,25 @@ export function UserManagement() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {isVisitTeamDepartment(section.name) ? (
+                    {leadershipConfig ? (
                       <>
                         <Badge variant="outline">
-                          {leadershipRoleLabel(getVisitTeamLeadershipRole(user))}
+                          {leadershipRoleLabel(currentLeadershipRole ?? 'MEMBER')}
                         </Badge>
                         <Select
-                          value={getVisitTeamLeadershipRole(user)}
+                          value={currentLeadershipRole ?? 'MEMBER'}
                           onValueChange={(value) =>
-                            void updateVisitTeamLeadershipRole(
+                            void updateDepartmentLeadershipRole(
                               section.key,
                               user,
-                              value as 'LEADER' | 'CO_LEADER' | 'MEMBER',
+                              value as LeadershipRole,
+                              leadershipConfig,
                             )
                           }
                           disabled={Boolean(updatingVisitTeamRoleByUser[user.id])}
                         >
                           <SelectTrigger className="h-8 w-[170px]">
-                            <SelectValue placeholder="Set Visit Team Role" />
+                            <SelectValue placeholder="Set Department Role" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="MEMBER">Member</SelectItem>
@@ -741,8 +780,9 @@ export function UserManagement() {
                       {user.isActive ? 'Disable' : 'Enable'}
                     </Button>
                   </div>
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
         ))}

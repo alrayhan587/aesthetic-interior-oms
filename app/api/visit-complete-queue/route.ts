@@ -14,7 +14,10 @@ export async function GET() {
     const authResult = await requireDatabaseRoles([])
     if (!authResult.ok) return authResult.response
 
-    const flags = getQueuePermissionFlags(authResult.actor.userDepartments ?? [])
+    const flags = getQueuePermissionFlags(
+      authResult.actor.userDepartments ?? [],
+      authResult.actorRoles ?? [],
+    )
     if (!canViewVisitCompleteQueue(flags) && !flags.isVisitTeam) {
       return NextResponse.json(
         { success: false, error: 'Not authorized to view visit complete queue' },

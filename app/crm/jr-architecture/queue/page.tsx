@@ -4,7 +4,7 @@ export default function JrArchitectureQueuePage() {
   return (
     <VisitCompleteQueueBoard
       title="Visit Complete Queue"
-      subtitle="Read-only queue of visit-completed leads. Request to work on the ones you want to handle."
+      subtitle="Leaders can assign JR Architects, approve requests, or self-assign. Members can request to work."
       leadHrefPrefix={null}
     />
   )

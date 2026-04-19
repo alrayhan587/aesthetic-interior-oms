@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
     const result = await createVisitCompleteRequest({
       actorUserId: authResult.actorUserId,
       actorDepartments: authResult.actor.userDepartments ?? [],
+      actorRoles: authResult.actorRoles ?? [],
       leadId,
       note,
     })

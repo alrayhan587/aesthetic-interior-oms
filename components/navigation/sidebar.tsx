@@ -296,19 +296,21 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
                           pathname === item.href ||
                           pathname.startsWith(item.href + '/')
                         return (
-                          <Link key={item.href} href={item.href} onClick={closeOnSmallScreens}>
-                            <Button
-                              variant={isActive ? 'secondary' : 'ghost'}
-                              className={cn(
-                                'w-full justify-start gap-3',
-                                isActive &&
-                                'bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/90'
-                              )}
-                            >
+                          <Button
+                            key={item.href}
+                            asChild
+                            variant={isActive ? 'secondary' : 'ghost'}
+                            className={cn(
+                              'w-full justify-start gap-3',
+                              isActive &&
+                              'bg-sidebar-accent text-sidebar-accent-foreground hover:bg-sidebar-accent/90'
+                            )}
+                          >
+                            <Link href={item.href} onClick={closeOnSmallScreens}>
                               <Icon className="w-5 h-5" />
                               {item.label}
-                            </Button>
-                          </Link>
+                            </Link>
+                          </Button>
                         )
                       })}
                     </div>
