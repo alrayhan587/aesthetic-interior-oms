@@ -209,11 +209,16 @@ export default function LeadDetailPage() {
   const isJuniorCrmView = pathname?.startsWith('/crm/jr/') ?? false
   const blurVisitResult = pathname?.startsWith('/crm/jr/') ?? false
   const backHref = useMemo(() => {
-    if (pathname?.startsWith('/crm/sr/')) return '/crm/sr/lead-journey'
-    if (pathname?.startsWith('/crm/admin/')) return '/crm/admin/leads'
-    if (pathname?.startsWith('/visit-team/')) return '/visit-team/visit-today'
-    return '/crm/jr/leads'
-  }, [pathname])
+    let basePath = '/crm/jr/leads'
+    if (pathname?.startsWith('/crm/sr/')) basePath = '/crm/sr/lead-journey'
+    else if (pathname?.startsWith('/crm/admin/')) basePath = '/crm/admin/leads'
+    else if (pathname?.startsWith('/visit-team/')) basePath = '/visit-team/visit-today'
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('openSchedule')
+    const query = params.toString()
+    return query ? `${basePath}?${query}` : basePath
+  }, [pathname, searchParams])
 
   // Fetch current user
   useEffect(() => {

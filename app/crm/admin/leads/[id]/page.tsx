@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -130,7 +130,14 @@ type LeadTabValue = 'notes' | 'activity' | 'followups' | 'attachments'
 export default function LeadDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const leadId = params.id as string
+  const backHref = useMemo(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('openSchedule')
+    const query = params.toString()
+    return query ? `/crm/admin/leads?${query}` : '/crm/admin/leads'
+  }, [searchParams])
 
   const [lead, setLead] = useState<LeadDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -558,7 +565,7 @@ export default function LeadDetailPage() {
   if (loading) {
     return (
       <div className="p-4 sm:p-6">
-        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -574,7 +581,7 @@ export default function LeadDetailPage() {
   if (!lead) {
     return (
       <div className="p-4 sm:p-6">
-        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
@@ -587,7 +594,7 @@ export default function LeadDetailPage() {
     <div className="space-y-4 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button onClick={() => router.back()} variant="outline" size="sm" className="gap-2">
+        <Button onClick={() => router.push(backHref)} variant="outline" size="sm" className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -40,7 +40,13 @@ type Visit = {
 export default function JrArcLeadDetailsPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const leadId = params.id as string
+  const backHref = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const query = params.toString()
+    return query ? `/crm/jr-architecture/leads?${query}` : '/crm/jr-architecture/leads'
+  }, [searchParams])
 
   const [lead, setLead] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -155,7 +161,7 @@ export default function JrArcLeadDetailsPage() {
   if (!lead) {
     return (
       <div className="p-4 sm:p-6">
-        <Button onClick={() => router.back()} variant="outline" className="gap-2">
+        <Button onClick={() => router.push(backHref())} variant="outline" className="gap-2">
           <ArrowLeft className="w-4 h-4" /> Back
         </Button>
         <p className="mt-4 text-muted-foreground">Lead not found</p>
@@ -178,7 +184,7 @@ export default function JrArcLeadDetailsPage() {
     <div className="min-h-screen bg-background">
       <div className="p-3 sm:p-4 lg:p-6 space-y-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
-          <Button onClick={() => router.back()} variant="outline" size="sm" className="gap-2">
+          <Button onClick={() => router.push(backHref())} variant="outline" size="sm" className="gap-2">
             <ArrowLeft className="w-4 h-4" /> Back to List
           </Button>
         </div>

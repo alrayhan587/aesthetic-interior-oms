@@ -166,6 +166,7 @@ export default function VisitTodayPage() {
   const [statFilter, setStatFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [mobileTab, setMobileTab] = useState<'timeline' | 'queue' | 'summary'>('timeline')
   const queueRef = useRef<HTMLDivElement | null>(null)
+  const shouldScrollToQueueRef = useRef(false)
 
   useEffect(() => {
     fetchMeCached()
@@ -240,12 +241,21 @@ export default function VisitTodayPage() {
   }, [todayVisits, statFilter])
 
   const openStatData = (filter: 'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED') => {
+    shouldScrollToQueueRef.current = true
     setStatFilter(filter)
     setMobileTab('queue')
     requestAnimationFrame(() => {
       queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }
+
+  useEffect(() => {
+    if (!shouldScrollToQueueRef.current) return
+    requestAnimationFrame(() => {
+      queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      shouldScrollToQueueRef.current = false
+    })
+  }, [mobileTab, statFilter])
 
   const visitQueueContent = (
     <Card className="xl:col-span-8 xl:flex xl:flex-col xl:overflow-hidden">
@@ -743,66 +753,62 @@ export default function VisitTodayPage() {
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
+            aria-pressed={statFilter === 'ALL'}
             onClick={() => openStatData('ALL')}
-            onKeyDown={(event) => event.key === 'Enter' && openStatData('ALL')}
-            className="cursor-pointer transition hover:border-primary/40"
+            className="rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">All</p>
                 <p className="text-xl font-semibold text-card-foreground">{todayVisits.length}</p>
               </div>
               <CalendarDays className="size-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-          <Card
-            role="button"
-            tabIndex={0}
+            </div>
+          </button>
+          <button
+            type="button"
+            aria-pressed={statFilter === 'PENDING'}
             onClick={() => openStatData('PENDING')}
-            onKeyDown={(event) => event.key === 'Enter' && openStatData('PENDING')}
-            className="cursor-pointer transition hover:border-primary/40"
+            className="rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pending</p>
                 <p className="text-xl font-semibold text-card-foreground">{pendingCount}</p>
               </div>
               <Clock className="size-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-          <Card
-            role="button"
-            tabIndex={0}
+            </div>
+          </button>
+          <button
+            type="button"
+            aria-pressed={statFilter === 'COMPLETED'}
             onClick={() => openStatData('COMPLETED')}
-            onKeyDown={(event) => event.key === 'Enter' && openStatData('COMPLETED')}
-            className="cursor-pointer transition hover:border-primary/40"
+            className="rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Completed</p>
                 <p className="text-xl font-semibold text-card-foreground">{completedCount}</p>
               </div>
               <CheckCircle2 className="size-4 text-chart-2" />
-            </CardContent>
-          </Card>
-          <Card
-            role="button"
-            tabIndex={0}
+            </div>
+          </button>
+          <button
+            type="button"
+            aria-pressed={statFilter === 'CANCELLED'}
             onClick={() => openStatData('CANCELLED')}
-            onKeyDown={(event) => event.key === 'Enter' && openStatData('CANCELLED')}
-            className="cursor-pointer transition hover:border-primary/40"
+            className="rounded-xl border border-border bg-card p-4 text-left transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Cancelled</p>
                 <p className="text-xl font-semibold text-card-foreground">{cancelledCount}</p>
               </div>
               <XCircle className="size-4 text-destructive" />
-            </CardContent>
-          </Card>
+            </div>
+          </button>
         </div>
 
         {loading && (

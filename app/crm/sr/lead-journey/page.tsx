@@ -304,6 +304,7 @@ export default function SeniorCrmLeadJourneyPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const leadListQuery = useMemo(() => searchParams.toString(), [searchParams])
   const defaultRange = useMemo(() => getTodayRange(), [])
   const initialFilters = useMemo(() => {
     const rawPreset = searchParams.get('preset')
@@ -691,6 +692,13 @@ export default function SeniorCrmLeadJourneyPage() {
   }, [departments, fetchLeads, selectedDepartmentId, selectedLeadIds, selectedUserId])
 
   const displayedCount = useMemo(() => leads.length, [leads])
+  const getLeadHref = useCallback(
+    (leadId: string) => {
+      const query = leadListQuery
+      return `/crm/sr/leads/${leadId}${query ? `?${query}` : ''}`
+    },
+    [leadListQuery],
+  )
   const allVisibleSelected = useMemo(
     () => leads.length > 0 && leads.every((lead) => selectedLeadIds.includes(lead.id)),
     [leads, selectedLeadIds],
@@ -930,7 +938,7 @@ export default function SeniorCrmLeadJourneyPage() {
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${stageColors[lead.stage]}`}>
                             {lead.stage}
                           </span>
-                          <Link href={`/crm/sr/leads/${lead.id}`}>
+                          <Link href={getLeadHref(lead.id)}>
                             <Button variant="outline" size="sm">View</Button>
                           </Link>
                         </div>
@@ -1004,7 +1012,7 @@ export default function SeniorCrmLeadJourneyPage() {
                             </span>
                           </td>
                           <td className="py-4 px-4 text-center">
-                            <Link href={`/crm/sr/leads/${lead.id}`}>
+                            <Link href={getLeadHref(lead.id)}>
                               <Button variant="outline" size="sm">View</Button>
                             </Link>
                           </td>

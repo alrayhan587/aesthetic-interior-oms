@@ -135,6 +135,7 @@ export default function JrArchLeadsPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const leadListQuery = useMemo(() => searchParams.toString(), [searchParams])
 
   const initialSearch = useMemo(() => searchParams.get('q')?.trim() || '', [searchParams])
   const [leads, setLeads] = useState<LeadSummary[]>([])
@@ -152,6 +153,13 @@ export default function JrArchLeadsPage() {
   const [submittingWork, setSubmittingWork] = useState(false)
   const [submissionNote, setSubmissionNote] = useState('')
   const [submissionRows, setSubmissionRows] = useState<CadSubmissionRow[]>([createCadSubmissionRow()])
+  const getLeadHref = useCallback(
+    (leadId: string) => {
+      const query = leadListQuery
+      return `/crm/jr-architecture/leads/${leadId}${query ? `?${query}` : ''}`
+    },
+    [leadListQuery],
+  )
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
@@ -375,7 +383,7 @@ export default function JrArchLeadsPage() {
                     <div className="min-w-0 flex-1 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Link
-                          href={`/crm/jr-architecture/leads/${lead.id}`}
+                          href={getLeadHref(lead.id)}
                           className="truncate text-base font-semibold text-foreground hover:text-primary hover:underline"
                         >
                           {lead.name}
@@ -489,7 +497,7 @@ export default function JrArchLeadsPage() {
                         </Button>
                       ) : null}
                       <Button asChild size="sm">
-                        <Link href={`/crm/jr-architecture/leads/${lead.id}`}>Workspace</Link>
+                        <Link href={getLeadHref(lead.id)}>Workspace</Link>
                       </Button>
                       <Button
                         variant="secondary"

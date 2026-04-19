@@ -304,6 +304,7 @@ export default function LeadsPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const leadListQuery = useMemo(() => searchParams.toString(), [searchParams])
   const defaultRange = useMemo(() => getTodayRange(), [])
   const initialFilters = useMemo(() => {
     const rawPreset = searchParams.get('preset')
@@ -696,6 +697,15 @@ export default function LeadsPage() {
   }, [departments, fetchLeads, selectedDepartmentId, selectedLeadIds, selectedUserId])
 
   const displayedCount = useMemo(() => leads.length, [leads])
+  const getLeadHref = useCallback(
+    (leadId: string, options?: { openSchedule?: boolean }) => {
+      const params = new URLSearchParams(leadListQuery)
+      if (options?.openSchedule) params.set('openSchedule', '1')
+      const query = params.toString()
+      return `/crm/jr/leads/${leadId}${query ? `?${query}` : ''}`
+    },
+    [leadListQuery],
+  )
   const allVisibleSelected = useMemo(
     () => leads.length > 0 && leads.every((lead) => selectedLeadIds.includes(lead.id)),
     [leads, selectedLeadIds],
@@ -936,10 +946,10 @@ export default function LeadsPage() {
                             {lead.stage}
                           </span>
                           <div className="flex items-center gap-2">
-                            <Link href={`/crm/jr/leads/${lead.id}?openSchedule=1`}>
+                            <Link href={getLeadHref(lead.id, { openSchedule: true })}>
                               <Button variant="outline" size="sm">Schedule Visit</Button>
                             </Link>
-                            <Link href={`/crm/jr/leads/${lead.id}`}>
+                            <Link href={getLeadHref(lead.id)}>
                               <Button variant="outline" size="sm">View</Button>
                             </Link>
                           </div>
@@ -1015,10 +1025,10 @@ export default function LeadsPage() {
                           </td>
                           <td className="py-4 px-4 text-center">
                             <div className="inline-flex items-center justify-center gap-2">
-                              <Link href={`/crm/jr/leads/${lead.id}?openSchedule=1`}>
+                              <Link href={getLeadHref(lead.id, { openSchedule: true })}>
                                 <Button variant="outline" size="sm">Schedule Visit</Button>
                               </Link>
-                              <Link href={`/crm/jr/leads/${lead.id}`}>
+                              <Link href={getLeadHref(lead.id)}>
                                 <Button variant="outline" size="sm">View</Button>
                               </Link>
                             </div>
