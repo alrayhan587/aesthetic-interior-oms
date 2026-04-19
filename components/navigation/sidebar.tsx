@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/theme-provider'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles'
 
 interface SidebarProps {
@@ -166,24 +166,30 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   // true for any route that lives under /visits
   const isVisits = pathname.startsWith('/visit-team')
 
-  const baseGroups = isVisits
-    ? navigationGroups['Visit Team']
-    : navigationGroups[role as keyof typeof navigationGroups] || []
+  const groups = useMemo(() => {
+    const baseGroups = isVisits
+      ? navigationGroups['Visit Team']
+      : navigationGroups[role as keyof typeof navigationGroups] || []
 
-  const groups = isVisits
-    ? baseGroups.map((group) => {
-        if (group.id !== 'visit-overview') return group
-        return {
-          ...group,
-          items: canViewVisitTeamQueue
-            ? [
-                ...group.items,
-                { icon: ClipboardList, label: 'Visit Schedule Queue', href: '/visit-team/visit-schedule-queue' },
-              ]
+    if (!isVisits) return baseGroups
+
+    return baseGroups.map((group) => {
+      if (group.id !== 'visit-overview') return group
+      const queueItem = {
+        icon: ClipboardList,
+        label: 'Visit Schedule Queue',
+        href: '/visit-team/visit-schedule-queue',
+      }
+      const hasQueueItem = group.items.some((item) => item.href === queueItem.href)
+      return {
+        ...group,
+        items:
+          canViewVisitTeamQueue && !hasQueueItem
+            ? [...group.items, queueItem]
             : group.items,
-        }
-      })
-    : baseGroups
+      }
+    })
+  }, [canViewVisitTeamQueue, isVisits, role])
 
   useEffect(() => {
     if (!isVisits) return
@@ -216,12 +222,14 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   useEffect(() => {
     setOpenGroups((prev) => {
       const next = { ...prev }
+      let changed = false
       groups.forEach((group) => {
         if (typeof next[group.id] === 'undefined') {
           next[group.id] = group.defaultOpen ?? true
+          changed = true
         }
       })
-      return next
+      return changed ? next : prev
     })
   }, [groups, isVisits])
 
