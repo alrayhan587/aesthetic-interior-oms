@@ -141,6 +141,23 @@ const navigationGroups: Record<string, NavGroup[]> = {
       ],
     },
   ],
+  'Quotation Team': [
+    {
+      id: 'quotation-overview',
+      label: 'Overview',
+      defaultOpen: true,
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/quotation-team/dashboard' }],
+    },
+    {
+      id: 'quotation-workflow',
+      label: 'Workflow',
+      defaultOpen: true,
+      items: [
+        { icon: ClipboardList, label: 'Quotation Queue', href: '/quotation-team/quotation-queue' },
+        { icon: ListTodo, label: 'Assigned Task', href: '/quotation-team/assigned-task' },
+      ],
+    },
+  ],
 }
 
 export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
