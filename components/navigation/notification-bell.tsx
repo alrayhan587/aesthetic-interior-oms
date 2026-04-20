@@ -149,7 +149,14 @@ export function NotificationBell() {
         if (firstUnread) {
           toast.info(firstUnread.title, {
             description: firstUnread.message,
-            onClick: () => {
+            action: {
+              label: 'View',
+              onClick: () => {
+                void markAsRead(firstUnread.id)
+                goToNotificationTarget(firstUnread)
+              },
+            },
+            onDismiss: () => {
               void markAsRead(firstUnread.id)
               goToNotificationTarget(firstUnread)
             },
