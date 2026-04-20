@@ -83,6 +83,7 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [soundEnabled, setSoundEnabled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const knownIdsRef = useRef<Set<string>>(new Set())
   const soundRef = useRef<HTMLAudioElement | null>(null)
   const visibleUnreadCountRef = useRef(0)
@@ -148,6 +149,10 @@ export function NotificationBell() {
         if (firstUnread) {
           toast.info(firstUnread.title, {
             description: firstUnread.message,
+            onClick: () => {
+              void markAsRead(firstUnread.id)
+              goToNotificationTarget(firstUnread)
+            },
           })
         }
       }
@@ -263,30 +268,44 @@ export function NotificationBell() {
     if (pathname.startsWith('/crm/admin')) {
       return `/crm/admin/leads/${leadId}`
     }
+    if (pathname.startsWith('/crm/sr')) {
+      return `/crm/sr/leads/${leadId}`
+    }
+    if (pathname.startsWith('/crm/jr-architecture')) {
+      return `/crm/jr-architecture/leads/${leadId}`
+    }
     return `/crm/jr/leads/${leadId}`
+  }
+
+  const resolveNotificationPath = (item: NotificationItem): string | null => {
+    if (item.lead?.id) return buildLeadPath(item.lead.id)
+    if (item.type === 'SIGNUP_PENDING_APPROVAL' && pathname.startsWith('/crm/admin')) {
+      return '/crm/admin/settings'
+    }
+    if (item.type === 'FACEBOOK_LEAD_SYNC_SUMMARY' && pathname.startsWith('/crm/admin')) {
+      return '/crm/admin/leads'
+    }
+    if (item.type === 'LEAD_ASSIGNED_TO_YOU' && pathname.startsWith('/crm/jr')) {
+      return '/crm/jr/leads'
+    }
+    return null
+  }
+
+  const goToNotificationTarget = (item: NotificationItem) => {
+    const targetPath = resolveNotificationPath(item)
+    setMenuOpen(false)
+    if (targetPath) {
+      router.push(targetPath)
+    }
   }
 
   const handleNotificationClick = async (item: NotificationItem) => {
     await markAsRead(item.id)
-    if (item.lead?.id) {
-      router.push(buildLeadPath(item.lead.id))
-      return
-    }
-    if (item.type === 'SIGNUP_PENDING_APPROVAL' && pathname.startsWith('/crm/admin')) {
-      router.push('/crm/admin/settings')
-      return
-    }
-    if (item.type === 'FACEBOOK_LEAD_SYNC_SUMMARY' && pathname.startsWith('/crm/admin')) {
-      router.push('/crm/admin/leads')
-      return
-    }
-    if (item.type === 'LEAD_ASSIGNED_TO_YOU' && pathname.startsWith('/crm/jr')) {
-      router.push('/crm/jr/leads')
-    }
+    goToNotificationTarget(item)
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           {unreadCount > 0 ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
