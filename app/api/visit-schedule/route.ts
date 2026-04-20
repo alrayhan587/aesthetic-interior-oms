@@ -55,11 +55,13 @@ export async function GET(request: NextRequest) {
     const assignedToId = toOptionalString(request.nextUrl.searchParams.get('assignedToId'));
     const mode = toOptionalString(request.nextUrl.searchParams.get('mode'));
     const scope = toOptionalString(request.nextUrl.searchParams.get('scope'));
+    const accessContext = toOptionalString(request.nextUrl.searchParams.get('accessContext'));
     const statusParam = toOptionalString(request.nextUrl.searchParams.get('status'));
     const status = toVisitStatus(statusParam);
-    if (isVisitTeam && scope === 'all' && !isVisitTeamLeader) {
+    const requiresVisitTeamLeader = scope === 'all' && accessContext === 'queue';
+    if (isVisitTeam && requiresVisitTeamLeader && !isVisitTeamLeader) {
       return NextResponse.json(
-        { success: false, error: 'Only visit team leaders can view all visit schedules' },
+        { success: false, error: 'Only visit team leaders can access visit schedule queue' },
         { status: 403 },
       );
     }

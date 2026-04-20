@@ -215,6 +215,18 @@ export default function VisitTodayPage() {
     const isSupport = (visit.supportAssignments ?? []).some((item) => item.supportUserId === currentUserId)
     return isSupport ? 'SUPPORT' : 'NONE'
   }
+  const getPrimarySupportAssignment = (visit: VisitRecord) => {
+    return (visit.supportAssignments ?? [])[0] ?? null
+  }
+  const canSubmitSupportData = (visit: VisitRecord) => {
+    if (!currentUserId) return false
+    return getPrimarySupportAssignment(visit)?.supportUserId === currentUserId
+  }
+  const hasPendingPrimarySupportData = (visit: VisitRecord | null) => {
+    if (!visit) return false
+    const primarySupportAssignment = getPrimarySupportAssignment(visit)
+    return Boolean(primarySupportAssignment && !primarySupportAssignment.result)
+  }
   const canManageSupportForVisit = (visit: VisitRecord) => {
     if (!currentUserId) return false
     return visit.assignedTo?.id === currentUserId
@@ -398,7 +410,16 @@ export default function VisitTodayPage() {
                     Cancel
                   </Button>
                   {visit.status !== 'COMPLETED' && getVisitRole(visit) !== 'NONE' ? (
-                    <Button size="sm" onClick={() => openCompleteDialog(visit)}>
+                    <Button
+                      size="sm"
+                      onClick={() => openCompleteDialog(visit)}
+                      disabled={getVisitRole(visit) === 'SUPPORT' && !canSubmitSupportData(visit)}
+                      title={
+                        getVisitRole(visit) === 'SUPPORT' && !canSubmitSupportData(visit)
+                          ? 'Only the first assigned support member can submit support data.'
+                          : undefined
+                      }
+                    >
                       {getVisitRole(visit) === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
                     </Button>
                   ) : null}
@@ -470,6 +491,10 @@ export default function VisitTodayPage() {
   const openCompleteDialog = (visit: VisitRecord) => {
     const role = getVisitRole(visit)
     if (role === 'NONE') return
+    if (role === 'SUPPORT' && !canSubmitSupportData(visit)) {
+      toast.error('Only the first assigned support member can submit support data for this visit.')
+      return
+    }
     setCompleteVisit(visit)
     setCompleteRole(role)
     setCompleteSummary('')
@@ -551,14 +576,15 @@ export default function VisitTodayPage() {
 
   const handleCompleteVisit = async () => {
     if (!completeVisit) return
-    const pendingSupportCount =
-      completeRole === 'LEAD'
-        ? (completeVisit.supportAssignments ?? []).filter((item) => !item.result).length
-        : 0
-    if (pendingSupportCount > 0) {
+    const primarySupportPending = completeRole === 'LEAD' ? hasPendingPrimarySupportData(completeVisit) : false
+    if (primarySupportPending) {
       setCompleteError(
-        'Visit cannot be completed yet. All support members must submit support data first.',
+        'Visit cannot be completed yet. The first support member must submit support data first.',
       )
+      return
+    }
+    if (completeRole === 'SUPPORT' && !canSubmitSupportData(completeVisit)) {
+      setCompleteError('Only the first assigned support member can submit support data for this visit.')
       return
     }
     if (completeRole === 'LEAD' && !completeSummary.trim()) {
@@ -964,9 +990,9 @@ export default function VisitTodayPage() {
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             {completeRole === 'LEAD' &&
             completeVisit &&
-            (completeVisit.supportAssignments ?? []).some((item) => !item.result) ? (
+            hasPendingPrimarySupportData(completeVisit) ? (
               <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                This visit cannot be completed yet. Support members must submit their support data first.
+                This visit cannot be completed yet. The first support member must submit support data first.
               </div>
             ) : null}
             {completeRole === 'SUPPORT' ? (
@@ -1261,7 +1287,7 @@ export default function VisitTodayPage() {
               disabled={
                 submittingComplete ||
                 (completeRole === 'LEAD' &&
-                  Boolean(completeVisit?.supportAssignments?.some((item) => !item.result)))
+                  Boolean(hasPendingPrimarySupportData(completeVisit)))
               }
               className="text-sm gap-2"
             >

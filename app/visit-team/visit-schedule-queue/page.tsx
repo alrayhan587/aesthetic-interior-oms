@@ -84,7 +84,7 @@ export default function VisitScheduleQueuePage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('/api/visit-schedule?scope=all', { cache: 'no-store' })
+      const response = await fetch('/api/visit-schedule?scope=all&accessContext=queue', { cache: 'no-store' })
       const payload = (await response.json()) as VisitApiResponse
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || 'Failed to load visit schedule queue')

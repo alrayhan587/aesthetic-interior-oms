@@ -392,6 +392,18 @@ export function VisitsPageView({
     const isSupport = (visit.supportAssignments ?? []).some((item) => item.supportUserId === currentUserId)
     return isSupport ? 'SUPPORT' : 'NONE'
   }
+  const getPrimarySupportAssignment = (visit: VisitRecord) => {
+    return (visit.supportAssignments ?? [])[0] ?? null
+  }
+  const canSubmitSupportData = (visit: VisitRecord) => {
+    if (!currentUserId) return false
+    return getPrimarySupportAssignment(visit)?.supportUserId === currentUserId
+  }
+  const hasPendingPrimarySupportData = (visit: VisitRecord | null) => {
+    if (!visit) return false
+    const primarySupportAssignment = getPrimarySupportAssignment(visit)
+    return Boolean(primarySupportAssignment && !primarySupportAssignment.result)
+  }
 
   const rescheduledVisits = useMemo(
     () => filteredVisits.filter((v) => v.status === 'RESCHEDULED'),
@@ -455,6 +467,10 @@ export function VisitsPageView({
   const openCompleteDialog = (visit: VisitRecord) => {
     const role = getVisitRole(visit)
     if (role === 'NONE') return
+    if (role === 'SUPPORT' && !canSubmitSupportData(visit)) {
+      toast.error('Only the first assigned support member can submit support data for this visit.')
+      return
+    }
     setCompleteVisitId(visit.id)
     setCompleteRole(role)
     setCompleteSummary('')
@@ -736,12 +752,13 @@ export function VisitsPageView({
   const submitCompleteVisit = async () => {
     if (!completeVisitId) return
     const currentVisit = visits.find((visit) => visit.id === completeVisitId) ?? null
-    const pendingSupportCount =
-      completeRole === 'LEAD'
-        ? (currentVisit?.supportAssignments ?? []).filter((item) => !item.result).length
-        : 0
-    if (pendingSupportCount > 0) {
-      setCompleteError('Visit cannot be completed until all support members submit their support data.')
+    const primarySupportPending = completeRole === 'LEAD' ? hasPendingPrimarySupportData(currentVisit) : false
+    if (primarySupportPending) {
+      setCompleteError('Visit cannot be completed until the first support member submits support data.')
+      return
+    }
+    if (completeRole === 'SUPPORT' && currentVisit && !canSubmitSupportData(currentVisit)) {
+      setCompleteError('Only the first assigned support member can submit support data for this visit.')
       return
     }
     if (completeRole === 'LEAD' && !completeSummary.trim()) {
@@ -823,7 +840,11 @@ export function VisitsPageView({
     const isVisible = canViewVisit(visit)
     const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
     const visitRole = getVisitRole(visit)
-    const canComplete = allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE'
+    const canSubmitSupportForVisit = visitRole === 'SUPPORT' && canSubmitSupportData(visit)
+    const supportSubmitDisabledReason =
+      visitRole === 'SUPPORT' && !canSubmitSupportForVisit
+        ? 'Only the first assigned support member can submit support data.'
+        : undefined
     const canRequestUpdate = canRequestVisitUpdate(visit)
     const updateDisabledReason =
       visit.status === 'COMPLETED' || visit.status === 'CANCELLED'
@@ -966,11 +987,18 @@ export function VisitsPageView({
                     >
                       Cancel
                     </Button>
-                    {canComplete && (
-                      <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => openCompleteDialog(visit)}>
+                    {allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={() => openCompleteDialog(visit)}
+                        disabled={visitRole === 'SUPPORT' && !canSubmitSupportForVisit}
+                        title={supportSubmitDisabledReason}
+                      >
                         {visitRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1592,11 +1620,9 @@ export function VisitsPageView({
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             {completeRole === 'LEAD' &&
             completeVisitId &&
-            visits
-              .find((visit) => visit.id === completeVisitId)
-              ?.supportAssignments?.some((item) => !item.result) ? (
+            hasPendingPrimarySupportData(visits.find((visit) => visit.id === completeVisitId) ?? null) ? (
               <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                This visit cannot be completed yet. Support members must submit their support data first.
+                This visit cannot be completed yet. The first support member must submit support data first.
               </div>
             ) : null}
             {completeRole === 'SUPPORT' ? (
@@ -1854,9 +1880,9 @@ export function VisitsPageView({
                 submittingComplete ||
                 (completeRole === 'LEAD' &&
                   Boolean(
-                    visits
-                      .find((visit) => visit.id === completeVisitId)
-                      ?.supportAssignments?.some((item) => !item.result),
+                    hasPendingPrimarySupportData(
+                      visits.find((visit) => visit.id === completeVisitId) ?? null,
+                    ),
                   ))
               }
             >

@@ -567,6 +567,24 @@ export function LeadActionsPanel({
     },
     [canOverrideVisitLeadRole, currentUserId],
   )
+  const getPrimarySupportAssignment = useCallback((visit: LeadVisitRecord) => {
+    return (visit.supportAssignments ?? [])[0] ?? null
+  }, [])
+  const canSubmitSupportVisitResult = useCallback(
+    (visit: LeadVisitRecord) => {
+      if (!currentUserId) return false
+      return getPrimarySupportAssignment(visit)?.supportUserId === currentUserId
+    },
+    [currentUserId, getPrimarySupportAssignment],
+  )
+  const hasPendingPrimarySupportResult = useCallback(
+    (visit: LeadVisitRecord | null) => {
+      if (!visit) return false
+      const primarySupportAssignment = getPrimarySupportAssignment(visit)
+      return Boolean(primarySupportAssignment && !primarySupportAssignment.result)
+    },
+    [getPrimarySupportAssignment],
+  )
 
   const visitResultCandidates = useMemo(
     () =>
@@ -582,12 +600,12 @@ export function LeadActionsPanel({
           const role = getVisitResultRole(visit)
           if (role === 'LEAD') return true
           if (role === 'SUPPORT') {
-            return true
+            return canSubmitSupportVisitResult(visit)
           }
           return false
         },
       ),
-    [leadVisits, getVisitResultRole, currentUserId],
+    [leadVisits, getVisitResultRole, canSubmitSupportVisitResult],
   )
 
   const selectedSupportVisit = useMemo(
@@ -616,8 +634,13 @@ export function LeadActionsPanel({
       setVisitResultRole('NONE')
       return
     }
-    setVisitResultRole(getVisitResultRole(selectedVisitResult))
-  }, [selectedVisitResult, getVisitResultRole])
+    const nextRole = getVisitResultRole(selectedVisitResult)
+    if (nextRole === 'SUPPORT' && !canSubmitSupportVisitResult(selectedVisitResult)) {
+      setVisitResultRole('NONE')
+      return
+    }
+    setVisitResultRole(nextRole)
+  }, [selectedVisitResult, getVisitResultRole, canSubmitSupportVisitResult])
 
   const canManageSupportForVisit = useCallback(
     (visit: LeadVisitRecord) => {
@@ -1299,12 +1322,18 @@ export function LeadActionsPanel({
       setVisitResultError('You can only submit data for visits assigned to you.')
       return
     }
-    const pendingSupportCount =
-      visitResultRole === 'LEAD'
-        ? (selectedVisitResult?.supportAssignments ?? []).filter((item) => !item.result).length
-        : 0
-    if (pendingSupportCount > 0) {
-      setVisitResultError('Visit cannot be completed until all support members submit their support data.')
+    const hasPendingPrimarySupport =
+      visitResultRole === 'LEAD' ? hasPendingPrimarySupportResult(selectedVisitResult) : false
+    if (hasPendingPrimarySupport) {
+      setVisitResultError('Visit cannot be completed until the first support member submits support data.')
+      return
+    }
+    if (
+      visitResultRole === 'SUPPORT' &&
+      selectedVisitResult &&
+      !canSubmitSupportVisitResult(selectedVisitResult)
+    ) {
+      setVisitResultError('Only the first assigned support member can submit support data for this visit.')
       return
     }
     if (visitResultRole === 'LEAD' && !visitResultSummary.trim()) {
@@ -2396,9 +2425,9 @@ export function LeadActionsPanel({
 
             {visitResultRole === 'LEAD' &&
             selectedVisitResult &&
-            (selectedVisitResult.supportAssignments ?? []).some((item) => !item.result) ? (
+            hasPendingPrimarySupportResult(selectedVisitResult) ? (
               <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                This visit cannot be completed yet. Support members must submit their support data first.
+                This visit cannot be completed yet. The first support member must submit support data first.
               </div>
             ) : null}
 
@@ -2672,7 +2701,7 @@ export function LeadActionsPanel({
                 !visitResultVisitId ||
                 visitResultRole === 'NONE' ||
                 (visitResultRole === 'LEAD' &&
-                  Boolean(selectedVisitResult?.supportAssignments?.some((item) => !item.result)))
+                  Boolean(hasPendingPrimarySupportResult(selectedVisitResult)))
               }
             >
               {submittingVisitResult

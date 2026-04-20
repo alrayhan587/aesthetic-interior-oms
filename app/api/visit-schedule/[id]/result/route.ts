@@ -307,6 +307,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             include: {
               result: { select: { id: true } },
             },
+            orderBy: { createdAt: 'asc' },
           },
           lead: {
             select: { stage: true, subStatus: true },
@@ -324,9 +325,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const supportAssignment = visit.supportAssignments.find(
         (item) => item.supportUserId === authResult.actorUserId,
       )
+      const primarySupportAssignment = visit.supportAssignments[0] ?? null
+      const isPrimarySupportMember =
+        primarySupportAssignment?.supportUserId === authResult.actorUserId
       const isAssignedLeader = visit.assignedToId === authResult.actorUserId
       const shouldSubmitSupport =
-        resultType === 'SUPPORT' || (!isAssignedLeader && Boolean(supportAssignment))
+        resultType === 'SUPPORT' || (!isAssignedLeader && isPrimarySupportMember)
       const shouldSubmitLead = resultType === 'LEAD' || isAssignedLeader
 
       if (!shouldSubmitLead && !shouldSubmitSupport) {
@@ -335,6 +339,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (resultType === 'SUPPORT' && !supportAssignment) {
         throw new Error('NOT_ASSIGNED')
+      }
+      if (
+        supportAssignment &&
+        !isPrimarySupportMember &&
+        (resultType === 'SUPPORT' || !isAssignedLeader)
+      ) {
+        throw new Error('SUPPORT_PRIMARY_ONLY')
       }
 
       if (shouldSubmitSupport && supportAssignment) {
@@ -434,8 +445,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!summary) {
         throw new Error('LEAD_SUMMARY_REQUIRED')
       }
-      const pendingSupportCount = visit.supportAssignments.filter((item) => !item.result).length
-      if (pendingSupportCount > 0) {
+      const isPrimarySupportPending = Boolean(primarySupportAssignment && !primarySupportAssignment.result)
+      if (isPrimarySupportPending) {
         throw new Error('SUPPORT_PENDING')
       }
 
@@ -606,9 +617,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Visit cannot be completed until all support members submit their support data.',
+          error: 'Visit cannot be completed until the first support member submits support data.',
         },
         { status: 409 },
+      )
+    }
+
+    if (error instanceof Error && error.message === 'SUPPORT_PRIMARY_ONLY') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Only the first assigned support member can submit support data for this visit.',
+        },
+        { status: 403 },
       )
     }
 
