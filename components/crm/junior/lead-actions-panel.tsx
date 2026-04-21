@@ -412,11 +412,15 @@ export function LeadActionsPanel({
     'ACCOUNTS',
   ]
 
-  const formatLabel = (value: string) => value.replace(/_/g, ' ')
+  const formatLabel = (value: string) => {
+    if (value === 'DISCOVERY') return 'CONSULTING PHASE'
+    if (value === 'PROPOSAL_SENT') return 'QUOTATION SENT'
+    return value.replace(/_/g, ' ')
+  }
   const defaultReasonByStage: Record<string, string> = {
     NEW: 'Lead has been moved to new.',
     NUMBER_COLLECTED: 'Number has been collected.',
-    DISCOVERY: 'Discovery workflow has started.',
+    DISCOVERY: 'Consulting phase workflow has started.',
     CAD_PHASE: 'Lead has moved to CAD phase.',
     QUOTATION_PHASE: 'Lead has moved to quotation phase.',
     BUDGET_PHASE: 'Lead has moved to budget phase.',
@@ -1664,7 +1668,7 @@ export function LeadActionsPanel({
               </SelectItem>
               <SelectItem value="VISIT_PHASE">Visit Phase</SelectItem>
               <SelectItem value="CAD_PHASE" disabled={restrictStagesForJrCrm}>CAD Phase</SelectItem>
-              <SelectItem value="DISCOVERY" disabled={restrictStagesForJrCrm}>Discovery</SelectItem>
+              <SelectItem value="DISCOVERY" disabled={restrictStagesForJrCrm}>Consulting Phase</SelectItem>
               <SelectItem value="QUOTATION_PHASE" disabled={restrictStagesForJrCrm}>Quotation Phase</SelectItem>
               <SelectItem value="BUDGET_PHASE" disabled={restrictStagesForJrCrm}>Budget Phase</SelectItem>
               <SelectItem value="CONVERSION" disabled={restrictStagesForJrCrm}>Conversion</SelectItem>

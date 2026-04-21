@@ -151,6 +151,11 @@ const sourceVisualMap: Record<
   },
 }
 
+function formatStageDisplay(stage: string): string {
+  if (stage === 'DISCOVERY') return 'Consulting Phase'
+  return stage.replace(/_/g, ' ')
+}
+
 function getSourceVisual(source: string | null | undefined) {
   const key = (source ?? '').trim().toLowerCase()
   return (
@@ -779,7 +784,7 @@ export default function LeadsPage() {
                       <div className={`inline-flex size-10 items-center justify-center rounded-lg ${config.tint}`}>
                         <Icon className="size-5" />
                       </div>
-                      <p className="text-xs font-medium text-muted-foreground">{stage.replace(/_/g, ' ')}</p>
+                      <p className="text-xs font-medium text-muted-foreground">{formatStageDisplay(stage)}</p>
                       <p className="text-2xl font-bold leading-tight text-foreground sm:text-3xl">{stageCounts[stage] ?? 0}</p>
                     </button>
                   </CardContent>
@@ -833,7 +838,7 @@ export default function LeadsPage() {
             </Select>
             {stageFilter !== 'ALL' ? (
               <Button variant="outline" onClick={() => setStageFilter('ALL')}>
-                Clear Stage ({stageFilter.replace(/_/g, ' ')})
+                Clear Stage ({formatStageDisplay(stageFilter)})
               </Button>
             ) : null}
             {sourceFilter !== 'ALL' ? (

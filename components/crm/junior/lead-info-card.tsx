@@ -65,7 +65,11 @@ const formatDate = (value: string) => {
   })
 }
 
-const formatLabel = (value: string) => value.replace(/_/g, ' ')
+const formatLabel = (value: string) => {
+  if (value === 'DISCOVERY') return 'Consulting Phase'
+  if (value === 'PROPOSAL_SENT') return 'Quotation Sent'
+  return value.replace(/_/g, ' ')
+}
 
 export function LeadInfoCard({ lead, stage, hasPendingFollowup }: LeadInfoCardProps) {
   return (
