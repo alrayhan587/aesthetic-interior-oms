@@ -312,6 +312,7 @@ export function LeadActionsPanel({
       ],
       BUDGET_PHASE: [
         'BUDGET_MEETING_SET',
+        'PROPOSAL_SENT',
         'REJECTED_OFFER',
       ],
       CONVERSION: ['CLIENT_CONFIRMED', 'CLIENT_PARTIALLY_PAID', 'CLIENT_FULL_PAID'],

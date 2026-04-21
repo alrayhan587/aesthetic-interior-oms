@@ -13,6 +13,7 @@ export const stageSubStatusMap: Record<LeadStage, LeadSubStatus[]> = {
   ],
   BUDGET_PHASE: [
     'BUDGET_MEETING_SET',
+    'PROPOSAL_SENT',
     'REJECTED_OFFER',
   ],
   VISIT_PHASE: ['VISIT_SCHEDULED', 'VISIT_COMPLETED', 'VISIT_RESCHEDULED', 'VISIT_CANCELLED'],

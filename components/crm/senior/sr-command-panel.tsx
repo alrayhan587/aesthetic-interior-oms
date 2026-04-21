@@ -48,6 +48,12 @@ type VisitScheduleMetaResponse = {
   error?: string
 }
 
+type DepartmentUsersResponse = {
+  success: boolean
+  users?: VisitAssignee[]
+  error?: string
+}
+
 type LeadSnapshot = {
   id: string
   stage: string
@@ -78,7 +84,14 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
   const [srVisitOpen, setSrVisitOpen] = useState(false)
 
   const [firstMeetingAt, setFirstMeetingAt] = useState(toDateTimeLocalInput(new Date()))
+  const [firstMeetingSummary, setFirstMeetingSummary] = useState('')
   const [firstMeetingNotes, setFirstMeetingNotes] = useState('')
+  const [meetingOptions, setMeetingOptions] = useState<Array<{ title: string; details: string }>>([
+    { title: '', details: '' },
+  ])
+  const [quotationMembers, setQuotationMembers] = useState<VisitAssignee[]>([])
+  const [loadingQuotationMembers, setLoadingQuotationMembers] = useState(false)
+  const [selectedQuotationMemberId, setSelectedQuotationMemberId] = useState('')
   const [budgetMeetingAt, setBudgetMeetingAt] = useState(toDateTimeLocalInput(new Date()))
   const [budgetMeetingNotes, setBudgetMeetingNotes] = useState('')
 
@@ -167,6 +180,24 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
     }
   }
 
+  const loadQuotationMembers = async () => {
+    if (quotationMembers.length > 0) return
+    setLoadingQuotationMembers(true)
+    try {
+      const response = await fetch('/api/department/available/QUOTATION', { cache: 'no-store' })
+      const payload = (await response.json()) as DepartmentUsersResponse
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? 'Failed to load quotation members')
+      }
+      const members = Array.isArray(payload.users) ? payload.users : []
+      setQuotationMembers(members)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load quotation members')
+    } finally {
+      setLoadingQuotationMembers(false)
+    }
+  }
+
   return (
     <>
       <Card>
@@ -208,7 +239,14 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
               Take Over as Primary
             </Button>
 
-            <Button variant="outline" className="justify-start gap-2" onClick={() => setFirstMeetingOpen(true)}>
+            <Button
+              variant="outline"
+              className="justify-start gap-2"
+              onClick={async () => {
+                await loadQuotationMembers()
+                setFirstMeetingOpen(true)
+              }}
+            >
               <CalendarClock className="h-4 w-4" />
               Set First Meeting
             </Button>
@@ -249,6 +287,74 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
               />
             </div>
             <div className="space-y-1">
+              <Label>Meeting Summary</Label>
+              <Input
+                value={firstMeetingSummary}
+                onChange={(event) => setFirstMeetingSummary(event.target.value)}
+                placeholder="e.g. Nice client"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Meeting Options</Label>
+              {meetingOptions.map((option, index) => (
+                <div key={index} className="grid gap-2 rounded-md border p-2 md:grid-cols-2">
+                  <Input
+                    placeholder={`Option ${index + 1} title`}
+                    value={option.title}
+                    onChange={(event) =>
+                      setMeetingOptions((prev) =>
+                        prev.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, title: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    placeholder={`Option ${index + 1} details`}
+                    value={option.details}
+                    onChange={(event) =>
+                      setMeetingOptions((prev) =>
+                        prev.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, details: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMeetingOptions((prev) => [...prev, { title: '', details: '' }])}
+              >
+                Add Option
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <Label>Assign quotation member (optional)</Label>
+              <Select value={selectedQuotationMemberId} onValueChange={setSelectedQuotationMemberId}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      loadingQuotationMembers
+                        ? 'Loading members...'
+                        : quotationMembers.length === 0
+                          ? 'No quotation members available'
+                          : 'Select quotation member'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {quotationMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label>Notes</Label>
               <Textarea
                 rows={3}
@@ -262,12 +368,44 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
               disabled={busyAction === 'first-meeting'}
               onClick={() =>
                 runAction('first-meeting', async () => {
-                  await handleScheduleMeeting('FIRST_MEETING', firstMeetingAt, firstMeetingNotes)
+                  const optionLines = meetingOptions
+                    .map((option) => ({
+                      title: option.title.trim(),
+                      details: option.details.trim(),
+                    }))
+                    .filter((option) => option.title || option.details)
+                    .map((option, index) => `Option ${index + 1}: ${option.title} -> ${option.details}`)
+
+                  const compiledNotes = [
+                    `Meeting Summary: ${firstMeetingSummary.trim() || 'N/A'}`,
+                    optionLines.length > 0 ? `Meeting Notes:\n${optionLines.join('\n')}` : null,
+                    firstMeetingNotes.trim() ? `Additional Notes: ${firstMeetingNotes.trim()}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')
+
+                  await handleScheduleMeeting('FIRST_MEETING', firstMeetingAt, compiledNotes)
+
+                  if (selectedQuotationMemberId) {
+                    await fetch(`/api/lead/${lead.id}/assignments/QUOTATION`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: selectedQuotationMemberId }),
+                    }).then(async (response) => {
+                      const payload = await response.json()
+                      if (!response.ok || !payload?.success) {
+                        throw new Error(payload?.error ?? 'Failed to assign quotation member')
+                      }
+                    })
+                  }
+
                   setFirstMeetingOpen(false)
                   await patchJson(`/api/lead/${lead.id}/stage`, {
-                    stage: 'DISCOVERY',
-                    subStatus: 'FIRST_MEETING_SET',
-                    reason: 'First meeting scheduled by SR CRM.',
+                    stage: selectedQuotationMemberId ? 'QUOTATION_PHASE' : 'DISCOVERY',
+                    subStatus: selectedQuotationMemberId ? 'QUOTATION_ASSIGNED' : 'PROPOSAL_SENT',
+                    reason: selectedQuotationMemberId
+                      ? 'First meeting completed and quotation member assigned by SR CRM.'
+                      : 'First meeting completed by SR CRM without quotation assignment.',
                   })
                 })
               }
@@ -311,8 +449,8 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
                   setBudgetMeetingOpen(false)
                   await patchJson(`/api/lead/${lead.id}/stage`, {
                     stage: 'BUDGET_PHASE',
-                    subStatus: 'BUDGET_MEETING_SET',
-                    reason: 'Budget meeting scheduled by SR CRM.',
+                    subStatus: 'PROPOSAL_SENT',
+                    reason: 'Budget meeting scheduled by SR CRM and quotation sent.',
                   })
                 })
               }
