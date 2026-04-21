@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/theme-provider'
 import { useEffect, useMemo, useState } from 'react'
 import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles'
+import { hasJrArchitectureLeaderRole } from '@/lib/jr-architecture-roles'
 
 interface SidebarProps {
   open: boolean
@@ -168,6 +169,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
   const [isLargeScreen, setIsLargeScreen] = useState(false)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [canViewVisitTeamQueue, setCanViewVisitTeamQueue] = useState(false)
+  const [canViewJrArchitectCadQueue, setCanViewJrArchitectCadQueue] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -192,7 +194,18 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       ? navigationGroups['Visit Team']
       : navigationGroups[role as keyof typeof navigationGroups] || []
 
-    if (!isVisits) return baseGroups
+    if (!isVisits) {
+      if (role !== 'Jr Architect') return baseGroups
+      return baseGroups.map((group) => {
+        if (group.id !== 'jr-arch-workflow') return group
+        return {
+          ...group,
+          items: group.items.filter(
+            (item) => canViewJrArchitectCadQueue || item.href !== '/crm/jr-architecture/cad-phase-queue',
+          ),
+        }
+      })
+    }
 
     return baseGroups.map((group) => {
       if (group.id !== 'visit-overview') return group
@@ -210,10 +223,10 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
             : group.items,
       }
     })
-  }, [canViewVisitTeamQueue, isVisits, role])
+  }, [canViewJrArchitectCadQueue, canViewVisitTeamQueue, isVisits, role])
 
   useEffect(() => {
-    if (!isVisits) return
+    if (!isVisits && role !== 'Jr Architect') return
     let active = true
     fetch('/api/me', { cache: 'no-store' })
       .then(async (response) => {
@@ -227,18 +240,28 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
               .map((entry) => entry?.role?.name)
               .filter((name): name is string => Boolean(name))
           : []
-        setCanViewVisitTeamQueue(hasVisitTeamLeadershipRole(roleNames))
+        if (isVisits) {
+          setCanViewVisitTeamQueue(hasVisitTeamLeadershipRole(roleNames))
+        }
+        if (role === 'Jr Architect') {
+          setCanViewJrArchitectCadQueue(hasJrArchitectureLeaderRole(roleNames))
+        }
         return null
       })
       .catch(() => {
         if (!active) return
-        setCanViewVisitTeamQueue(false)
+        if (isVisits) {
+          setCanViewVisitTeamQueue(false)
+        }
+        if (role === 'Jr Architect') {
+          setCanViewJrArchitectCadQueue(false)
+        }
       })
 
     return () => {
       active = false
     }
-  }, [isVisits])
+  }, [isVisits, role])
 
   useEffect(() => {
     setOpenGroups((prev) => {
