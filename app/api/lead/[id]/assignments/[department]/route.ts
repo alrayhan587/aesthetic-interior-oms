@@ -6,8 +6,9 @@ import {
 } from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
-import { logLeadCreated, logUserAssigned } from '@/lib/activity-log-service';
+import { logUserAssigned } from '@/lib/activity-log-service';
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete';
+import { hasJrArchitectureLeaderRole } from '@/lib/jr-architecture-roles';
 
 /*
   POSTMAN TESTING DATA
@@ -149,6 +150,7 @@ type UpdateAssignmentBody = {
 
 const debugLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV !== 'production') {
+    void args;
     // console.log(...args);
   }
 };
@@ -220,6 +222,26 @@ export async function PUT(
       );
     }
 
+    if (department === 'JR_ARCHITECT') {
+      const actorDepartments = new Set(authResult.actor.userDepartments ?? []);
+      const actorRoles = authResult.actorRoles ?? [];
+      const canUpdateJrArchitectAssignment =
+        actorDepartments.has('ADMIN') ||
+        actorDepartments.has('SR_CRM') ||
+        (actorDepartments.has('JR_ARCHITECT') && hasJrArchitectureLeaderRole(actorRoles));
+
+      if (!canUpdateJrArchitectAssignment) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Only Admin, Senior CRM, or JR Architect leaders can reassign JR Architect',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Verify lead exists
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -257,6 +279,21 @@ export async function PUT(
       debugLog('📊 [PUT /api/lead/[id]/assignments/[department]] - Existing assignment:', existingAssignment);
 
       if (!existingAssignment) {
+        if (department === 'QUOTATION') {
+          const created = await tx.leadAssignment.create({
+            data: {
+              leadId,
+              userId,
+              department: department as LeadAssignmentDepartment,
+            },
+            include: {
+              user: {
+                select: { id: true, fullName: true, email: true },
+              },
+            },
+          });
+          return created;
+        }
         throw new Error('Assignment not found for this lead and department');
       }
 

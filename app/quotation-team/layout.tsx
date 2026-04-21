@@ -44,7 +44,7 @@ export default async function QuotationTeamLayout({
     user.userDepartments.map((row) => row.department.name),
   )
 
-  if (departmentNames.has('QUOTATION_TEAM')) {
+  if (departmentNames.has('QUOTATION_TEAM') || departmentNames.has('QUOTATION')) {
     return <MainLayout role="Quotation Team">{children}</MainLayout>
   }
 
