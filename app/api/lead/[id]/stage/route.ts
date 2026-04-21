@@ -29,6 +29,7 @@ type UpdateLeadStageBody = {
   stage?: unknown;
   subStatus?: unknown;
   reason?: unknown;
+  jrArchitectUserId?: unknown;
 };
 
 async function resolveLeadId(context: RouteContext): Promise<string | null> {
@@ -97,6 +98,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const nextStage = toLeadStage(body.stage);
     const requestedSubStatus = toLeadSubStatus(body.subStatus);
     const reason = toOptionalString(body.reason);
+    const requestedJrArchitectUserId = toOptionalString(body.jrArchitectUserId);
     debugLog('📋 [lead/:id/stage][PATCH] - Extracted fields. Stage:', nextStage, 'SubStatus:', requestedSubStatus);
 
     if (!nextStage) {
@@ -130,6 +132,53 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { success: false, error: 'Invalid subStatus for selected stage' },
         { status: 400 }
       );
+    }
+    const cadSubStatuses = new Set<LeadSubStatus>([
+      LeadSubStatus.CAD_ASSIGNED,
+      LeadSubStatus.CAD_WORKING,
+      LeadSubStatus.CAD_COMPLETED,
+      LeadSubStatus.CAD_APPROVED,
+    ]);
+    const hadCadProgressBefore =
+      existingLead.stage === LeadStage.CAD_PHASE &&
+      existingLead.subStatus !== null &&
+      cadSubStatuses.has(existingLead.subStatus);
+    if (
+      nextStage === LeadStage.CAD_PHASE &&
+      nextSubStatus &&
+      nextSubStatus !== LeadSubStatus.CAD_ASSIGNED &&
+      !hadCadProgressBefore
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Please set CAD Assigned first before other CAD substatuses.' },
+        { status: 409 },
+      );
+    }
+    if (nextStage === LeadStage.CAD_PHASE && nextSubStatus === LeadSubStatus.CAD_ASSIGNED && !requestedJrArchitectUserId) {
+      return NextResponse.json(
+        { success: false, error: 'JR Architect assignment is required for CAD Assigned.' },
+        { status: 400 },
+      );
+    }
+    if (
+      nextStage === LeadStage.CAD_PHASE &&
+      nextSubStatus === LeadSubStatus.CAD_ASSIGNED &&
+      requestedJrArchitectUserId
+    ) {
+      const jrArchitect = await prisma.user.findFirst({
+        where: {
+          id: requestedJrArchitectUserId,
+          isActive: true,
+          userDepartments: { some: { department: { name: 'JR_ARCHITECT' } } },
+        },
+        select: { id: true },
+      });
+      if (!jrArchitect) {
+        return NextResponse.json(
+          { success: false, error: 'Selected JR Architect is invalid or inactive.' },
+          { status: 400 },
+        );
+      }
     }
     if (nextStage === LeadStage.VISIT_PHASE && nextSubStatus === LeadSubStatus.VISIT_COMPLETED) {
       return NextResponse.json(
@@ -203,8 +252,31 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           tx,
           leadId,
           department: autoHandoffDepartment,
+          preferredUserId:
+            autoHandoffDepartment === 'JR_ARCHITECT' ? requestedJrArchitectUserId : undefined,
           actorUserId: userId,
         });
+      }
+
+      if (
+        nextStage === LeadStage.CAD_PHASE &&
+        nextSubStatus === LeadSubStatus.CAD_ASSIGNED &&
+        requestedJrArchitectUserId
+      ) {
+        const existingJrAssignment = await tx.leadAssignment.findFirst({
+          where: { leadId, department: 'JR_ARCHITECT' },
+          select: { id: true },
+        })
+        if (existingJrAssignment) {
+          await tx.leadAssignment.update({
+            where: { id: existingJrAssignment.id },
+            data: { userId: requestedJrArchitectUserId },
+          })
+        } else {
+          await tx.leadAssignment.create({
+            data: { leadId, department: 'JR_ARCHITECT', userId: requestedJrArchitectUserId },
+          })
+        }
       }
       await ensurePhaseTaskForSubStatus({
         tx,

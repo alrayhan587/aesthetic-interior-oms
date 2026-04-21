@@ -155,7 +155,7 @@ interface LeadActionsPanelProps {
   originalSubStatus: string | null
   onStageChange: (value: string) => void
   onSubStatusChange: (value: string | null) => void
-  onUpdateStage: (reason: string) => Promise<void>
+  onUpdateStage: (reason: string, options?: { jrArchitectUserId?: string }) => Promise<void>
   onCreateFollowupForStage?: (payload: { followupDate: string; notes?: string }) => Promise<void>
   onAssignmentsRefresh: () => void
   onFollowupRefresh?: () => void
@@ -238,6 +238,9 @@ export function LeadActionsPanel({
   const [stagePhone, setStagePhone] = useState(leadPhone ?? '')
   const [stageError, setStageError] = useState<string | null>(null)
   const [savingStage, setSavingStage] = useState(false)
+  const [cadArchitectUsers, setCadArchitectUsers] = useState<Assignment['user'][]>([])
+  const [cadArchitectLoading, setCadArchitectLoading] = useState(false)
+  const [selectedCadArchitectUserId, setSelectedCadArchitectUserId] = useState('')
   const [visitOpen, setVisitOpen] = useState(false)
   const [visitTeamUsers, setVisitTeamUsers] = useState<VisitTeamUser[]>([])
   const [visitTeamLoading, setVisitTeamLoading] = useState(false)
@@ -387,6 +390,16 @@ export function LeadActionsPanel({
     !stageLockedAfterVisitScheduled &&
     isJrCrmStageAllowed &&
     isJrCrmVisitSubStatusAllowed
+  const cadSubStatusFlow = useMemo(
+    () => ['CAD_ASSIGNED', 'CAD_WORKING', 'CAD_COMPLETED', 'CAD_APPROVED'],
+    [],
+  )
+  const hasCadBeenAssigned = useMemo(() => {
+    if (stage !== 'CAD_PHASE') return false
+    if (subStatus === 'CAD_ASSIGNED') return true
+    return originalStage === 'CAD_PHASE' && cadSubStatusFlow.includes(originalSubStatus ?? '')
+  }, [cadSubStatusFlow, originalStage, originalSubStatus, stage, subStatus])
+  const requiresCadArchitectSelection = stage === 'CAD_PHASE' && subStatus === 'CAD_ASSIGNED'
 
 
   const getVisitStatusLabel = (value: string) => {
@@ -515,6 +528,29 @@ export function LeadActionsPanel({
         setVisitTeamLoading(false)
       })
   }, [leadId, leadLocation, shouldLoadVisitMetadata, requiresVisitSchedulingInStageModal])
+
+  useEffect(() => {
+    if (!requiresCadArchitectSelection) return
+
+    setCadArchitectLoading(true)
+    fetch('/api/department/available/JR_ARCHITECT')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.users)) {
+          setCadArchitectUsers(data.users)
+          return
+        }
+        throw new Error(data.error || 'Failed to load JR Architect members.')
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Failed to load JR Architect members.'
+        setCadArchitectUsers([])
+        setStageError(message)
+      })
+      .finally(() => {
+        setCadArchitectLoading(false)
+      })
+  }, [requiresCadArchitectSelection])
 
   const refreshLeadVisits = useCallback(() => {
     setLeadVisitsLoading(true)
@@ -892,6 +928,10 @@ export function LeadActionsPanel({
     }
     setStageError(null)
     onStageChange(value)
+    if (value !== 'CAD_PHASE') {
+      setSelectedCadArchitectUserId('')
+      setCadArchitectUsers([])
+    }
     const nextOptions = stageSubStatusMap[value] ?? []
     if (nextOptions.length === 0) {
       onSubStatusChange(null)
@@ -933,6 +973,10 @@ export function LeadActionsPanel({
     setStageFollowupDate('')
     setStageFollowupNotes('')
     setStagePhone(leadPhone ?? '')
+    if (requiresCadArchitectSelection && !selectedCadArchitectUserId) {
+      setStageError('Please assign a JR Architect before moving to CAD Assigned.')
+      return
+    }
     setReason(defaultStageReason)
     setDidClearDefaultReason(false)
     setReasonOpen(true)
@@ -976,6 +1020,10 @@ export function LeadActionsPanel({
         setStageError('Visit fee must be 0 or more.')
         return
       }
+    }
+    if (requiresCadArchitectSelection && !selectedCadArchitectUserId) {
+      setStageError('Please assign a JR Architect before moving to CAD Assigned.')
+      return
     }
 
     setSavingStage(true)
@@ -1063,7 +1111,9 @@ export function LeadActionsPanel({
         return
       }
 
-      await onUpdateStage(finalReason)
+      await onUpdateStage(finalReason, {
+        jrArchitectUserId: requiresCadArchitectSelection ? selectedCadArchitectUserId : undefined,
+      })
       if (requiresFollowupForStageUpdate) {
         if (!onCreateFollowupForStage) {
           throw new Error('Follow-up handler is not available.')
@@ -1696,7 +1746,10 @@ export function LeadActionsPanel({
                   <SelectItem
                     key={option}
                     value={option}
-                    disabled={restrictStagesForJrCrm && stage === 'VISIT_PHASE' && option !== 'VISIT_SCHEDULED'}
+                    disabled={
+                      (restrictStagesForJrCrm && stage === 'VISIT_PHASE' && option !== 'VISIT_SCHEDULED') ||
+                      (stage === 'CAD_PHASE' && !hasCadBeenAssigned && option !== 'CAD_ASSIGNED')
+                    }
                   >
                     {formatLabel(option)}
                   </SelectItem>
@@ -1708,6 +1761,36 @@ export function LeadActionsPanel({
               No substatus required for this stage.
             </p>
           )}
+          {requiresCadArchitectSelection ? (
+            <div className="space-y-2 rounded-md border border-border bg-secondary/30 p-3">
+              <Label>Assign JR Architect</Label>
+              <Select
+                value={selectedCadArchitectUserId}
+                onValueChange={(value) => {
+                  setSelectedCadArchitectUserId(value)
+                  setStageError(null)
+                }}
+                disabled={cadArchitectLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      cadArchitectLoading
+                        ? 'Loading JR Architect members...'
+                        : 'Select JR Architect member'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {cadArchitectUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.fullName} ({user.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
 
           {stageError ? <p className="text-xs text-destructive">{stageError}</p> : null}
           {!canManageStage ? (
