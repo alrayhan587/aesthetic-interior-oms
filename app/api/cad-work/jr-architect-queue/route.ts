@@ -2,6 +2,7 @@ import { LeadAssignmentDepartment, LeadStage, LeadSubStatus, Prisma } from '@/ge
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
+import { hasJrArchitectureLeaderRole } from '@/lib/jr-architecture-roles'
 
 function toOptionalString(value: string | null): string | null {
   if (!value) return null
@@ -21,13 +22,15 @@ export async function GET(request: NextRequest) {
     if (!authResult.ok) return authResult.response
 
     const actorDepartments = new Set(authResult.actor.userDepartments ?? [])
+    const actorRoles = authResult.actorRoles ?? []
     const isAdmin = actorDepartments.has('ADMIN')
     const isSeniorCrm = actorDepartments.has('SR_CRM')
-    const isJrArchitect = actorDepartments.has('JR_ARCHITECT')
+    const isJrArchitectLeader =
+      actorDepartments.has('JR_ARCHITECT') && hasJrArchitectureLeaderRole(actorRoles)
 
-    if (!isAdmin && !isSeniorCrm && !isJrArchitect) {
+    if (!isAdmin && !isSeniorCrm && !isJrArchitectLeader) {
       return NextResponse.json(
-        { success: false, error: 'Only Admin, Senior CRM, or JR Architect can access this queue' },
+        { success: false, error: 'Only Admin, Senior CRM, or JR Architect leaders can access this queue' },
         { status: 403 },
       )
     }

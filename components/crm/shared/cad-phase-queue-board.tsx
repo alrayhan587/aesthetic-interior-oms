@@ -43,6 +43,8 @@ type DepartmentUser = { id: string; fullName: string; email: string }
 
 function formatLabel(value: string | null | undefined) {
   if (!value) return 'N/A'
+  if (value === 'DISCOVERY') return 'Consulting Phase'
+  if (value === 'PROPOSAL_SENT') return 'Quotation Sent'
   return value
     .replace(/_/g, ' ')
     .toLowerCase()
