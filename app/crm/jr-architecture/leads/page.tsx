@@ -190,6 +190,7 @@ export default function JrArchLeadsPage() {
         limit: PAGE_SIZE.toString(),
         offset: offset.toString(),
         includeAttachmentPreview: '1',
+        stage: 'CAD_PHASE',
       })
       if (search) params.set('search', search)
 
@@ -347,8 +348,8 @@ export default function JrArchLeadsPage() {
   return (
     <div className="min-h-screen bg-background">
       <CrmPageHeader
-        title="Assigned CAD Projects"
-        subtitle="Manage and track leads that require your architectural and design expertise."
+        title="Assigned Work"
+        subtitle="CAD phase leads assigned to you. Start, continue, and submit architectural work."
       />
       <main className="mx-auto max-w-[1440px] px-4 py-6">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-4">

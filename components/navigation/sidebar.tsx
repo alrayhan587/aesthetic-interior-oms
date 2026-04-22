@@ -138,7 +138,8 @@ const navigationGroups: Record<string, NavGroup[]> = {
       items: [
         { icon: ClipboardList, label: 'Visit Queue', href: '/crm/jr-architecture/queue' },
         { icon: ClipboardList, label: 'CAD Queue', href: '/crm/jr-architecture/cad-phase-queue' },
-        { icon: Users, label: 'Assigned Leads', href: '/crm/jr-architecture/leads' },
+        { icon: Users, label: 'Assigned Work', href: '/crm/jr-architecture/leads' },
+        { icon: ListTodo, label: 'My Work', href: '/crm/jr-architecture/my-work' },
       ],
     },
   ],
