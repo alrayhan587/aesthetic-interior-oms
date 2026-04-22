@@ -1,6 +1,6 @@
 import { head } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
-import { LeadAssignmentDepartment, Prisma } from '@/generated/prisma/client'
+import { LeadAssignmentDepartment, LeadStage, LeadSubStatus, Prisma } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
 
@@ -58,9 +58,15 @@ export async function GET(request: NextRequest) {
     const scopeToAssignedSrLeads = !isAdmin || myLeadsOnly
 
     const where: Prisma.CadWorkSubmissionWhereInput = {
+      lead: {
+        stage: LeadStage.CAD_PHASE,
+        subStatus: LeadSubStatus.CAD_COMPLETED,
+      },
       ...(scopeToAssignedSrLeads
         ? {
             lead: {
+              stage: LeadStage.CAD_PHASE,
+              subStatus: LeadSubStatus.CAD_COMPLETED,
               assignments: {
                 some: {
                   userId: authResult.actorUserId,
@@ -113,8 +119,15 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    const latestSubmissionByLead = new Set<string>()
+    const latestSubmissions = submissions.filter((submission) => {
+      if (latestSubmissionByLead.has(submission.leadId)) return false
+      latestSubmissionByLead.add(submission.leadId)
+      return true
+    })
+
     const withReadableUrls = await Promise.all(
-      submissions.map(async (submission) => ({
+      latestSubmissions.map(async (submission) => ({
         ...submission,
         files: await Promise.all(
           submission.files.map(async (file) => ({
@@ -125,7 +138,7 @@ export async function GET(request: NextRequest) {
       })),
     )
 
-    const nextOffset = offset + withReadableUrls.length
+    const nextOffset = offset + latestSubmissions.length
     const hasMore = nextOffset < total
 
     return NextResponse.json({

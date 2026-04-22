@@ -1,4 +1,10 @@
-import { LeadAssignmentDepartment, LeadStage, LeadSubStatus, Prisma } from '@/generated/prisma/client'
+import {
+  LeadAssignmentDepartment,
+  LeadMeetingEventType,
+  LeadStage,
+  LeadSubStatus,
+  Prisma,
+} from '@/generated/prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
@@ -39,19 +45,39 @@ export async function GET(request: NextRequest) {
     const search = toOptionalString(searchParams.get('search'))
     const cadApprovedOnly = toBooleanParam(searchParams.get('cadApprovedOnly'))
 
-    const where: Prisma.LeadWhereInput = {
-      stage: LeadStage.CAD_PHASE,
-      ...(cadApprovedOnly ? { subStatus: LeadSubStatus.CAD_APPROVED } : {}),
-      ...(search
-        ? {
-            OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { phone: { contains: search, mode: 'insensitive' } },
-              { location: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    }
+    const phaseScope: Prisma.LeadWhereInput = cadApprovedOnly
+      ? {
+          OR: [
+            {
+              stage: LeadStage.CAD_PHASE,
+              subStatus: LeadSubStatus.CAD_APPROVED,
+            },
+            {
+              stage: LeadStage.DISCOVERY,
+              subStatus: LeadSubStatus.FIRST_MEETING_SET,
+              cadWorkSubmissions: { some: {} },
+            },
+          ],
+        }
+      : {
+          stage: LeadStage.CAD_PHASE,
+        }
+
+    const searchScope: Prisma.LeadWhereInput | null = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { phone: { contains: search, mode: 'insensitive' } },
+            { location: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : null
+
+    const where: Prisma.LeadWhereInput = searchScope
+      ? {
+          AND: [phaseScope, searchScope],
+        }
+      : phaseScope
 
     const leads = await prisma.lead.findMany({
       where,
@@ -72,6 +98,17 @@ export async function GET(request: NextRequest) {
               },
             },
           },
+        },
+        meetingEvents: {
+          where: { type: LeadMeetingEventType.FIRST_MEETING },
+          select: {
+            id: true,
+            title: true,
+            startsAt: true,
+            notes: true,
+          },
+          orderBy: { startsAt: 'desc' },
+          take: 1,
         },
       },
     })
@@ -95,6 +132,11 @@ export async function GET(request: NextRequest) {
           budget: lead.budget,
           jrArchitectAssignment,
           srCrmAssignment,
+          latestFirstMeeting: lead.meetingEvents[0] ?? null,
+          canSetMeeting:
+            lead.stage === LeadStage.CAD_PHASE && lead.subStatus === LeadSubStatus.CAD_APPROVED,
+          canSubmitMeetingData:
+            lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET,
         }
       }),
     })

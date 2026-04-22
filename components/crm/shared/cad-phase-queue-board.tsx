@@ -31,6 +31,14 @@ type LeadRecord = {
     id: string
     user: { id: string; fullName: string; email: string }
   } | null
+  latestFirstMeeting: {
+    id: string
+    title: string
+    startsAt: string
+    notes: string | null
+  } | null
+  canSetMeeting: boolean
+  canSubmitMeetingData: boolean
 }
 
 type QueueResponse = {
@@ -197,7 +205,7 @@ export function CadPhaseQueueBoard({
         body: JSON.stringify({
           stage: 'DISCOVERY',
           subStatus: 'FIRST_MEETING_SET',
-          reason: 'First meeting scheduled from CAD Approved Queue.',
+          reason: 'First meeting scheduled from Meeting Queue.',
         }),
       })
       const stagePayload = await stageRes.json()
@@ -218,7 +226,8 @@ export function CadPhaseQueueBoard({
 
   const summary = useMemo(() => {
     const cadApproved = leads.filter((lead) => lead.subStatus === 'CAD_APPROVED').length
-    return { total: leads.length, cadApproved }
+    const meetingSet = leads.filter((lead) => lead.subStatus === 'FIRST_MEETING_SET').length
+    return { total: leads.length, cadApproved, meetingSet }
   }, [leads])
 
   return (
@@ -243,6 +252,11 @@ export function CadPhaseQueueBoard({
             <Badge variant="secondary" className="h-8 px-3">
               CAD Approved: {summary.cadApproved}
             </Badge>
+            {cadApprovedOnly ? (
+              <Badge variant="secondary" className="h-8 px-3">
+                Meeting Set: {summary.meetingSet}
+              </Badge>
+            ) : null}
           </div>
         </div>
 
@@ -277,10 +291,19 @@ export function CadPhaseQueueBoard({
                         Reassign JR Architect
                       </Button>
                       {cadApprovedOnly ? (
-                        <Button size="sm" onClick={() => openFirstMeetingDialog(lead)}>
-                          <CalendarClock className="mr-1 h-4 w-4" />
-                          Set First Meeting
-                        </Button>
+                        lead.canSetMeeting ? (
+                          <Button size="sm" onClick={() => openFirstMeetingDialog(lead)}>
+                            <CalendarClock className="mr-1 h-4 w-4" />
+                            Set Meeting
+                          </Button>
+                        ) : lead.canSubmitMeetingData ? (
+                          <Button asChild size="sm">
+                            <Link href={`${leadBasePath}/${lead.id}`}>
+                              <CalendarClock className="mr-1 h-4 w-4" />
+                              Submit Meeting Data
+                            </Link>
+                          </Button>
+                        ) : null
                       ) : null}
                     </div>
                   </div>
@@ -302,6 +325,12 @@ export function CadPhaseQueueBoard({
                       <UserRound className="h-3.5 w-3.5" />
                       SR CRM: {lead.srCrmAssignment?.user.fullName ?? 'Unassigned'}
                     </p>
+                    {cadApprovedOnly && lead.latestFirstMeeting ? (
+                      <p className="inline-flex items-center gap-1 md:col-span-2">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        Latest First Meeting: {new Date(lead.latestFirstMeeting.startsAt).toLocaleString()}
+                      </p>
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -369,7 +398,7 @@ export function CadPhaseQueueBoard({
           </div>
           <DialogFooter>
             <Button disabled={saving || !meetingAt} onClick={submitFirstMeeting}>
-              Schedule First Meeting
+              Submit Meeting Data
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -5,8 +5,8 @@ import { CadPhaseQueueBoard } from '@/components/crm/shared/cad-phase-queue-boar
 export default function SrCadApprovedQueuePage() {
   return (
     <CadPhaseQueueBoard
-      title="CAD Approved Queue"
-      subtitle="List of CAD-approved leads in CAD phase. Set the first meeting from here."
+      title="Meeting Queue"
+      subtitle="CAD approved leads for first-meeting scheduling and meeting-data follow-up."
       leadBasePath="/crm/sr/leads"
       cadApprovedOnly
     />

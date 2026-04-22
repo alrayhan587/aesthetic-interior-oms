@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Building2, Mail, Power, RefreshCw, Search, UserCheck, UserX, Users2 } from 'lucide-react'
+import { Building2, Mail, Power, RefreshCw, Search, Trash2, UserCheck, UserX, Users2 } from 'lucide-react'
 import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from '@/lib/visit-team-roles'
 import { JR_ARCHITECT_CO_LEADER_ROLE, JR_ARCHITECT_LEADER_ROLE } from '@/lib/jr-architecture-roles'
 
@@ -79,6 +79,11 @@ type DepartmentUsersResponse = {
   error?: string
 }
 
+type DeleteUserResponse = {
+  success?: boolean
+  error?: string
+}
+
 type LeadershipRole = 'LEADER' | 'CO_LEADER' | 'MEMBER'
 
 type DepartmentLeadershipConfig = {
@@ -106,6 +111,8 @@ export function UserManagement() {
   const [isDepartmentDialogOpen, setIsDepartmentDialogOpen] = useState(false)
   const [isAccountRequestsDialogOpen, setIsAccountRequestsDialogOpen] = useState(false)
   const [updatingVisitTeamRoleByUser, setUpdatingVisitTeamRoleByUser] = useState<Record<string, boolean>>({})
+  const [deleteTargetUser, setDeleteTargetUser] = useState<UserApiItem | null>(null)
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -208,6 +215,12 @@ export function UserManagement() {
     const parts = fullName.trim().split(/\s+/).filter(Boolean)
     if (parts.length === 0) return fullName
     return parts[parts.length - 1]
+  }
+
+  const omitUserKey = <T extends Record<string, unknown>>(record: T, userId: string): T => {
+    const next = { ...record }
+    delete next[userId]
+    return next
   }
 
   const getUserRoleNames = (user: UserApiItem) =>
@@ -460,6 +473,45 @@ export function UserManagement() {
       setStatusError(error instanceof Error ? error.message : 'Failed to create department')
     } finally {
       setCreatingDepartment(false)
+    }
+  }
+
+  const deleteUserAccount = async () => {
+    if (!deleteTargetUser) return
+
+    setStatusMessage(null)
+    setStatusError(null)
+    setDeletingUserId(deleteTargetUser.id)
+
+    try {
+      const response = await fetch(`/api/user/${deleteTargetUser.id}`, {
+        method: 'DELETE',
+      })
+      const payload = (await response.json()) as DeleteUserResponse
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? `Failed to delete ${deleteTargetUser.fullName}`)
+      }
+
+      const deletedId = deleteTargetUser.id
+      const deletedName = deleteTargetUser.fullName
+      setDepartments((prev) =>
+        prev.map((section) => ({
+          ...section,
+          users: section.users.filter((user) => user.id !== deletedId),
+        })),
+      )
+      setPendingUsers((prev) => prev.filter((user) => user.id !== deletedId))
+      setApprovalDepartmentByUser((prev) => omitUserKey(prev, deletedId))
+      setOpenApproveByUser((prev) => omitUserKey(prev, deletedId))
+      setApprovingIds((prev) => omitUserKey(prev, deletedId))
+      setTogglingIds((prev) => omitUserKey(prev, deletedId))
+      setUpdatingVisitTeamRoleByUser((prev) => omitUserKey(prev, deletedId))
+      setStatusMessage(`${deletedName} account deleted successfully.`)
+      setDeleteTargetUser(null)
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : 'Failed to delete user account')
+    } finally {
+      setDeletingUserId(null)
     }
   }
 
@@ -779,6 +831,16 @@ export function UserManagement() {
                       <Power className="h-3.5 w-3.5" />
                       {user.isActive ? 'Disable' : 'Enable'}
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="gap-1"
+                      disabled={Boolean(deletingUserId)}
+                      onClick={() => setDeleteTargetUser(user)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </Button>
                   </div>
                   </div>
                 )
@@ -803,6 +865,37 @@ export function UserManagement() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={Boolean(deleteTargetUser)} onOpenChange={(open) => !open && setDeleteTargetUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete User Account</DialogTitle>
+            <DialogDescription>
+              {deleteTargetUser
+                ? `This will permanently delete ${deleteTargetUser.fullName}'s account and related user mapping data. This action cannot be undone.`
+                : 'This action cannot be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTargetUser(null)}
+              disabled={Boolean(deletingUserId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void deleteUserAccount()}
+              disabled={!deleteTargetUser || Boolean(deletingUserId)}
+            >
+              {deletingUserId ? 'Deleting...' : 'Delete Account'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

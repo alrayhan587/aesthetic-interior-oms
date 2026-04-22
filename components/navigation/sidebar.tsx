@@ -98,7 +98,7 @@ const navigationGroups: Record<string, NavGroup[]> = {
         { icon: Users, label: 'Lead Journey', href: '/crm/sr/lead-journey' },
         { icon: ClipboardList, label: 'Review Center', href: '/crm/sr/review-center' },
         { icon: ClipboardList, label: 'CAD Queue', href: '/crm/sr/cad-phase-queue' },
-        { icon: CalendarClock, label: 'CAD Approved Queue', href: '/crm/sr/cad-approved-queue' },
+        { icon: CalendarClock, label: 'Meeting Queue', href: '/crm/sr/meeting-queue' },
         { icon: CalendarClock, label: 'Calendar', href: '/crm/sr/meetings' },
         { icon: ClipboardList, label: 'Handoff Center', href: '/crm/sr/handoffs' },
         { icon: CheckSquare, label: 'Conversion & Payment', href: '/crm/sr/conversion-payment' },

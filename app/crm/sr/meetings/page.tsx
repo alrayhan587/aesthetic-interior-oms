@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Clock, ListFilter } from 'lucide-react'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -109,12 +110,24 @@ function formatEventTime(value: Date): string {
   return value.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
-function CompactEventCard({ event, dense = false }: { event: Meeting; dense?: boolean }) {
+function CompactEventCard({
+  event,
+  dense = false,
+  onClick,
+}: {
+  event: Meeting
+  dense?: boolean
+  onClick?: () => void
+}) {
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => event.key === 'Enter' && onClick() : undefined}
       className={`rounded-md border px-2 py-1.5 leading-tight ${getEventClass(event)} ${
         dense ? 'text-[10px]' : 'text-[11px]'
-      }`}
+      } ${onClick ? 'cursor-pointer transition hover:opacity-90' : ''}`}
     >
       <p className="truncate font-semibold">{event.title}</p>
       <p className="truncate text-[10px] opacity-90">{event.leadName}</p>
@@ -221,9 +234,10 @@ export function SeniorCrmMeetingsView({
   initialMyLeadsOnly = true,
   lockMyLeadsOnly = false,
 }: SeniorCrmMeetingsViewProps) {
+  const router = useRouter()
   const today = useMemo(() => startOfDay(new Date()), [])
   const [focusDate, setFocusDate] = useState(today)
-  const [view, setView] = useState<CalendarView>('DAILY')
+  const [view, setView] = useState<CalendarView>('MONTHLY')
   const [showAgenda, setShowAgenda] = useState(true)
   const [myLeadsOnly, setMyLeadsOnly] = useState(initialMyLeadsOnly)
   const [dayDialogOpen, setDayDialogOpen] = useState(false)
@@ -362,6 +376,10 @@ export function SeniorCrmMeetingsView({
     setDayDialogOpen(true)
   }
 
+  const goToEventLead = (meeting: Meeting) => {
+    router.push(`/crm/sr/leads/${meeting.leadId}`)
+  }
+
   const DailyView = (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="grid grid-cols-[84px_1fr] bg-muted/40 px-3 py-2">
@@ -384,7 +402,11 @@ export function SeniorCrmMeetingsView({
                   {hourEvents.map((event) => (
                     <div
                       key={event.id}
-                      className={`rounded-md border px-2 py-1.5 text-xs ${getEventClass(event)}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => goToEventLead(event)}
+                      onKeyDown={(keyboardEvent) => keyboardEvent.key === 'Enter' && goToEventLead(event)}
+                      className={`cursor-pointer rounded-md border px-2 py-1.5 text-xs transition hover:opacity-90 ${getEventClass(event)}`}
                     >
                       <p className="font-semibold">{event.title}</p>
                       <p className="text-[10px] font-semibold uppercase tracking-wide">{getEventLabel(event)}</p>
@@ -441,7 +463,7 @@ export function SeniorCrmMeetingsView({
               >
                 <div className="space-y-1">
                   {events.slice(0, 2).map((event) => (
-                    <CompactEventCard key={event.id} event={event} dense />
+                    <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
                   ))}
                   {events.length > 2 ? (
                     <p className="text-[10px] font-medium text-muted-foreground">+{events.length - 2} more</p>
@@ -487,7 +509,7 @@ export function SeniorCrmMeetingsView({
               </p>
               <div className="space-y-1">
                 {events.slice(0, 2).map((event) => (
-                  <CompactEventCard key={event.id} event={event} dense />
+                  <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
                 ))}
                 {events.length > 2 ? (
                   <p className="text-[10px] text-muted-foreground">+{events.length - 2} more</p>
@@ -589,7 +611,7 @@ export function SeniorCrmMeetingsView({
   )
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full bg-background">
       <CrmPageHeader
         title={title}
         subtitle={subtitle}
@@ -681,11 +703,15 @@ export function SeniorCrmMeetingsView({
                     visibleMeetings.map((meeting) => (
                       <div
                         key={meeting.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => goToEventLead(meeting)}
+                        onKeyDown={(event) => event.key === 'Enter' && goToEventLead(meeting)}
                         className={`rounded-md border p-3 ${
                           meeting.source === 'TASK'
                             ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800/70 dark:bg-amber-950/25'
                             : 'border-border'
-                        }`}
+                        } cursor-pointer transition hover:border-primary/40`}
                       >
                         <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -734,11 +760,15 @@ export function SeniorCrmMeetingsView({
               selectedDayMeetings.map((meeting) => (
                 <div
                   key={meeting.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => goToEventLead(meeting)}
+                  onKeyDown={(event) => event.key === 'Enter' && goToEventLead(meeting)}
                   className={`rounded-md border p-3 ${
                     meeting.source === 'TASK'
                       ? 'border-amber-300 bg-amber-50/50 dark:border-amber-800/70 dark:bg-amber-950/25'
                       : 'border-border'
-                  }`}
+                  } cursor-pointer transition hover:border-primary/40`}
                 >
                   <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

@@ -6,11 +6,19 @@ const VALID_DEPARTMENTS = [
   'SR_CRM',
   'JR_CRM',
   'QUOTATION',
+  'QUOTATION_TEAM',
   'VISIT_TEAM',
   'JR_ARCHITECT',
   'VISUALIZER_3D',
   'ACCOUNTS',
 ] as const;
+
+function resolveDepartmentAliases(departmentName: string): string[] {
+  if (departmentName === 'QUOTATION' || departmentName === 'QUOTATION_TEAM') {
+    return ['QUOTATION', 'QUOTATION_TEAM']
+  }
+  return [departmentName]
+}
 
 // GET - Fetch all users in a specific department (by name)
 // Returns dropdown-ready list of all department members
@@ -66,11 +74,15 @@ export async function GET(
       );
     }
 
-    // Fetch all users in this department
+    const departmentNames = resolveDepartmentAliases(departmentName)
+
+    // Fetch all users in this department (including compatible aliases)
     const userDepartments = await prisma.userDepartment.findMany({
       where: {
         department: {
-          name: departmentName,
+          name: {
+            in: departmentNames,
+          },
         },
       },
       include: {
@@ -93,12 +105,19 @@ export async function GET(
     // console.log('[DEPT-API] UserDepartments count:', userDepartments.length);
     // console.log('[DEPT-API] UserDepartments data:', JSON.stringify(userDepartments, null, 2));
 
-    const users = userDepartments.map((ud) => ({
-      id: ud.user.id,
-      fullName: ud.user.fullName,
-      email: ud.user.email,
-      phone: ud.user.phone,
-    }));
+    const users = Array.from(
+      new Map(
+        userDepartments.map((ud) => [
+          ud.user.id,
+          {
+            id: ud.user.id,
+            fullName: ud.user.fullName,
+            email: ud.user.email,
+            phone: ud.user.phone,
+          },
+        ]),
+      ).values(),
+    );
 
     // console.log('[DEPT-API] Final users array:', JSON.stringify(users, null, 2));
 

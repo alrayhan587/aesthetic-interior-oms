@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { requireDatabaseRoles } from "@/lib/authz";
 import { LeadAssignmentDepartment, NotificationType, Prisma } from "@/generated/prisma/client";
 import { VISIT_TEAM_CO_LEADER_ROLE, VISIT_TEAM_LEADER_ROLE } from "@/lib/visit-team-roles";
@@ -249,10 +250,64 @@ export async function DELETE(_req: Request, { params: paramsPromise }: RoutePara
     if (!isAdminDepartmentUser) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    if (id === authz.actorUserId) {
+      return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 });
+    }
 
-    const existing = await prisma.user.findUnique({ where: { id } });
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        clerkUserId: true,
+        userDepartments: {
+          select: {
+            department: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+    });
     if (!existing) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    const isDeletingAdmin = existing.userDepartments.some(
+      (row) => row.department.name === "ADMIN",
+    );
+    if (isDeletingAdmin) {
+      const otherAdminCount = await prisma.userDepartment.count({
+        where: {
+          department: { name: "ADMIN" },
+          userId: { not: id },
+        },
+      });
+      if (otherAdminCount === 0) {
+        return NextResponse.json(
+          { error: "Cannot delete the last admin account." },
+          { status: 400 },
+        );
+      }
+    }
+
+    if (existing.clerkUserId) {
+      try {
+        const client = await clerkClient();
+        await client.users.deleteUser(existing.clerkUserId);
+      } catch (error) {
+        const message = String(error).toLowerCase();
+        if (
+          message.includes("not found") ||
+          message.includes("resource_not_found") ||
+          message.includes("404")
+        ) {
+          // Clerk account already missing; continue DB cleanup.
+        } else {
+          return NextResponse.json(
+            { error: "Failed to delete linked Clerk account. User was not removed." },
+            { status: 502 },
+          );
+        }
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {

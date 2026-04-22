@@ -5,15 +5,27 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import {
+  CheckCircle2,
   CalendarClock,
   Download,
   FileText,
   ImageIcon,
+  Loader2,
   MapPin,
   Phone,
+  RotateCcw,
   Search,
   UserRound,
 } from 'lucide-react'
@@ -54,6 +66,8 @@ type ReviewApiResponse = {
   data?: ReviewSubmission[]
   error?: string
 }
+
+type ReviewDecision = 'APPROVE' | 'CORRECTION'
 
 function formatLabel(value: string | null | undefined): string {
   if (!value) return 'N/A'
@@ -162,6 +176,11 @@ export default function SeniorCrmReviewCenterPage() {
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [decisionDialogOpen, setDecisionDialogOpen] = useState(false)
+  const [decisionTarget, setDecisionTarget] = useState<ReviewSubmission | null>(null)
+  const [decisionType, setDecisionType] = useState<ReviewDecision>('APPROVE')
+  const [decisionSummary, setDecisionSummary] = useState('')
+  const [decisionBusy, setDecisionBusy] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 400)
@@ -198,6 +217,49 @@ export default function SeniorCrmReviewCenterPage() {
   useEffect(() => {
     void fetchSubmissions()
   }, [fetchSubmissions])
+
+  const openDecisionDialog = useCallback((submission: ReviewSubmission, decision: ReviewDecision) => {
+    setDecisionTarget(submission)
+    setDecisionType(decision)
+    setDecisionSummary('')
+    setDecisionDialogOpen(true)
+  }, [])
+
+  const handleConfirmDecision = useCallback(async () => {
+    if (!decisionTarget) return
+    if (decisionType === 'CORRECTION' && decisionSummary.trim().length === 0) {
+      toast.error('Correction summary is required')
+      return
+    }
+
+    try {
+      setDecisionBusy(true)
+      const response = await fetch(`/api/cad-work/review-center/${decisionTarget.id}/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: decisionType,
+          summary: decisionSummary.trim() || null,
+        }),
+      })
+      const payload = (await response.json()) as { success?: boolean; message?: string; error?: string }
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? 'Failed to process review decision')
+      }
+
+      toast.success(payload.message ?? 'Review decision saved')
+      setDecisionDialogOpen(false)
+      setDecisionTarget(null)
+      setDecisionSummary('')
+      await fetchSubmissions()
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : 'Failed to process review decision')
+      await fetchSubmissions()
+    } finally {
+      setDecisionBusy(false)
+    }
+  }, [decisionSummary, decisionTarget, decisionType, fetchSubmissions])
 
   const totalFiles = useMemo(
     () => submissions.reduce((count, submission) => count + submission.files.length, 0),
@@ -263,9 +325,27 @@ export default function SeniorCrmReviewCenterPage() {
                         ) : null}
                       </div>
                     </div>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/crm/sr/leads/${submission.lead.id}`}>Open Lead</Link>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => openDecisionDialog(submission, 'APPROVE')}
+                      >
+                        <CheckCircle2 className="mr-1 h-4 w-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openDecisionDialog(submission, 'CORRECTION')}
+                      >
+                        <RotateCcw className="mr-1 h-4 w-4" />
+                        Correction
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/crm/sr/leads/${submission.lead.id}`}>Open Lead</Link>
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
@@ -318,6 +398,75 @@ export default function SeniorCrmReviewCenterPage() {
           </div>
         )}
       </main>
+
+      <Dialog
+        open={decisionDialogOpen}
+        onOpenChange={(open) => {
+          if (decisionBusy) return
+          setDecisionDialogOpen(open)
+          if (!open) {
+            setDecisionTarget(null)
+            setDecisionSummary('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{decisionType === 'APPROVE' ? 'Approve CAD Submission' : 'Send CAD for Correction'}</DialogTitle>
+            <DialogDescription>
+              {decisionTarget
+                ? decisionType === 'APPROVE'
+                  ? `Confirm CAD approval for ${decisionTarget.lead.name}. Lead will stay in CAD Phase and move to CAD Approved.`
+                  : `Send ${decisionTarget.lead.name} back to Junior Architect for correction. Lead will move to CAD Assigned.`
+                : 'Confirm your review decision.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {decisionType === 'APPROVE' ? 'Optional Note' : 'Correction Summary'}
+            </p>
+            <Textarea
+              rows={4}
+              placeholder={
+                decisionType === 'APPROVE'
+                  ? 'Optional approval note for history...'
+                  : 'Required: explain what should be corrected...'
+              }
+              value={decisionSummary}
+              onChange={(event) => setDecisionSummary(event.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={decisionBusy}
+              onClick={() => {
+                if (decisionBusy) return
+                setDecisionDialogOpen(false)
+                setDecisionTarget(null)
+                setDecisionSummary('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={decisionBusy} onClick={handleConfirmDecision}>
+              {decisionBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : decisionType === 'APPROVE' ? (
+                'Confirm Approve'
+              ) : (
+                'Send Correction'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
