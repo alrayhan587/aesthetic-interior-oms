@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { head, put } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
-import { ActivityType, LeadStage, LeadSubStatus, ProjectStatus } from '@/generated/prisma/client'
+import { ActivityType, LeadStage, LeadSubStatus, Prisma, ProjectStatus } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
@@ -119,6 +119,15 @@ function toProjectStatus(value: unknown): ProjectStatus | null {
   return Object.values(ProjectStatus).includes(normalized as ProjectStatus)
     ? (normalized as ProjectStatus)
     : null
+}
+
+function toOptionalNumber(value: string | null): number | null {
+  if (!value) return null
+  const normalized = value.replace(/,/g, '').trim()
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return parsed
 }
 
 function isAllowedUploadType(fileType: string): boolean {
@@ -256,12 +265,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const stylePreference = toOptionalString(formData.get('stylePreference'))
     const supportClientName = toOptionalString(formData.get('supportClientName'))
     const supportProjectArea = toOptionalString(formData.get('supportProjectArea'))
-    const supportProjectStatus = toOptionalString(formData.get('supportProjectStatus'))
+    const supportProjectStatus = toProjectStatus(formData.get('supportProjectStatus'))
     const supportExtraConcern = toOptionalString(formData.get('supportExtraConcern'))
+    const parsedSupportProjectArea = toOptionalNumber(supportProjectArea)
 
     if (formData.get('projectStatus') !== null && !projectStatus) {
       return NextResponse.json(
         { success: false, error: 'projectStatus must be UNDER_CONSTRUCTION or READY' },
+        { status: 400 },
+      )
+    }
+    if (formData.get('supportProjectStatus') !== null && !supportProjectStatus) {
+      return NextResponse.json(
+        { success: false, error: 'supportProjectStatus must be UNDER_CONSTRUCTION or READY' },
         { status: 400 },
       )
     }
@@ -310,7 +326,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             orderBy: { createdAt: 'asc' },
           },
           lead: {
-            select: { stage: true, subStatus: true },
+            select: { stage: true, subStatus: true, name: true },
           },
           result: {
             select: { id: true },
@@ -388,6 +404,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
             completedAt: new Date(),
           },
         })
+
+        const nextVisitUpdate: Prisma.VisitUncheckedUpdateInput = {}
+        if (parsedSupportProjectArea !== null) {
+          nextVisitUpdate.projectSqft = parsedSupportProjectArea
+        }
+        if (supportProjectStatus) {
+          nextVisitUpdate.projectStatus = supportProjectStatus
+        }
+        if (Object.keys(nextVisitUpdate).length > 0) {
+          await tx.visit.update({
+            where: { id: visit.id },
+            data: nextVisitUpdate,
+          })
+        }
+
+        if (supportClientName !== visit.lead.name) {
+          await tx.lead.update({
+            where: { id: visit.leadId },
+            data: { name: supportClientName },
+          })
+        }
 
         if (files.length > 0) {
           for (const file of files) {

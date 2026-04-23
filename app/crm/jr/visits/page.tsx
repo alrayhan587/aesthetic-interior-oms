@@ -74,10 +74,24 @@ type VisitRecord = {
       completedAt: string
     } | null
   }>
+  supportResults?: Array<{
+    id: string
+    supportUserId: string
+    clientName: string
+    projectArea: string
+    projectStatus: string
+    extraConcern: string | null
+    completedAt: string
+  }>
   createdBy: {
     id: string
     fullName: string
   } | null
+}
+
+type ProjectStatusOption = {
+  value: string
+  label: string
 }
 
 type ApiResponse = {
@@ -121,6 +135,10 @@ const statusColors: Record<string, string> = {
 const formatVisitStatus = (status: string) => (status === 'SCHEDULED' ? 'PENDING' : status)
 const calendarWeekLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const selectUnsetValue = '__UNSET__'
+const defaultProjectStatusOptions: ProjectStatusOption[] = [
+  { value: 'UNDER_CONSTRUCTION', label: 'Under Construction' },
+  { value: 'READY', label: 'Ready' },
+]
 
 type VisitsPageProps = {
   forceAssignedOnly?: boolean
@@ -185,6 +203,8 @@ export function VisitsPageView({
   const [supportProjectArea, setSupportProjectArea] = useState('')
   const [supportProjectStatus, setSupportProjectStatus] = useState('')
   const [supportExtraConcern, setSupportExtraConcern] = useState('')
+  const [projectStatusOptions, setProjectStatusOptions] =
+    useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
@@ -285,6 +305,35 @@ export function VisitsPageView({
       .catch((error) => {
         console.error('Error loading current user:', error)
       })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadProjectStatusOptions = async () => {
+      try {
+        const response = await fetch('/api/project-status-options', { cache: 'no-store' })
+        const payload = await response.json()
+        if (!response.ok || !payload?.success) return
+        const options = Array.isArray(payload?.data)
+          ? payload.data.filter(
+              (item: unknown): item is ProjectStatusOption =>
+                Boolean(item) &&
+                typeof (item as { value?: unknown }).value === 'string' &&
+                typeof (item as { label?: unknown }).label === 'string',
+            )
+          : []
+        if (!cancelled && options.length > 0) {
+          setProjectStatusOptions(options)
+        }
+      } catch {
+        // Keep default options if request fails.
+      }
+    }
+
+    void loadProjectStatusOptions()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -395,6 +444,16 @@ export function VisitsPageView({
   const getPrimarySupportAssignment = (visit: VisitRecord) => {
     return (visit.supportAssignments ?? [])[0] ?? null
   }
+  const getCurrentSupportResult = (visit: VisitRecord) => {
+    if (!currentUserId) return null
+    return (visit.supportResults ?? []).find((item) => item.supportUserId === currentUserId) ?? null
+  }
+  const hasSupportDataSubmitted = (visit: VisitRecord) => {
+    if (!currentUserId) return false
+    const assignment = (visit.supportAssignments ?? []).find((item) => item.supportUserId === currentUserId) ?? null
+    if (assignment?.result) return true
+    return Boolean(getCurrentSupportResult(visit))
+  }
   const canSubmitSupportData = (visit: VisitRecord) => {
     if (!currentUserId) return false
     return getPrimarySupportAssignment(visit)?.supportUserId === currentUserId
@@ -483,10 +542,14 @@ export function VisitsPageView({
     setCompleteBudgetRange('')
     setCompleteTimelineUrgency('')
     setCompleteStylePreference('')
-    setSupportClientName('')
-    setSupportProjectArea('')
-    setSupportProjectStatus('')
-    setSupportExtraConcern('')
+    const existingSupportResult = getCurrentSupportResult(visit)
+    setSupportClientName(existingSupportResult?.clientName ?? visit.lead?.name ?? '')
+    setSupportProjectArea(
+      existingSupportResult?.projectArea ??
+        (visit.projectSqft !== null && visit.projectSqft !== undefined ? String(visit.projectSqft) : ''),
+    )
+    setSupportProjectStatus(existingSupportResult?.projectStatus ?? visit.projectStatus ?? '')
+    setSupportExtraConcern(existingSupportResult?.extraConcern ?? '')
     setCompleteFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
@@ -840,10 +903,15 @@ export function VisitsPageView({
     const isVisible = canViewVisit(visit)
     const leadHref = `${leadHrefPrefix}/${visit.lead.id}`
     const visitRole = getVisitRole(visit)
+    const supportAlreadySubmitted = visitRole === 'SUPPORT' && hasSupportDataSubmitted(visit)
     const canSubmitSupportForVisit = visitRole === 'SUPPORT' && canSubmitSupportData(visit)
     const supportSubmitDisabledReason =
-      visitRole === 'SUPPORT' && !canSubmitSupportForVisit
-        ? 'Only the first assigned support member can submit support data.'
+      visitRole === 'SUPPORT'
+        ? supportAlreadySubmitted
+          ? 'Support data already submitted for this visit.'
+          : !canSubmitSupportForVisit
+            ? 'Only the first assigned support member can submit support data.'
+            : undefined
         : undefined
     const canRequestUpdate = canRequestVisitUpdate(visit)
     const updateDisabledReason =
@@ -987,16 +1055,24 @@ export function VisitsPageView({
                     >
                       Cancel
                     </Button>
-                    {allowCompleteVisit && visit.status !== 'COMPLETED' && visitRole !== 'NONE' ? (
+                    {allowCompleteVisit && visitRole !== 'NONE' ? (
                       <Button
                         size="sm"
                         variant="outline"
                         className="w-full sm:w-auto"
                         onClick={() => openCompleteDialog(visit)}
-                        disabled={visitRole === 'SUPPORT' && !canSubmitSupportForVisit}
+                        disabled={
+                          visitRole === 'SUPPORT'
+                            ? supportAlreadySubmitted || !canSubmitSupportForVisit
+                            : visit.status === 'COMPLETED'
+                        }
                         title={supportSubmitDisabledReason}
                       >
-                        {visitRole === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
+                        {visitRole === 'SUPPORT'
+                          ? supportAlreadySubmitted
+                            ? 'Support Data Submitted'
+                            : 'Submit Support Data'
+                          : 'Complete Visit'}
                       </Button>
                     ) : null}
                   </div>
@@ -1637,7 +1713,18 @@ export function VisitsPageView({
                 </div>
                 <div className="space-y-2">
                   <Label>Project Status</Label>
-                  <Input value={supportProjectStatus} onChange={(e) => setSupportProjectStatus(e.target.value)} />
+                  <select
+                    value={supportProjectStatus}
+                    onChange={(event) => setSupportProjectStatus(event.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select project status</option>
+                    {projectStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label>Extra Concern (optional)</Label>
@@ -1706,8 +1793,11 @@ export function VisitsPageView({
                       className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">Select project status</option>
-                      <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                      <option value="READY">READY</option>
+                      {projectStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">

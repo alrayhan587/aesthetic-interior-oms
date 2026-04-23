@@ -72,6 +72,15 @@ type VisitRecord = {
       completedAt: string
     } | null
   }>
+  supportResults?: Array<{
+    id: string
+    supportUserId: string
+    clientName: string
+    projectArea: string
+    projectStatus: string
+    extraConcern: string | null
+    completedAt: string
+  }>
 }
 
 type ApiResponse = {
@@ -84,6 +93,11 @@ type SupportMemberOption = {
   id: string
   fullName: string
   email: string
+}
+
+type ProjectStatusOption = {
+  value: string
+  label: string
 }
 
 function formatDateKey(date: Date) {
@@ -122,6 +136,10 @@ function buildDialPhoneWithout88(phone: string | null | undefined): string | nul
 }
 
 const selectUnsetValue = '__UNSET__'
+const defaultProjectStatusOptions: ProjectStatusOption[] = [
+  { value: 'UNDER_CONSTRUCTION', label: 'Under Construction' },
+  { value: 'READY', label: 'Ready' },
+]
 
 export default function VisitTodayPage() {
   const [visits, setVisits] = useState<VisitRecord[]>([])
@@ -153,6 +171,8 @@ export default function VisitTodayPage() {
   const [supportProjectArea, setSupportProjectArea] = useState('')
   const [supportProjectStatus, setSupportProjectStatus] = useState('')
   const [supportExtraConcern, setSupportExtraConcern] = useState('')
+  const [projectStatusOptions, setProjectStatusOptions] =
+    useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
@@ -208,6 +228,35 @@ export default function VisitTodayPage() {
     loadVisits()
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    const loadProjectStatusOptions = async () => {
+      try {
+        const response = await fetch('/api/project-status-options', { cache: 'no-store' })
+        const payload = await response.json()
+        if (!response.ok || !payload?.success) return
+        const options = Array.isArray(payload?.data)
+          ? payload.data.filter(
+              (item: unknown): item is ProjectStatusOption =>
+                Boolean(item) &&
+                typeof (item as { value?: unknown }).value === 'string' &&
+                typeof (item as { label?: unknown }).label === 'string',
+            )
+          : []
+        if (!cancelled && options.length > 0) {
+          setProjectStatusOptions(options)
+        }
+      } catch {
+        // Keep default options if request fails.
+      }
+    }
+
+    void loadProjectStatusOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const todayKey = formatDateKey(new Date())
   const getVisitRole = (visit: VisitRecord): 'LEAD' | 'SUPPORT' | 'NONE' => {
     if (!currentUserId) return 'NONE'
@@ -217,6 +266,16 @@ export default function VisitTodayPage() {
   }
   const getPrimarySupportAssignment = (visit: VisitRecord) => {
     return (visit.supportAssignments ?? [])[0] ?? null
+  }
+  const getCurrentSupportResult = (visit: VisitRecord) => {
+    if (!currentUserId) return null
+    return (visit.supportResults ?? []).find((item) => item.supportUserId === currentUserId) ?? null
+  }
+  const hasSupportDataSubmitted = (visit: VisitRecord) => {
+    if (!currentUserId) return false
+    const assignment = (visit.supportAssignments ?? []).find((item) => item.supportUserId === currentUserId) ?? null
+    if (assignment?.result) return true
+    return Boolean(getCurrentSupportResult(visit))
   }
   const canSubmitSupportData = (visit: VisitRecord) => {
     if (!currentUserId) return false
@@ -379,6 +438,20 @@ export default function VisitTodayPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 sm:justify-end">
+                  {(() => {
+                    const visitRole = getVisitRole(visit)
+                    const supportAlreadySubmitted =
+                      visitRole === 'SUPPORT' && hasSupportDataSubmitted(visit)
+                    const supportDisabledReason =
+                      visitRole === 'SUPPORT'
+                        ? supportAlreadySubmitted
+                          ? 'Support data already submitted for this visit.'
+                          : !canSubmitSupportData(visit)
+                            ? 'Only the first assigned support member can submit support data.'
+                            : undefined
+                        : undefined
+                    return (
+                      <>
                   {dialHref ? (
                     <Button size="sm" variant="outline" className="sm:hidden" asChild>
                       <a href={dialHref}>
@@ -409,20 +482,27 @@ export default function VisitTodayPage() {
                   >
                     Cancel
                   </Button>
-                  {visit.status !== 'COMPLETED' && getVisitRole(visit) !== 'NONE' ? (
+                  {visitRole !== 'NONE' ? (
                     <Button
                       size="sm"
                       onClick={() => openCompleteDialog(visit)}
-                      disabled={getVisitRole(visit) === 'SUPPORT' && !canSubmitSupportData(visit)}
-                      title={
-                        getVisitRole(visit) === 'SUPPORT' && !canSubmitSupportData(visit)
-                          ? 'Only the first assigned support member can submit support data.'
-                          : undefined
+                      disabled={
+                        visitRole === 'SUPPORT'
+                          ? supportAlreadySubmitted || !canSubmitSupportData(visit)
+                          : visit.status === 'COMPLETED'
                       }
+                      title={supportDisabledReason}
                     >
-                      {getVisitRole(visit) === 'SUPPORT' ? 'Submit Support Data' : 'Complete Visit'}
+                      {visitRole === 'SUPPORT'
+                        ? supportAlreadySubmitted
+                          ? 'Support Data Submitted'
+                          : 'Submit Support Data'
+                        : 'Complete Visit'}
                     </Button>
                   ) : null}
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             </motion.div>
@@ -507,11 +587,16 @@ export default function VisitTodayPage() {
     setCompleteBudgetRange('')
     setCompleteTimelineUrgency('')
     setCompleteStylePreference('')
-    setSupportClientName(visit.lead?.name ?? '')
-    setSupportClientNameAutoFilled(Boolean(visit.lead?.name))
-    setSupportProjectArea('')
-    setSupportProjectStatus('')
-    setSupportExtraConcern('')
+    const existingSupportResult = getCurrentSupportResult(visit)
+    const initialClientName = existingSupportResult?.clientName ?? visit.lead?.name ?? ''
+    setSupportClientName(initialClientName)
+    setSupportClientNameAutoFilled(Boolean(initialClientName))
+    setSupportProjectArea(
+      existingSupportResult?.projectArea ??
+        (visit.projectSqft !== null && visit.projectSqft !== undefined ? String(visit.projectSqft) : ''),
+    )
+    setSupportProjectStatus(existingSupportResult?.projectStatus ?? visit.projectStatus ?? '')
+    setSupportExtraConcern(existingSupportResult?.extraConcern ?? '')
     setCompleteFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
@@ -1026,8 +1111,11 @@ export default function VisitTodayPage() {
                     className="h-9 w-full rounded-md border border-input bg-input px-3 text-sm"
                   >
                     <option value="">Select project status</option>
-                    <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                    <option value="READY">READY</option>
+                    {projectStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -1105,8 +1193,11 @@ export default function VisitTodayPage() {
                         className="h-9 w-full rounded-md border border-input bg-input px-3 text-sm"
                       >
                         <option value="">Select project status</option>
-                        <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION</option>
-                        <option value="READY">READY</option>
+                        {projectStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div className="space-y-2">
