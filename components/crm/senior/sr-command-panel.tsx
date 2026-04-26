@@ -80,6 +80,7 @@ function toDateTimeLocalInput(date: Date): string {
 export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommandPanelProps) {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [firstMeetingOpen, setFirstMeetingOpen] = useState(false)
+  const [completeFirstMeetingOpen, setCompleteFirstMeetingOpen] = useState(false)
   const [budgetMeetingOpen, setBudgetMeetingOpen] = useState(false)
   const [srVisitOpen, setSrVisitOpen] = useState(false)
 
@@ -92,6 +93,7 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
   const [quotationMembers, setQuotationMembers] = useState<VisitAssignee[]>([])
   const [loadingQuotationMembers, setLoadingQuotationMembers] = useState(false)
   const [selectedQuotationMemberId, setSelectedQuotationMemberId] = useState('')
+  const [completeFirstMeetingNote, setCompleteFirstMeetingNote] = useState('')
   const [budgetMeetingAt, setBudgetMeetingAt] = useState(toDateTimeLocalInput(new Date()))
   const [budgetMeetingNotes, setBudgetMeetingNotes] = useState('')
 
@@ -198,6 +200,8 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
     }
   }
 
+  const canCompleteFirstMeeting = lead.stage === 'DISCOVERY' && lead.subStatus === 'FIRST_MEETING_SET'
+
   return (
     <>
       <Card>
@@ -242,13 +246,25 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
             <Button
               variant="outline"
               className="justify-start gap-2"
-              onClick={async () => {
-                await loadQuotationMembers()
-                setFirstMeetingOpen(true)
-              }}
+              onClick={() => setFirstMeetingOpen(true)}
             >
               <CalendarClock className="h-4 w-4" />
               Set First Meeting
+            </Button>
+
+            <Button
+              variant="outline"
+              className="justify-start gap-2"
+              disabled={!canCompleteFirstMeeting}
+              onClick={async () => {
+                await loadQuotationMembers()
+                setSelectedQuotationMemberId('')
+                setCompleteFirstMeetingNote('')
+                setCompleteFirstMeetingOpen(true)
+              }}
+            >
+              <CalendarClock className="h-4 w-4" />
+              Complete First Meeting
             </Button>
 
             <Button variant="outline" className="justify-start gap-2" onClick={() => setBudgetMeetingOpen(true)}>
@@ -332,29 +348,6 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
               </Button>
             </div>
             <div className="space-y-1">
-              <Label>Assign quotation member (optional)</Label>
-              <Select value={selectedQuotationMemberId} onValueChange={setSelectedQuotationMemberId}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loadingQuotationMembers
-                        ? 'Loading members...'
-                        : quotationMembers.length === 0
-                          ? 'No quotation members available'
-                          : 'Select quotation member'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {quotationMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.fullName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
               <Label>Notes</Label>
               <Textarea
                 rows={3}
@@ -386,31 +379,78 @@ export function SrCommandPanel({ lead, currentUserId, onRefreshLead }: SrCommand
 
                   await handleScheduleMeeting('FIRST_MEETING', firstMeetingAt, compiledNotes)
 
-                  if (selectedQuotationMemberId) {
-                    await fetch(`/api/lead/${lead.id}/assignments/QUOTATION`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: selectedQuotationMemberId }),
-                    }).then(async (response) => {
-                      const payload = await response.json()
-                      if (!response.ok || !payload?.success) {
-                        throw new Error(payload?.error ?? 'Failed to assign quotation member')
-                      }
-                    })
-                  }
-
                   setFirstMeetingOpen(false)
                   await patchJson(`/api/lead/${lead.id}/stage`, {
-                    stage: selectedQuotationMemberId ? 'QUOTATION_PHASE' : 'DISCOVERY',
-                    subStatus: selectedQuotationMemberId ? 'QUOTATION_ASSIGNED' : 'PROPOSAL_SENT',
-                    reason: selectedQuotationMemberId
-                      ? 'First meeting completed and quotation member assigned by SR CRM.'
-                      : 'First meeting completed by SR CRM without quotation assignment.',
+                    stage: 'DISCOVERY',
+                    subStatus: 'FIRST_MEETING_SET',
+                    reason: 'First meeting scheduled by SR CRM.',
                   })
                 })
               }
             >
               Save Meeting
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={completeFirstMeetingOpen} onOpenChange={setCompleteFirstMeetingOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete First Meeting</DialogTitle>
+            <DialogDescription>
+              Complete first meeting and optionally assign a quotation member.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Assign quotation member (optional)</Label>
+              <Select value={selectedQuotationMemberId} onValueChange={setSelectedQuotationMemberId}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      loadingQuotationMembers
+                        ? 'Loading members...'
+                        : quotationMembers.length === 0
+                          ? 'No quotation members available'
+                          : 'Select quotation member'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {quotationMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Note</Label>
+              <Textarea
+                rows={3}
+                value={completeFirstMeetingNote}
+                onChange={(event) => setCompleteFirstMeetingNote(event.target.value)}
+                placeholder="Optional meeting completion note..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={busyAction === 'complete-first-meeting'}
+              onClick={() =>
+                runAction('complete-first-meeting', async () => {
+                  await postJson(`/api/lead/${lead.id}/meetings/complete`, {
+                    note: completeFirstMeetingNote.trim() || null,
+                    quotationMemberId: selectedQuotationMemberId || null,
+                  })
+                  setCompleteFirstMeetingOpen(false)
+                  toast.success('First meeting completed')
+                })
+              }
+            >
+              Complete Meeting
             </Button>
           </DialogFooter>
         </DialogContent>

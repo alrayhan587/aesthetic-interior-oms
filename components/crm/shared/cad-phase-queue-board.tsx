@@ -48,6 +48,11 @@ type QueueResponse = {
 }
 
 type DepartmentUser = { id: string; fullName: string; email: string }
+type DepartmentUsersResponse = {
+  success: boolean
+  users?: DepartmentUser[]
+  error?: string
+}
 
 function formatLabel(value: string | null | undefined) {
   if (!value) return 'N/A'
@@ -93,6 +98,12 @@ export function CadPhaseQueueBoard({
   const [meetingAt, setMeetingAt] = useState(toDateTimeLocalInput(new Date()))
   const [meetingMode, setMeetingMode] = useState<'ONLINE' | 'OFFLINE'>('ONLINE')
   const [meetingNote, setMeetingNote] = useState('')
+  const [completeMeetingOpen, setCompleteMeetingOpen] = useState(false)
+  const [completeMeetingLead, setCompleteMeetingLead] = useState<LeadRecord | null>(null)
+  const [completeMeetingNote, setCompleteMeetingNote] = useState('')
+  const [quotationMembers, setQuotationMembers] = useState<DepartmentUser[]>([])
+  const [quotationMemberId, setQuotationMemberId] = useState('')
+  const [loadingQuotationMembers, setLoadingQuotationMembers] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 400)
@@ -133,6 +144,23 @@ export function CadPhaseQueueBoard({
     }
     const users = Array.isArray(payload.users) ? payload.users : []
     setMemberOptions(users)
+  }
+
+  const loadQuotationMembers = async () => {
+    if (quotationMembers.length > 0) return
+    setLoadingQuotationMembers(true)
+    try {
+      const response = await fetch('/api/department/available/QUOTATION', { cache: 'no-store' })
+      const payload = (await response.json()) as DepartmentUsersResponse
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? 'Failed to load quotation members')
+      }
+      setQuotationMembers(Array.isArray(payload.users) ? payload.users : [])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load quotation members')
+    } finally {
+      setLoadingQuotationMembers(false)
+    }
   }
 
   const openReassign = async (lead: LeadRecord) => {
@@ -224,6 +252,41 @@ export function CadPhaseQueueBoard({
     }
   }
 
+  const openCompleteMeetingDialog = async (lead: LeadRecord) => {
+    setCompleteMeetingLead(lead)
+    setCompleteMeetingNote('')
+    setQuotationMemberId('')
+    setCompleteMeetingOpen(true)
+    await loadQuotationMembers()
+  }
+
+  const submitCompleteMeeting = async () => {
+    if (!completeMeetingLead) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/lead/${completeMeetingLead.id}/meetings/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          note: completeMeetingNote.trim() || null,
+          quotationMemberId: quotationMemberId || null,
+        }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error ?? 'Failed to complete first meeting')
+      }
+      toast.success(payload?.message ?? 'First meeting completed')
+      setCompleteMeetingOpen(false)
+      setCompleteMeetingLead(null)
+      await loadLeads()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to complete first meeting')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const summary = useMemo(() => {
     const cadApproved = leads.filter((lead) => lead.subStatus === 'CAD_APPROVED').length
     const meetingSet = leads.filter((lead) => lead.subStatus === 'FIRST_MEETING_SET').length
@@ -297,11 +360,9 @@ export function CadPhaseQueueBoard({
                             Set Meeting
                           </Button>
                         ) : lead.canSubmitMeetingData ? (
-                          <Button asChild size="sm">
-                            <Link href={`${leadBasePath}/${lead.id}`}>
-                              <CalendarClock className="mr-1 h-4 w-4" />
-                              Submit Meeting Data
-                            </Link>
+                          <Button size="sm" onClick={() => void openCompleteMeetingDialog(lead)}>
+                            <CalendarClock className="mr-1 h-4 w-4" />
+                            Complete Meeting
                           </Button>
                         ) : null
                       ) : null}
@@ -399,6 +460,51 @@ export function CadPhaseQueueBoard({
           <DialogFooter>
             <Button disabled={saving || !meetingAt} onClick={submitFirstMeeting}>
               Submit Meeting Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={completeMeetingOpen} onOpenChange={setCompleteMeetingOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete First Meeting</DialogTitle>
+            <DialogDescription>
+              Complete first meeting and optionally assign quotation member.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Quotation Member (optional)</Label>
+              <Select value={quotationMemberId} onValueChange={setQuotationMemberId}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      loadingQuotationMembers
+                        ? 'Loading members...'
+                        : quotationMembers.length === 0
+                          ? 'No quotation members available'
+                          : 'Select quotation member'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {quotationMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Note (optional)</Label>
+              <Textarea rows={3} value={completeMeetingNote} onChange={(event) => setCompleteMeetingNote(event.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button disabled={saving} onClick={submitCompleteMeeting}>
+              Complete Meeting
             </Button>
           </DialogFooter>
         </DialogContent>

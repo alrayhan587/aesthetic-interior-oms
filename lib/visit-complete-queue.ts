@@ -14,6 +14,7 @@ import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
 import { DEFAULT_CAD_WORK_DETAILS } from '@/lib/sr-task-service'
 import { createSrCadReviewTodosForCadStart } from '@/lib/sr-cad-todo'
 import { hasJrArchitectureLeaderRole } from '@/lib/jr-architecture-roles'
+import { ensureSeniorCrmAssignment } from '@/lib/lead-handoff'
 
 type QueuePermissionFlags = {
   isAdmin: boolean
@@ -462,6 +463,14 @@ export async function assignJrArchitectFromVisitComplete(input: AssignJrArchitec
         },
       })
     }
+
+    const preferActorAsSr = flags.isSeniorCrm || flags.isAdmin ? input.actorUserId : null
+    await ensureSeniorCrmAssignment({
+      tx,
+      leadId: input.leadId,
+      preferredUserId: preferActorAsSr,
+      actorUserId: input.actorUserId,
+    })
 
     await tx.lead.update({
       where: { id: input.leadId },
