@@ -7,13 +7,8 @@ import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type Meeting = {
   id: string
@@ -27,9 +22,11 @@ type Meeting = {
   type: 'FIRST_MEETING' | 'BUDGET_MEETING' | 'REVIEW_CHECKPOINT'
 }
 
+type CalendarMode = 'MONTHLY' | 'YEARLY'
+
 const WEEKDAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-const MAX_DAY_EVENTS = 2
-const MAX_AGENDA_ITEMS = 8
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MAX_AGENDA_ITEMS = 10
 
 function startOfDay(date: Date) {
   const clone = new Date(date)
@@ -191,10 +188,13 @@ export function SeniorCrmMeetingsView({
 }: SeniorCrmMeetingsViewProps) {
   const router = useRouter()
   const today = useMemo(() => startOfDay(new Date()), [])
+
   const [focusDate, setFocusDate] = useState(today)
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('MONTHLY')
   const [myLeadsOnly, setMyLeadsOnly] = useState(initialMyLeadsOnly)
-  const [dayDialogOpen, setDayDialogOpen] = useState(false)
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
+  const [selectedYearMonth, setSelectedYearMonth] = useState<number | null>(today.getMonth())
+
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loadingMeetings, setLoadingMeetings] = useState(false)
   const [meetingError, setMeetingError] = useState<string | null>(null)
@@ -208,6 +208,7 @@ export function SeniorCrmMeetingsView({
       try {
         const from = new Date(focusDate.getFullYear(), 0, 1).toISOString()
         const to = new Date(focusDate.getFullYear(), 11, 31, 23, 59, 59, 999).toISOString()
+
         const response = await fetch(
           `/api/lead/meetings?myLeadsOnly=${myLeadsOnly ? '1' : '0'}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
           { cache: 'no-store' },
@@ -229,9 +230,7 @@ export function SeniorCrmMeetingsView({
         if (!cancelled) {
           setMeetings([
             ...payload.data.map(toMeeting),
-            ...tasksPayload.data
-              .filter((task) => task.status !== 'CANCELLED')
-              .map(toDeadlineMeeting),
+            ...tasksPayload.data.filter((task) => task.status !== 'CANCELLED').map(toDeadlineMeeting),
           ])
         }
       } catch (error) {
@@ -252,11 +251,6 @@ export function SeniorCrmMeetingsView({
     }
   }, [focusDate, myLeadsOnly])
 
-  const monthDays = useMemo(
-    () => buildMonthGrid(focusDate.getFullYear(), focusDate.getMonth()),
-    [focusDate],
-  )
-
   const meetingsByDay = useMemo(() => {
     const grouped = new Map<string, Meeting[]>()
     for (const meeting of meetings) {
@@ -268,42 +262,90 @@ export function SeniorCrmMeetingsView({
     return grouped
   }, [meetings])
 
+  const monthDays = useMemo(
+    () => buildMonthGrid(focusDate.getFullYear(), focusDate.getMonth()),
+    [focusDate],
+  )
+
   const monthMeetings = useMemo(() => {
     const from = new Date(focusDate.getFullYear(), focusDate.getMonth(), 1)
     const to = new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 0, 23, 59, 59, 999)
-
     return meetings
       .filter((meeting) => meeting.start >= from && meeting.start <= to)
       .sort((a, b) => a.start.getTime() - b.start.getTime())
   }, [focusDate, meetings])
 
-  const upcomingMeetings = useMemo(() => {
+  const yearMeetings = useMemo(() => {
+    return meetings
+      .filter((meeting) => meeting.start.getFullYear() === focusDate.getFullYear())
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+  }, [focusDate, meetings])
+
+  const monthlySideMeetings = useMemo(() => {
+    if (selectedDayKey) {
+      return meetingsByDay.get(selectedDayKey) ?? []
+    }
     const now = new Date()
     return monthMeetings.filter((meeting) => meeting.end >= now).slice(0, MAX_AGENDA_ITEMS)
-  }, [monthMeetings])
+  }, [meetingsByDay, monthMeetings, selectedDayKey])
 
-  const selectedDayMeetings = useMemo(() => {
-    if (!selectedDay) return []
-    return meetingsByDay.get(formatDayKey(selectedDay)) ?? []
-  }, [meetingsByDay, selectedDay])
+  const yearlySideMeetings = useMemo(() => {
+    if (selectedYearMonth !== null) {
+      return yearMeetings.filter((meeting) => meeting.start.getMonth() === selectedYearMonth)
+    }
+    const now = new Date()
+    return yearMeetings.filter((meeting) => meeting.end >= now).slice(0, MAX_AGENDA_ITEMS)
+  }, [selectedYearMonth, yearMeetings])
 
-  const jumpToToday = () => setFocusDate(today)
-  const goPrevMonth = () => setFocusDate((current) => addMonths(current, -1))
-  const goNextMonth = () => setFocusDate((current) => addMonths(current, 1))
+  const sideMeetings = calendarMode === 'MONTHLY' ? monthlySideMeetings : yearlySideMeetings
 
-  const openDayDialog = (day: Date) => {
-    setSelectedDay(day)
-    setDayDialogOpen(true)
+  const sideTitle = useMemo(() => {
+    if (calendarMode === 'MONTHLY') {
+      if (selectedDayKey) {
+        const [year, month, day] = selectedDayKey.split('-').map(Number)
+        return `Items on ${new Date(year, month - 1, day).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        })}`
+      }
+      return 'Upcoming This Month'
+    }
+
+    if (selectedYearMonth !== null) {
+      return `${MONTH_LABELS[selectedYearMonth]} ${focusDate.getFullYear()} Items`
+    }
+    return `Upcoming ${focusDate.getFullYear()}`
+  }, [calendarMode, focusDate, selectedDayKey, selectedYearMonth])
+
+  const jumpToToday = () => {
+    setFocusDate(today)
+    setSelectedYearMonth(today.getMonth())
+  }
+
+  const goPrev = () => {
+    if (calendarMode === 'MONTHLY') {
+      setFocusDate((current) => addMonths(current, -1))
+      return
+    }
+    setFocusDate((current) => addMonths(current, -12))
+  }
+
+  const goNext = () => {
+    if (calendarMode === 'MONTHLY') {
+      setFocusDate((current) => addMonths(current, 1))
+      return
+    }
+    setFocusDate((current) => addMonths(current, 12))
   }
 
   const goToEventLead = (meeting: Meeting) => {
     router.push(`/crm/sr/leads/${meeting.leadId}`)
   }
 
-  const monthLabel = focusDate.toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const periodLabel =
+    calendarMode === 'MONTHLY'
+      ? focusDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      : String(focusDate.getFullYear())
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gradient-to-b from-background via-background to-muted/20">
@@ -314,24 +356,33 @@ export function SeniorCrmMeetingsView({
           <CardContent className="py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={goPrevMonth}>
+                <Button variant="outline" size="sm" onClick={goPrev}>
                   <ChevronLeft className="size-4" />
                 </Button>
-                <Button variant="outline" size="sm" onClick={goNextMonth}>
+                <Button variant="outline" size="sm" onClick={goNext}>
                   <ChevronRight className="size-4" />
                 </Button>
                 <Button size="sm" onClick={jumpToToday}>
                   Today
                 </Button>
                 <Badge className="h-8 border border-primary/20 bg-primary/10 px-3 text-primary">
-                  {monthLabel}
+                  {periodLabel}
                 </Badge>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Tabs
+                  value={calendarMode}
+                  onValueChange={(value) => setCalendarMode(value as CalendarMode)}
+                >
+                  <TabsList className="grid w-[220px] grid-cols-2">
+                    <TabsTrigger value="MONTHLY">Monthly</TabsTrigger>
+                    <TabsTrigger value="YEARLY">Yearly</TabsTrigger>
+                  </TabsList>
+                </Tabs>
                 <Badge variant="secondary" className="h-8 gap-1 px-3">
                   <Sparkles className="size-3.5" />
-                  {monthMeetings.length} items
+                  {calendarMode === 'MONTHLY' ? monthMeetings.length : yearMeetings.length} items
                 </Badge>
                 {!lockMyLeadsOnly ? (
                   <label className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm shadow-sm">
@@ -344,11 +395,13 @@ export function SeniorCrmMeetingsView({
           </CardContent>
         </Card>
 
-        <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <section className="min-h-0 min-w-0">
             <Card className="flex h-full min-h-0 flex-col overflow-hidden border-border/80 shadow-sm">
               <CardHeader className="border-b border-border/70 bg-muted/20 pb-3 pt-4">
-                <CardTitle className="text-base sm:text-lg">Monthly Calendar</CardTitle>
+                <CardTitle className="text-base sm:text-lg">
+                  {calendarMode === 'MONTHLY' ? 'Monthly Calendar' : 'Yearly Calendar'}
+                </CardTitle>
               </CardHeader>
               <CardContent className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
                 {meetingError ? (
@@ -357,76 +410,112 @@ export function SeniorCrmMeetingsView({
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-7 gap-2">
-                  {WEEKDAY_LABELS.map((label) => (
-                    <div
-                      key={label}
-                      className="rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                    >
-                      {label}
+                {calendarMode === 'MONTHLY' ? (
+                  <>
+                    <div className="grid grid-cols-7 gap-2">
+                      {WEEKDAY_LABELS.map((label) => (
+                        <div
+                          key={label}
+                          className="rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                        >
+                          {label}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
 
-                <div className="mt-2 grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-2">
-                  {monthDays.map((day) => {
-                    const inCurrentMonth = day.getMonth() === focusDate.getMonth()
-                    const events = meetingsByDay.get(formatDayKey(day)) ?? []
-                    const dayIsToday = isSameDay(day, today)
+                    <div className="mt-2 grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-2">
+                      {monthDays.map((day) => {
+                        const dayKey = formatDayKey(day)
+                        const inCurrentMonth = day.getMonth() === focusDate.getMonth()
+                        const dayEvents = meetingsByDay.get(dayKey) ?? []
+                        const taskCount = dayEvents.filter((event) => event.source === 'TASK').length
+                        const meetingCount = dayEvents.length - taskCount
+                        const dayIsToday = isSameDay(day, today)
+                        const isSelected = selectedDayKey === dayKey
 
-                    return (
-                      <div
-                        key={formatDayKey(day)}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openDayDialog(day)}
-                        onKeyDown={(event) => event.key === 'Enter' && openDayDialog(day)}
-                        className={`flex min-h-0 cursor-pointer flex-col rounded-xl border p-2 transition ${
-                          dayIsToday
-                            ? 'border-primary/45 bg-gradient-to-b from-primary/10 to-background'
-                            : 'border-border/70 bg-background hover:border-primary/30'
-                        }`}
-                      >
-                        <div className="mb-1 flex items-center justify-between">
-                          <p
-                            className={`text-xs font-semibold ${
-                              inCurrentMonth ? 'text-foreground' : 'text-muted-foreground'
-                            } ${dayIsToday ? 'text-primary' : ''}`}
+                        return (
+                          <button
+                            key={dayKey}
+                            type="button"
+                            onClick={() => setSelectedDayKey((current) => (current === dayKey ? null : dayKey))}
+                            className={`flex min-h-0 flex-col rounded-xl border p-2 text-left transition ${
+                              isSelected
+                                ? 'border-primary/50 bg-primary/10'
+                                : dayIsToday
+                                  ? 'border-primary/35 bg-gradient-to-b from-primary/10 to-background'
+                                  : 'border-border/70 bg-background hover:border-primary/30'
+                            }`}
                           >
-                            {day.getDate()}
-                          </p>
-                          {events.length > 0 ? (
-                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                              {events.length}
-                            </span>
-                          ) : null}
-                        </div>
+                            <div className="mb-1 flex items-center justify-between">
+                              <span
+                                className={`text-xs font-semibold ${
+                                  inCurrentMonth ? 'text-foreground' : 'text-muted-foreground'
+                                } ${dayIsToday ? 'text-primary' : ''}`}
+                              >
+                                {day.getDate()}
+                              </span>
+                              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                {dayEvents.length}
+                              </span>
+                            </div>
+                            <div className="mt-auto space-y-1 text-[10px] text-muted-foreground">
+                              <p>Tasks: {taskCount}</p>
+                              <p>Meetings: {meetingCount}</p>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {MONTH_LABELS.map((monthLabel, monthIndex) => {
+                      const monthCells = buildMonthGrid(focusDate.getFullYear(), monthIndex)
+                      const monthItems = yearMeetings.filter((meeting) => meeting.start.getMonth() === monthIndex)
+                      const monthTaskCount = monthItems.filter((meeting) => meeting.source === 'TASK').length
+                      const isSelectedMonth = selectedYearMonth === monthIndex
 
-                        <div className="space-y-1">
-                          {events.slice(0, MAX_DAY_EVENTS).map((eventItem) => (
-                            <button
-                              key={eventItem.id}
-                              type="button"
-                              onClick={(clickEvent) => {
-                                clickEvent.stopPropagation()
-                                goToEventLead(eventItem)
-                              }}
-                              className={`w-full rounded-md border px-1.5 py-1 text-left text-[10px] font-medium leading-tight transition hover:opacity-85 ${getEventClass(eventItem)}`}
-                            >
-                              <p className="truncate">{eventItem.title}</p>
-                              <p className="truncate opacity-80">{formatEventTime(eventItem.start)}</p>
-                            </button>
-                          ))}
-                          {events.length > MAX_DAY_EVENTS ? (
-                            <p className="text-[10px] font-medium text-muted-foreground">
-                              +{events.length - MAX_DAY_EVENTS} more
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      return (
+                        <button
+                          key={monthLabel}
+                          type="button"
+                          onClick={() => setSelectedYearMonth((current) => (current === monthIndex ? null : monthIndex))}
+                          className={`flex min-h-0 flex-col rounded-xl border p-2 text-left transition ${
+                            isSelectedMonth
+                              ? 'border-primary/45 bg-primary/10'
+                              : 'border-border/70 bg-background hover:border-primary/30'
+                          }`}
+                        >
+                          <div className="mb-1 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-foreground">{monthLabel}</p>
+                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              {monthItems.length}
+                            </span>
+                          </div>
+                          <p className="mb-2 text-[10px] text-muted-foreground">Tasks: {monthTaskCount}</p>
+                          <div className="grid grid-cols-7 gap-1 text-[9px]">
+                            {monthCells.map((day) => {
+                              const dayCount = meetingsByDay.get(formatDayKey(day))?.length ?? 0
+                              const inMonth = day.getMonth() === monthIndex
+                              return (
+                                <div
+                                  key={`${monthLabel}-${formatDayKey(day)}`}
+                                  className={`rounded border px-1 py-0.5 text-center ${
+                                    inMonth
+                                      ? 'border-border/60 text-foreground'
+                                      : 'border-transparent text-muted-foreground'
+                                  } ${dayCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''}`}
+                                >
+                                  {day.getDate()}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </section>
@@ -434,15 +523,15 @@ export function SeniorCrmMeetingsView({
           <aside className="hidden min-h-0 xl:block">
             <Card className="flex h-full min-h-0 flex-col border-border/80 bg-card/90 shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Upcoming This Month</CardTitle>
+                <CardTitle className="text-base">{sideTitle}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-2 overflow-y-auto">
                 {loadingMeetings ? (
                   <p className="text-sm text-muted-foreground">Loading meetings...</p>
-                ) : upcomingMeetings.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No more upcoming items in this month.</p>
+                ) : sideMeetings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No items in this selection.</p>
                 ) : (
-                  upcomingMeetings.map((meeting) => (
+                  sideMeetings.slice(0, 60).map((meeting) => (
                     <div
                       key={meeting.id}
                       role="button"
@@ -469,49 +558,6 @@ export function SeniorCrmMeetingsView({
           </aside>
         </div>
       </main>
-
-      <Dialog open={dayDialogOpen} onOpenChange={setDayDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedDay
-                ? selectedDay.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })
-                : 'Day Meetings'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            {selectedDayMeetings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No meetings on this day.</p>
-            ) : (
-              selectedDayMeetings.map((meeting) => (
-                <div
-                  key={meeting.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => goToEventLead(meeting)}
-                  onKeyDown={(event) => event.key === 'Enter' && goToEventLead(meeting)}
-                  className={`cursor-pointer rounded-md border p-3 transition hover:border-primary/40 ${getEventClass(meeting)}`}
-                >
-                  <p className="text-sm font-semibold text-foreground">{meeting.title}</p>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {getEventLabel(meeting)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{meeting.leadName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatEventTime(meeting.start)} - {formatEventTime(meeting.end)}
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
