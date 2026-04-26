@@ -39,6 +39,7 @@ type Meeting = {
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7)
 const WEEKDAY_LABELS = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MAX_AGENDA_ITEMS = 10
 
 function startOfDay(date: Date) {
   const clone = new Date(date)
@@ -381,52 +382,43 @@ export function SeniorCrmMeetingsView({
   }
 
   const DailyView = (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="h-full rounded-lg border border-border overflow-hidden">
       <div className="grid grid-cols-[84px_1fr] bg-muted/40 px-3 py-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Time</p>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {focusDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
         </p>
       </div>
-      {HOURS.map((hour) => {
-        const hourEvents =
-          meetingsByDay
-            .get(formatDayKey(focusDate))
-            ?.filter((item) => item.start.getHours() === hour) ?? []
-        return (
-          <div key={`d-${hour}`} className="grid grid-cols-[84px_1fr] border-t border-border">
-            <div className="px-3 py-3 text-xs text-muted-foreground">{formatHourLabel(hour)}</div>
-            <div className="min-h-[64px] px-3 py-2">
-              {hourEvents.length === 0 ? null : (
-                <div className="space-y-2">
-                  {hourEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => goToEventLead(event)}
-                      onKeyDown={(keyboardEvent) => keyboardEvent.key === 'Enter' && goToEventLead(event)}
-                      className={`cursor-pointer rounded-md border px-2 py-1.5 text-xs transition hover:opacity-90 ${getEventClass(event)}`}
-                    >
-                      <p className="font-semibold">{event.title}</p>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide">{getEventLabel(event)}</p>
-                      <p>{event.leadName}</p>
-                      <p className="text-[10px] text-current/80">
-                        {formatEventTime(event.start)} - {formatEventTime(event.end)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+      <div className="grid h-[calc(100%-41px)]" style={{ gridTemplateRows: `repeat(${HOURS.length}, minmax(0, 1fr))` }}>
+        {HOURS.map((hour) => {
+          const hourEvents =
+            meetingsByDay
+              .get(formatDayKey(focusDate))
+              ?.filter((item) => item.start.getHours() === hour) ?? []
+          return (
+            <div key={`d-${hour}`} className="grid min-h-0 grid-cols-[84px_1fr] border-t border-border">
+              <div className="px-3 py-1.5 text-xs text-muted-foreground">{formatHourLabel(hour)}</div>
+              <div className="min-h-0 px-2 py-1">
+                {hourEvents.length > 0 ? (
+                  <div className="space-y-1">
+                    {hourEvents.slice(0, 1).map((event) => (
+                      <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
+                    ))}
+                    {hourEvents.length > 1 ? (
+                      <p className="truncate text-[10px] font-medium text-muted-foreground">+{hourEvents.length - 1} more</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 
   const WeeklyView = (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="h-full rounded-lg border border-border overflow-hidden">
       <div className="grid grid-cols-[72px_repeat(7,minmax(120px,1fr))] bg-muted/40">
         <div className="border-r border-border px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Time
@@ -446,39 +438,42 @@ export function SeniorCrmMeetingsView({
         ))}
       </div>
 
-      {HOURS.map((hour) => (
-        <div key={`w-${hour}`} className="grid grid-cols-[72px_repeat(7,minmax(120px,1fr))] border-t border-border">
-          <div className="border-r border-border px-2 py-2 text-[11px] text-muted-foreground">
-            {formatHourLabel(hour)}
-          </div>
-          {weeklyDays.map((day) => {
-            const events =
-              meetingsByDay
-                .get(formatDayKey(day))
-                ?.filter((item) => item.start.getHours() === hour) ?? []
-            return (
-              <div
-                key={`${formatDayKey(day)}-${hour}`}
-                className="min-h-[72px] border-r border-border px-1.5 py-1.5 last:border-r-0"
-              >
-                <div className="space-y-1">
-                  {events.slice(0, 2).map((event) => (
-                    <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
-                  ))}
-                  {events.length > 2 ? (
-                    <p className="text-[10px] font-medium text-muted-foreground">+{events.length - 2} more</p>
-                  ) : null}
+      <div className="grid h-[calc(100%-49px)]" style={{ gridTemplateRows: `repeat(${HOURS.length}, minmax(0, 1fr))` }}>
+        {HOURS.map((hour) => (
+          <div key={`w-${hour}`} className="grid min-h-0 grid-cols-[72px_repeat(7,minmax(120px,1fr))] border-t border-border">
+            <div className="border-r border-border px-2 py-1 text-[10px] text-muted-foreground">
+              {formatHourLabel(hour)}
+            </div>
+            {weeklyDays.map((day) => {
+              const events =
+                meetingsByDay
+                  .get(formatDayKey(day))
+                  ?.filter((item) => item.start.getHours() === hour) ?? []
+              return (
+                <div
+                  key={`${formatDayKey(day)}-${hour}`}
+                  className="min-h-0 border-r border-border px-1 py-1 last:border-r-0"
+                >
+                  <div className="space-y-1">
+                    {events.slice(0, 1).map((event) => (
+                      <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
+                    ))}
+                    {events.length > 1 ? (
+                      <p className="text-[10px] font-medium text-muted-foreground">+{events.length - 1} more</p>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      ))}
+              )
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   )
 
+  const monthRowCount = Math.max(1, Math.ceil(monthDays.length / 7))
   const MonthlyView = (
-    <div className="rounded-lg border border-border overflow-hidden">
+    <div className="h-full rounded-lg border border-border overflow-hidden">
       <div className="grid grid-cols-7 bg-muted/40">
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className="border-r border-border px-2 py-2 text-center text-xs font-semibold text-muted-foreground last:border-r-0">
@@ -487,17 +482,20 @@ export function SeniorCrmMeetingsView({
         ))}
       </div>
 
-      <div className="grid grid-cols-7">
+      <div
+        className="grid h-[calc(100%-41px)] grid-cols-7"
+        style={{ gridTemplateRows: `repeat(${monthRowCount}, minmax(0, 1fr))` }}
+      >
         {monthDays.map((day, index) => {
           const inCurrentMonth = day.getMonth() === focusDate.getMonth()
           const events = meetingsByDay.get(formatDayKey(day)) ?? []
           return (
             <div
               key={`${formatDayKey(day)}-${index}`}
-              className="min-h-[130px] border-r border-t border-border px-2 py-2 last:border-r-0"
+              className="min-h-0 border-r border-t border-border px-1.5 py-1.5 last:border-r-0"
             >
               <p
-                className={`mb-2 text-xs font-semibold ${
+                className={`mb-1 text-xs font-semibold ${
                   isSameDay(day, today)
                     ? 'text-primary'
                     : inCurrentMonth
@@ -508,11 +506,11 @@ export function SeniorCrmMeetingsView({
                 {day.getDate()}
               </p>
               <div className="space-y-1">
-                {events.slice(0, 2).map((event) => (
+                {events.slice(0, 1).map((event) => (
                   <CompactEventCard key={event.id} event={event} dense onClick={() => goToEventLead(event)} />
                 ))}
-                {events.length > 2 ? (
-                  <p className="text-[10px] text-muted-foreground">+{events.length - 2} more</p>
+                {events.length > 1 ? (
+                  <p className="text-[10px] text-muted-foreground">+{events.length - 1} more</p>
                 ) : null}
               </div>
             </div>
@@ -523,23 +521,23 @@ export function SeniorCrmMeetingsView({
   )
 
   const QuarterView = (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <div className="grid h-full grid-cols-1 gap-2 xl:grid-cols-3">
       {quarterMonths.map((monthIndex) => {
         const cells = buildMonthGrid(focusDate.getFullYear(), monthIndex)
         return (
-          <Card key={`q-${monthIndex}`} className="overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">{MONTH_LABELS[monthIndex]}</CardTitle>
+          <Card key={`q-${monthIndex}`} className="flex min-h-0 flex-col overflow-hidden">
+            <CardHeader className="pb-1 pt-3">
+              <CardTitle className="text-sm">{MONTH_LABELS[monthIndex]}</CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-7 text-[10px] text-muted-foreground mb-1">
+            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+              <div className="mb-1 grid grid-cols-7 text-[9px] text-muted-foreground">
                 {WEEKDAY_LABELS.map((label) => (
                   <div key={`${monthIndex}-${label}`} className="text-center font-semibold">
                     {label}
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 gap-1">
+              <div className="grid flex-1 grid-cols-7 gap-1">
                 {cells.map((day) => {
                   const inMonth = day.getMonth() === monthIndex
                   const count = meetingsByDay.get(formatDayKey(day))?.length ?? 0
@@ -550,12 +548,12 @@ export function SeniorCrmMeetingsView({
                       onKeyDown={(event) => event.key === 'Enter' && openDayDialog(day)}
                       role="button"
                       tabIndex={0}
-                      className={`rounded border px-1 py-1 text-[10px] cursor-pointer transition hover:border-primary/40 ${
+                      className={`rounded border px-1 py-0.5 text-[9px] cursor-pointer transition hover:border-primary/40 ${
                         inMonth ? 'border-border text-foreground' : 'border-transparent text-muted-foreground'
                       }`}
                     >
                       <p>{day.getDate()}</p>
-                      {count > 0 ? <p className="text-primary font-semibold">{count} items</p> : null}
+                      {count > 0 ? <p className="text-primary font-semibold">{count}</p> : null}
                     </div>
                   )
                 })}
@@ -568,16 +566,16 @@ export function SeniorCrmMeetingsView({
   )
 
   const YearView = (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid h-full auto-rows-fr grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
       {MONTH_LABELS.map((monthLabel, monthIndex) => {
         const cells = buildMonthGrid(focusDate.getFullYear(), monthIndex)
         return (
-          <Card key={`y-${monthLabel}`} className="overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">{monthLabel}</CardTitle>
+          <Card key={`y-${monthLabel}`} className="flex min-h-0 flex-col overflow-hidden">
+            <CardHeader className="pb-1 pt-2">
+              <CardTitle className="text-xs">{monthLabel}</CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-7 gap-1 text-[10px]">
+            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+              <div className="grid flex-1 grid-cols-7 gap-0.5 text-[9px]">
                 {cells.map((day) => {
                   const inMonth = day.getMonth() === monthIndex
                   const meetingCount = meetingsByDay.get(formatDayKey(day))?.length ?? 0
@@ -592,7 +590,7 @@ export function SeniorCrmMeetingsView({
                       onKeyDown={(event) => event.key === 'Enter' && openDayDialog(day)}
                       role="button"
                       tabIndex={0}
-                      className={`h-7 rounded border flex items-center justify-center cursor-pointer transition hover:border-primary/40 ${
+                      className={`rounded border flex items-center justify-center cursor-pointer transition hover:border-primary/40 ${
                         inMonth ? 'border-border text-foreground' : 'border-transparent text-muted-foreground'
                       } ${meetingCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''} ${
                         taskCount > 0 ? 'ring-1 ring-amber-400/70' : ''
@@ -611,14 +609,14 @@ export function SeniorCrmMeetingsView({
   )
 
   return (
-    <div className="h-full bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <CrmPageHeader
         title={title}
         subtitle={subtitle}
       />
 
-      <main className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">
-        <Card className="mb-4 border-border/80">
+      <main className="mx-auto flex w-full max-w-[1600px] min-h-0 flex-1 flex-col overflow-hidden px-4 py-3 sm:px-6 sm:py-4">
+        <Card className="border-border/80">
           <CardContent className="py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -659,7 +657,7 @@ export function SeniorCrmMeetingsView({
 
                 <label className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm">
                   <ListFilter className="size-4 text-muted-foreground" />
-                  <span>Agenda</span>
+                  <span>Agenda (Desktop)</span>
                   <Switch checked={showAgenda} onCheckedChange={setShowAgenda} />
                 </label>
 
@@ -674,8 +672,8 @@ export function SeniorCrmMeetingsView({
           </CardContent>
         </Card>
 
-        <div className={`grid gap-4 ${showAgenda ? 'xl:grid-cols-[minmax(0,1fr)_330px]' : 'grid-cols-1'}`}>
-          <section className="min-w-0">
+        <div className={`mt-3 grid min-h-0 flex-1 gap-3 ${showAgenda ? 'xl:grid-cols-[minmax(0,1fr)_300px]' : 'grid-cols-1'}`}>
+          <section className="min-w-0 min-h-0">
             {meetingError ? (
               <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {meetingError}
@@ -689,18 +687,18 @@ export function SeniorCrmMeetingsView({
           </section>
 
           {showAgenda ? (
-            <aside>
-              <Card>
+            <aside className="hidden min-h-0 xl:block">
+              <Card className="flex h-full min-h-0 flex-col">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Agenda</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-2 overflow-hidden">
                   {loadingMeetings ? (
                     <p className="text-sm text-muted-foreground">Loading meetings...</p>
                   ) : visibleMeetings.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No meetings in this timeline.</p>
                   ) : (
-                    visibleMeetings.map((meeting) => (
+                    visibleMeetings.slice(0, MAX_AGENDA_ITEMS).map((meeting) => (
                       <div
                         key={meeting.id}
                         role="button"
@@ -731,6 +729,11 @@ export function SeniorCrmMeetingsView({
                       </div>
                     ))
                   )}
+                  {!loadingMeetings && visibleMeetings.length > MAX_AGENDA_ITEMS ? (
+                    <p className="text-xs text-muted-foreground">
+                      +{visibleMeetings.length - MAX_AGENDA_ITEMS} more items in this timeline.
+                    </p>
+                  ) : null}
                 </CardContent>
               </Card>
             </aside>

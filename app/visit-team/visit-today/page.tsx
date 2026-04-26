@@ -89,6 +89,16 @@ type ApiResponse = {
   error?: string
 }
 
+type VisitWorkflowSettingsResponse = {
+  success: boolean
+  data?: {
+    control?: {
+      supportDataEnabled?: boolean
+    }
+  }
+  error?: string
+}
+
 type SupportMemberOption = {
   id: string
   fullName: string
@@ -185,6 +195,7 @@ export default function VisitTodayPage() {
   const [supportDialogSaving, setSupportDialogSaving] = useState(false)
   const [statFilter, setStatFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED'>('ALL')
   const [mobileTab, setMobileTab] = useState<'timeline' | 'queue' | 'summary'>('timeline')
+  const [supportDataEnabled, setSupportDataEnabled] = useState(true)
   const mobileQueueRef = useRef<HTMLDivElement | null>(null)
   const desktopQueueRef = useRef<HTMLDivElement | null>(null)
   const shouldScrollToQueueRef = useRef(false)
@@ -208,11 +219,21 @@ export default function VisitTodayPage() {
   useEffect(() => {
     const loadVisits = async () => {
       try {
-        const response = await fetch('/api/visit-schedule')
-        const payload = (await response.json()) as ApiResponse
+        const [visitsResponse, workflowResponse] = await Promise.all([
+          fetch('/api/visit-schedule'),
+          fetch('/api/visit-team/workflow-settings', { cache: 'no-store' }).catch(() => null),
+        ])
+        const payload = (await visitsResponse.json()) as ApiResponse
 
-        if (!response.ok || !payload.success) {
+        if (!visitsResponse.ok || !payload.success) {
           throw new Error(payload.error || 'Failed to load visits')
+        }
+
+        if (workflowResponse) {
+          const workflowPayload = (await workflowResponse.json()) as VisitWorkflowSettingsResponse
+          if (workflowResponse.ok && workflowPayload.success) {
+            setSupportDataEnabled(workflowPayload.data?.control?.supportDataEnabled !== false)
+          }
         }
 
         setVisits(payload.data ?? [])
@@ -295,6 +316,7 @@ export default function VisitTodayPage() {
     if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
     return getVisitRole(visit) === 'LEAD'
   }
+  const isSupportReadOnly = !supportDataEnabled
 
   const todayVisits = useMemo(() => {
     return visits
@@ -444,11 +466,13 @@ export default function VisitTodayPage() {
                       visitRole === 'SUPPORT' && hasSupportDataSubmitted(visit)
                     const supportDisabledReason =
                       visitRole === 'SUPPORT'
-                        ? supportAlreadySubmitted
-                          ? 'Support data already submitted for this visit.'
-                          : !canSubmitSupportData(visit)
-                            ? 'Only the first assigned support member can submit support data.'
-                            : undefined
+                        ? isSupportReadOnly
+                          ? 'Support data workflow is disabled by admin. Support members are read-only.'
+                          : supportAlreadySubmitted
+                            ? 'Support data already submitted for this visit.'
+                            : !canSubmitSupportData(visit)
+                              ? 'Only the first assigned support member can submit support data.'
+                              : undefined
                         : undefined
                     return (
                       <>
@@ -488,13 +512,15 @@ export default function VisitTodayPage() {
                       onClick={() => openCompleteDialog(visit)}
                       disabled={
                         visitRole === 'SUPPORT'
-                          ? supportAlreadySubmitted || !canSubmitSupportData(visit)
+                          ? isSupportReadOnly || supportAlreadySubmitted || !canSubmitSupportData(visit)
                           : visit.status === 'COMPLETED'
                       }
                       title={supportDisabledReason}
                     >
                       {visitRole === 'SUPPORT'
-                        ? supportAlreadySubmitted
+                        ? isSupportReadOnly
+                          ? 'Support Disabled'
+                          : supportAlreadySubmitted
                           ? 'Support Data Submitted'
                           : 'Submit Support Data'
                         : 'Complete Visit'}
@@ -571,6 +597,10 @@ export default function VisitTodayPage() {
   const openCompleteDialog = (visit: VisitRecord) => {
     const role = getVisitRole(visit)
     if (role === 'NONE') return
+    if (role === 'SUPPORT' && isSupportReadOnly) {
+      toast.error('Support data workflow is disabled by admin. Support members are currently read-only.')
+      return
+    }
     if (role === 'SUPPORT' && !canSubmitSupportData(visit)) {
       toast.error('Only the first assigned support member can submit support data for this visit.')
       return
@@ -661,11 +691,16 @@ export default function VisitTodayPage() {
 
   const handleCompleteVisit = async () => {
     if (!completeVisit) return
-    const primarySupportPending = completeRole === 'LEAD' ? hasPendingPrimarySupportData(completeVisit) : false
+    const primarySupportPending =
+      completeRole === 'LEAD' && supportDataEnabled ? hasPendingPrimarySupportData(completeVisit) : false
     if (primarySupportPending) {
       setCompleteError(
         'Visit cannot be completed yet. The first support member must submit support data first.',
       )
+      return
+    }
+    if (completeRole === 'SUPPORT' && isSupportReadOnly) {
+      setCompleteError('Support data workflow is disabled by admin. Support members are read-only.')
       return
     }
     if (completeRole === 'SUPPORT' && !canSubmitSupportData(completeVisit)) {
@@ -863,6 +898,11 @@ export default function VisitTodayPage() {
         subtitle="Track today&apos;s visit queue and complete outcomes quickly."
       />
       <div className="mx-auto max-w-[1440px] overflow-x-hidden px-4 py-5 sm:px-6 sm:py-6">
+        {isSupportReadOnly ? (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Admin has disabled support data workflow. Support members are in read-only mode.
+          </div>
+        ) : null}
         <div className="mb-6 flex justify-end">
           <Badge variant="secondary" className="w-fit gap-1.5 px-3 py-1 text-sm font-semibold">
             <CalendarDays className="size-3.5" />
@@ -1075,6 +1115,7 @@ export default function VisitTodayPage() {
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-0 sm:py-4">
             {completeRole === 'LEAD' &&
             completeVisit &&
+            supportDataEnabled &&
             hasPendingPrimarySupportData(completeVisit) ? (
               <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                 This visit cannot be completed yet. The first support member must submit support data first.

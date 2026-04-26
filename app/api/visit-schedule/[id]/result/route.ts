@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
 import { autoCompletePendingFollowups } from '@/lib/followup-auto-complete'
 import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service'
+import { getVisitWorkflowControlState } from '@/lib/visit-workflow-control'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
 const MAX_UPLOAD_FILES = 10
@@ -252,6 +253,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const formData = await request.formData()
+    const visitWorkflow = await getVisitWorkflowControlState()
     const summary = toOptionalString(formData.get('summary'))
     const clientMood = toOptionalString(formData.get('clientMood'))
     const note = toOptionalString(formData.get('note'))
@@ -365,6 +367,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (shouldSubmitSupport && supportAssignment) {
+        if (!visitWorkflow.supportDataEnabled) {
+          throw new Error('SUPPORT_DISABLED')
+        }
+
         if (!supportClientName || !supportProjectArea || !supportProjectStatus) {
           throw new Error('SUPPORT_FIELDS_REQUIRED')
         }
@@ -482,7 +488,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!summary) {
         throw new Error('LEAD_SUMMARY_REQUIRED')
       }
-      const isPrimarySupportPending = Boolean(primarySupportAssignment && !primarySupportAssignment.result)
+      const isPrimarySupportPending =
+        visitWorkflow.supportDataEnabled && Boolean(primarySupportAssignment && !primarySupportAssignment.result)
       if (isPrimarySupportPending) {
         throw new Error('SUPPORT_PENDING')
       }
@@ -665,6 +672,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         {
           success: false,
           error: 'Only the first assigned support member can submit support data for this visit.',
+        },
+        { status: 403 },
+      )
+    }
+
+    if (error instanceof Error && error.message === 'SUPPORT_DISABLED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Support data submission is disabled by admin settings.',
         },
         { status: 403 },
       )
