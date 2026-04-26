@@ -26,6 +26,8 @@ import {
 import { logActivity, logLeadStageChanged, logLeadSubStatusChanged } from '@/lib/activity-log-service'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
+const BLOB_UPLOAD_MAX_ATTEMPTS = 3
+const BLOB_UPLOAD_RETRY_DELAY_MS = 350
 
 async function resolveLeadId(context: RouteContext): Promise<string | null> {
   const resolvedParams = await context.params
@@ -77,6 +79,81 @@ async function uploadCadFileToBlob(input: {
     fileName: input.file.name || safeName,
     fileType: resolvedFileType,
   }
+}
+
+function waitMs(duration: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, duration))
+}
+
+async function uploadCadFileToBlobWithRetry(input: {
+  leadId: string
+  file: File
+}): Promise<{ url: string; fileName: string; fileType: string }> {
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= BLOB_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await uploadCadFileToBlob(input)
+    } catch (error) {
+      lastError = error
+      if (attempt < BLOB_UPLOAD_MAX_ATTEMPTS) {
+        await waitMs(BLOB_UPLOAD_RETRY_DELAY_MS * attempt)
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Upload failed')
+}
+
+type UploadedCadFileMeta = {
+  url: string
+  fileName: string
+  fileType: string
+  sizeBytes: number
+  cadFileType: CadSubmissionFileType
+}
+
+type FailedCadUploadMeta = {
+  fileName: string
+  reason: string
+}
+
+async function uploadCadFilesToBlob(input: {
+  leadId: string
+  files: File[]
+  cadFileTypes: CadSubmissionFileType[]
+}): Promise<{ uploadedFiles: UploadedCadFileMeta[]; failedUploads: FailedCadUploadMeta[] }> {
+  if (input.files.length === 0) {
+    return { uploadedFiles: [], failedUploads: [] }
+  }
+
+  const settled = await Promise.allSettled(
+    input.files.map((file) => uploadCadFileToBlobWithRetry({ leadId: input.leadId, file })),
+  )
+
+  const uploadedFiles: UploadedCadFileMeta[] = []
+  const failedUploads: FailedCadUploadMeta[] = []
+
+  settled.forEach((result, index) => {
+    const inputFile = input.files[index]
+    if (result.status === 'fulfilled') {
+      uploadedFiles.push({
+        ...result.value,
+        sizeBytes: inputFile.size,
+        cadFileType: input.cadFileTypes[index],
+      })
+      return
+    }
+
+    const reason =
+      result.reason instanceof Error
+        ? result.reason.message
+        : 'Temporary upload failure'
+    failedUploads.push({
+      fileName: inputFile.name || `file-${index + 1}`,
+      reason,
+    })
+  })
+
+  return { uploadedFiles, failedUploads }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -212,21 +289,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
 
       const now = new Date()
-      const uploadedFiles = []
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index]
-        const cadFileType = cadFileTypes[index]
-        const uploaded = await uploadCadFileToBlob({ leadId: lead.id, file })
-        uploadedFiles.push(uploaded)
-
+      const { uploadedFiles, failedUploads } = await uploadCadFilesToBlob({
+        leadId: lead.id,
+        files,
+        cadFileTypes,
+      })
+      if (uploadedFiles.length === 0) {
+        throw new Error('CAD_UPLOAD_FAILED')
+      }
+      for (const uploaded of uploadedFiles) {
         await tx.cadWorkSubmissionFile.create({
           data: {
             submissionId: submission.id,
             url: uploaded.url,
             fileName: uploaded.fileName,
             fileType: uploaded.fileType,
-            cadFileType,
-            sizeBytes: file.size,
+            cadFileType: uploaded.cadFileType,
+            sizeBytes: uploaded.sizeBytes,
           },
         })
 
@@ -237,7 +316,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             fileName: uploaded.fileName,
             fileType: uploaded.fileType,
             category: toLeadAttachmentCategory(uploaded.fileType),
-            sizeBytes: file.size,
+            sizeBytes: uploaded.sizeBytes,
           },
         })
       }
@@ -343,7 +422,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return {
         lead: updatedLead,
         submissionId: submission.id,
+        uploadWarnings:
+          failedUploads.length > 0
+            ? {
+                failedCount: failedUploads.length,
+                failedFiles: failedUploads.map((item) => item.fileName),
+              }
+            : null,
       }
+    }, {
+      maxWait: 10_000,
+      timeout: 60_000,
     })
 
     return NextResponse.json(
@@ -373,6 +462,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { success: false, error: 'CAD work has already been submitted for this lead' },
         { status: 409 },
+      )
+    }
+    if (error instanceof Error && error.message === 'CAD_UPLOAD_FAILED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'All file uploads failed after retries. Please try again.',
+        },
+        { status: 503 },
       )
     }
 

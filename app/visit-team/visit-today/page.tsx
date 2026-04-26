@@ -25,7 +25,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Clock, MapPin, AlertCircle, Loader2, CalendarDays, CheckCircle2, XCircle, Phone } from 'lucide-react'
+import {
+  Clock,
+  MapPin,
+  AlertCircle,
+  Loader2,
+  CalendarDays,
+  CheckCircle2,
+  XCircle,
+  Phone,
+  FileImage,
+  FileText,
+  FileVideo,
+} from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import { fetchMeCached } from '@/lib/client-me'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
@@ -103,6 +115,15 @@ type SupportMemberOption = {
   id: string
   fullName: string
   email: string
+}
+
+type SubmitVisitResultResponse = {
+  success?: boolean
+  error?: string
+  uploadWarnings?: {
+    failedCount?: number
+    failedFiles?: string[]
+  } | null
 }
 
 type ProjectStatusOption = {
@@ -184,6 +205,8 @@ export default function VisitTodayPage() {
   const [projectStatusOptions, setProjectStatusOptions] =
     useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
+  const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([])
+  const [failedUploadFiles, setFailedUploadFiles] = useState<string[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
   const [supportDialogOpen, setSupportDialogOpen] = useState(false)
@@ -205,6 +228,49 @@ export default function VisitTodayPage() {
     const target = isDesktop ? desktopQueueRef.current : mobileQueueRef.current
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  const getFileIcon = (file: File) => {
+    if (file.type.startsWith('image/')) return FileImage
+    if (file.type.startsWith('video/')) return FileVideo
+    return FileText
+  }
+
+  const selectedFilesStatusList =
+    completeFiles.length > 0 ? (
+      <div className="space-y-1 rounded-md border border-border/70 bg-muted/20 p-2">
+        {completeFiles.map((file, index) => {
+          const isUploading = submittingComplete && uploadingFileNames.includes(file.name)
+          const isFailed = failedUploadFiles.includes(file.name)
+          const Icon = getFileIcon(file)
+          return (
+            <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <Icon className="size-3.5 shrink-0" />
+                <span className="truncate">{file.name}</span>
+              </div>
+              <div className="shrink-0">
+                {isUploading ? (
+                  <span className="inline-flex items-center gap-1 text-primary">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Uploading...
+                  </span>
+                ) : isFailed ? (
+                  <span className="inline-flex items-center gap-1 text-destructive">
+                    <XCircle className="size-3.5" />
+                    Failed
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                    <CheckCircle2 className="size-3.5" />
+                    Ready
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    ) : null
 
   useEffect(() => {
     fetchMeCached()
@@ -628,6 +694,8 @@ export default function VisitTodayPage() {
     setSupportProjectStatus(existingSupportResult?.projectStatus ?? visit.projectStatus ?? '')
     setSupportExtraConcern(existingSupportResult?.extraConcern ?? '')
     setCompleteFiles([])
+    setUploadingFileNames([])
+    setFailedUploadFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
   }
@@ -720,6 +788,8 @@ export default function VisitTodayPage() {
 
     setSubmittingComplete(true)
     setCompleteError(null)
+    setFailedUploadFiles([])
+    setUploadingFileNames(completeFiles.map((file) => file.name))
     try {
       const formData = new FormData()
       formData.append('resultType', completeRole)
@@ -748,14 +818,25 @@ export default function VisitTodayPage() {
         method: 'POST',
         body: formData,
       })
-      const payload = await response.json()
+      const payload = (await response.json()) as SubmitVisitResultResponse
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || 'Failed to complete visit')
+      }
+      const failedFiles = Array.isArray(payload.uploadWarnings?.failedFiles)
+        ? payload.uploadWarnings.failedFiles
+        : []
+      setFailedUploadFiles(failedFiles)
+      if (failedFiles.length > 0) {
+        toast.info(
+          `Submitted with attachment warnings: ${failedFiles.slice(0, 5).join(', ')}${failedFiles.length > 5 ? ` (+${failedFiles.length - 5} more)` : ''}`,
+        )
       }
 
       setCompleteOpen(false)
       setCompleteVisit(null)
       setCompleteFiles([])
+      setUploadingFileNames([])
+      setFailedUploadFiles([])
       toast.success(
         completeRole === 'SUPPORT'
           ? 'Support data submitted.'
@@ -773,6 +854,7 @@ export default function VisitTodayPage() {
       setCompleteError(message)
       toast.error(message)
     } finally {
+      setUploadingFileNames([])
       setSubmittingComplete(false)
       setLoading(false)
     }
@@ -1173,12 +1255,16 @@ export default function VisitTodayPage() {
                   <Input
                     type="file"
                     multiple
-                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                    onChange={(event) => {
+                      setCompleteFiles(Array.from(event.target.files ?? []))
+                      setFailedUploadFiles([])
+                    }}
                     className="text-sm"
                   />
                   {completeFiles.length > 0 ? (
                     <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
                   ) : null}
+                  {selectedFilesStatusList}
                 </div>
               </>
             ) : (
@@ -1392,12 +1478,16 @@ export default function VisitTodayPage() {
                     <Input
                       type="file"
                       multiple
-                      onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                      onChange={(event) => {
+                        setCompleteFiles(Array.from(event.target.files ?? []))
+                        setFailedUploadFiles([])
+                      }}
                       className="text-sm"
                     />
                     {completeFiles.length > 0 ? (
                       <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
                     ) : null}
+                    {selectedFilesStatusList}
                   </TabsContent>
                 </Tabs>
               </>

@@ -11,6 +11,8 @@ import { getVisitWorkflowControlState } from '@/lib/visit-workflow-control'
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
 const MAX_UPLOAD_FILES = 10
 const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const BLOB_UPLOAD_MAX_ATTEMPTS = 3
+const BLOB_UPLOAD_RETRY_DELAY_MS = 350
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -95,6 +97,78 @@ async function uploadFileToBlob(
     fileName: file.name || safeName,
     fileType,
   }
+}
+
+function waitMs(duration: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, duration))
+}
+
+async function uploadFileToBlobWithRetry(
+  keyPrefix: string,
+  file: File,
+): Promise<{ url: string; fileName: string; fileType: string }> {
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= BLOB_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await uploadFileToBlob(keyPrefix, file)
+    } catch (error) {
+      lastError = error
+      if (attempt < BLOB_UPLOAD_MAX_ATTEMPTS) {
+        await waitMs(BLOB_UPLOAD_RETRY_DELAY_MS * attempt)
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Upload failed')
+}
+
+type UploadedFileMeta = {
+  url: string
+  fileName: string
+  fileType: string
+  sizeBytes: number
+}
+
+type FailedUploadMeta = {
+  fileName: string
+  reason: string
+}
+
+async function uploadFilesToBlob(
+  keyPrefix: string,
+  files: File[],
+): Promise<{ uploadedFiles: UploadedFileMeta[]; failedUploads: FailedUploadMeta[] }> {
+  if (files.length === 0) {
+    return { uploadedFiles: [], failedUploads: [] }
+  }
+
+  const settled = await Promise.allSettled(
+    files.map((file) => uploadFileToBlobWithRetry(keyPrefix, file)),
+  )
+
+  const uploadedFiles: UploadedFileMeta[] = []
+  const failedUploads: FailedUploadMeta[] = []
+
+  settled.forEach((result, index) => {
+    const inputFile = files[index]
+    if (result.status === 'fulfilled') {
+      uploadedFiles.push({
+        ...result.value,
+        sizeBytes: inputFile.size,
+      })
+      return
+    }
+
+    const reason =
+      result.reason instanceof Error
+        ? result.reason.message
+        : 'Temporary upload failure'
+    failedUploads.push({
+      fileName: inputFile.name || `file-${index + 1}`,
+      reason,
+    })
+  })
+
+  return { uploadedFiles, failedUploads }
 }
 
 async function resolveAttachmentReadUrl(url: string): Promise<string> {
@@ -432,30 +506,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
           })
         }
 
-        if (files.length > 0) {
-          for (const file of files) {
-            const uploaded = await uploadFileToBlob(`visit-support-results/${visitId}`, file)
+        const { uploadedFiles: uploadedSupportFiles, failedUploads } = await uploadFilesToBlob(
+          `visit-support-results/${visitId}`,
+          files,
+        )
+        for (const uploaded of uploadedSupportFiles) {
+          await tx.supportAttachment.create({
+            data: {
+              supportResultId: supportResult.id,
+              url: uploaded.url,
+              fileName: uploaded.fileName,
+              fileType: uploaded.fileType,
+            },
+          })
 
-            await tx.supportAttachment.create({
-              data: {
-                supportResultId: supportResult.id,
-                url: uploaded.url,
-                fileName: uploaded.fileName,
-                fileType: uploaded.fileType,
-              },
-            })
-
-            await tx.leadAttachment.create({
-              data: {
-                leadId: visit.leadId,
-                url: uploaded.url,
-                fileName: uploaded.fileName,
-                fileType: uploaded.fileType,
-                category: getLeadAttachmentCategory(uploaded.fileType),
-                sizeBytes: file.size,
-              },
-            })
-          }
+          await tx.leadAttachment.create({
+            data: {
+              leadId: visit.leadId,
+              url: uploaded.url,
+              fileName: uploaded.fileName,
+              fileType: uploaded.fileType,
+              category: getLeadAttachmentCategory(uploaded.fileType),
+              sizeBytes: uploaded.sizeBytes,
+            },
+          })
         }
 
         await logActivity(tx, {
@@ -479,6 +553,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           kind: 'SUPPORT' as const,
           updated: Boolean(existingSupportResult),
           payload: savedSupportResult,
+          failedUploads,
         }
       }
 
@@ -539,30 +614,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
         })
       }
 
-      if (files.length > 0) {
-        for (const file of files) {
-          const uploaded = await uploadFileToBlob(`visit-results/${visitId}`, file)
+      const { uploadedFiles: uploadedLeadFiles, failedUploads } = await uploadFilesToBlob(
+        `visit-results/${visitId}`,
+        files,
+      )
+      for (const uploaded of uploadedLeadFiles) {
+        await tx.attachment.create({
+          data: {
+            visitResultId: savedResult.id,
+            url: uploaded.url,
+            fileName: uploaded.fileName,
+            fileType: uploaded.fileType,
+          },
+        })
 
-          await tx.attachment.create({
-            data: {
-              visitResultId: savedResult.id,
-              url: uploaded.url,
-              fileName: uploaded.fileName,
-              fileType: uploaded.fileType,
-            },
-          })
-
-          await tx.leadAttachment.create({
-            data: {
-              leadId: visit.leadId,
-              url: uploaded.url,
-              fileName: uploaded.fileName,
-              fileType: uploaded.fileType,
-              category: getLeadAttachmentCategory(uploaded.fileType),
-              sizeBytes: file.size,
-            },
-          })
-        }
+        await tx.leadAttachment.create({
+          data: {
+            leadId: visit.leadId,
+            url: uploaded.url,
+            fileName: uploaded.fileName,
+            fileType: uploaded.fileType,
+            category: getLeadAttachmentCategory(uploaded.fileType),
+            sizeBytes: uploaded.sizeBytes,
+          },
+        })
       }
 
       if (visit.lead.stage !== LeadStage.VISIT_PHASE || visit.lead.subStatus !== LeadSubStatus.VISIT_COMPLETED) {
@@ -620,7 +695,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         kind: 'LEAD' as const,
         updated: hadLeadResult,
         payload: leadResult,
+        failedUploads,
       }
+    }, {
+      maxWait: 10_000,
+      timeout: 60_000,
     })
 
     return NextResponse.json(
@@ -635,6 +714,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
             : result.updated
               ? 'Visit result updated successfully'
               : 'Visit result submitted successfully',
+        uploadWarnings:
+          (result.failedUploads?.length ?? 0) > 0
+            ? {
+                failedCount: result.failedUploads.length,
+                failedFiles: result.failedUploads.map((item) => item.fileName),
+              }
+            : null,
       },
       { status: result.updated ? 200 : 201 },
     )

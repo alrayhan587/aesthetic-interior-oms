@@ -24,7 +24,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, MapPin, Clock, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import {
+  Plus,
+  MapPin,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  FileImage,
+  FileText,
+  FileVideo,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { fetchMeCached } from '@/lib/client-me'
 import { toast } from '@/components/ui/sonner'
@@ -110,6 +122,15 @@ type SupportMemberOption = {
   id: string
   fullName: string
   email: string
+}
+
+type SubmitVisitResultResponse = {
+  success?: boolean
+  error?: string
+  uploadWarnings?: {
+    failedCount?: number
+    failedFiles?: string[]
+  } | null
 }
 
 type VisitsCacheEntry = {
@@ -206,6 +227,8 @@ export function VisitsPageView({
   const [projectStatusOptions, setProjectStatusOptions] =
     useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
+  const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([])
+  const [failedUploadFiles, setFailedUploadFiles] = useState<string[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
@@ -234,6 +257,49 @@ export function VisitsPageView({
     const day = String(date.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   }
+
+  const getFileIcon = (file: File) => {
+    if (file.type.startsWith('image/')) return FileImage
+    if (file.type.startsWith('video/')) return FileVideo
+    return FileText
+  }
+
+  const selectedFilesStatusList =
+    completeFiles.length > 0 ? (
+      <div className="space-y-1 rounded-md border border-border/70 bg-muted/20 p-2">
+        {completeFiles.map((file, index) => {
+          const isUploading = submittingComplete && uploadingFileNames.includes(file.name)
+          const isFailed = failedUploadFiles.includes(file.name)
+          const Icon = getFileIcon(file)
+          return (
+            <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <Icon className="size-3.5 shrink-0" />
+                <span className="truncate">{file.name}</span>
+              </div>
+              <div className="shrink-0">
+                {isUploading ? (
+                  <span className="inline-flex items-center gap-1 text-primary">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Uploading...
+                  </span>
+                ) : isFailed ? (
+                  <span className="inline-flex items-center gap-1 text-destructive">
+                    <XCircle className="size-3.5" />
+                    Failed
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-emerald-600">
+                    <CheckCircle2 className="size-3.5" />
+                    Ready
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    ) : null
 
   useEffect(() => {
     setSelectedDate(formatLocalDateKey(new Date()))
@@ -551,6 +617,8 @@ export function VisitsPageView({
     setSupportProjectStatus(existingSupportResult?.projectStatus ?? visit.projectStatus ?? '')
     setSupportExtraConcern(existingSupportResult?.extraConcern ?? '')
     setCompleteFiles([])
+    setUploadingFileNames([])
+    setFailedUploadFiles([])
     setCompleteError(null)
     setCompleteOpen(true)
   }
@@ -837,6 +905,8 @@ export function VisitsPageView({
 
     setSubmittingComplete(true)
     setCompleteError(null)
+    setFailedUploadFiles([])
+    setUploadingFileNames(completeFiles.map((file) => file.name))
     try {
       const formData = new FormData()
       formData.append('resultType', completeRole)
@@ -866,9 +936,18 @@ export function VisitsPageView({
         body: formData,
       })
 
-      const payload = await res.json()
+      const payload = (await res.json()) as SubmitVisitResultResponse
       if (!res.ok || !payload?.success) {
         throw new Error(payload?.error || 'Failed to complete visit')
+      }
+      const failedFiles = Array.isArray(payload.uploadWarnings?.failedFiles)
+        ? payload.uploadWarnings.failedFiles
+        : []
+      setFailedUploadFiles(failedFiles)
+      if (failedFiles.length > 0) {
+        toast.info(
+          `Submitted with attachment warnings: ${failedFiles.slice(0, 5).join(', ')}${failedFiles.length > 5 ? ` (+${failedFiles.length - 5} more)` : ''}`,
+        )
       }
 
       visitsCacheByScope = {}
@@ -879,6 +958,8 @@ export function VisitsPageView({
       setCompleteNote('')
       setCompleteProjectStatus('')
       setCompleteFiles([])
+      setUploadingFileNames([])
+      setFailedUploadFiles([])
       toast.success(completeRole === 'SUPPORT' ? 'Support data submitted.' : 'Visit marked as completed.')
 
       setLoading(true)
@@ -894,6 +975,7 @@ export function VisitsPageView({
       setCompleteError(message)
       toast.error(message)
     } finally {
+      setUploadingFileNames([])
       setSubmittingComplete(false)
       setLoading(false)
     }
@@ -1735,11 +1817,15 @@ export function VisitsPageView({
                   <Input
                     type="file"
                     multiple
-                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                    onChange={(event) => {
+                      setCompleteFiles(Array.from(event.target.files ?? []))
+                      setFailedUploadFiles([])
+                    }}
                   />
                   {completeFiles.length > 0 ? (
                     <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
                   ) : null}
+                  {selectedFilesStatusList}
                 </div>
               </>
             ) : (
@@ -1950,11 +2036,15 @@ export function VisitsPageView({
                   <Input
                     type="file"
                     multiple
-                    onChange={(event) => setCompleteFiles(Array.from(event.target.files ?? []))}
+                    onChange={(event) => {
+                      setCompleteFiles(Array.from(event.target.files ?? []))
+                      setFailedUploadFiles([])
+                    }}
                   />
                   {completeFiles.length > 0 ? (
                     <p className="text-xs text-muted-foreground">{completeFiles.length} file(s) selected</p>
                   ) : null}
+                  {selectedFilesStatusList}
                 </TabsContent>
               </Tabs>
             )}
