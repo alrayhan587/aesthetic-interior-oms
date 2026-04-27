@@ -243,6 +243,22 @@ export async function PUT(
       }
     }
 
+    if (department === 'QUOTATION') {
+      const actorDepartments = new Set(authResult.actor.userDepartments ?? []);
+      const canUpdateQuotationAssignment =
+        actorDepartments.has('ADMIN') || actorDepartments.has('SR_CRM');
+
+      if (!canUpdateQuotationAssignment) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Only Admin or Senior CRM can reassign quotation member',
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     // Verify lead exists
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },

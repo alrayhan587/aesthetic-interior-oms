@@ -31,6 +31,10 @@ type LeadRecord = {
     id: string
     user: { id: string; fullName: string; email: string }
   } | null
+  quotationAssignment: {
+    id: string
+    user: { id: string; fullName: string; email: string }
+  } | null
   latestFirstMeeting: {
     id: string
     title: string
@@ -40,6 +44,7 @@ type LeadRecord = {
   canSetMeeting: boolean
   canSubmitMeetingData: boolean
   canReassignJrArchitect?: boolean
+  canReassignQuotation?: boolean
 }
 
 type QueueResponse = {
@@ -105,6 +110,7 @@ export function CadPhaseQueueBoard({
   const [quotationMembers, setQuotationMembers] = useState<DepartmentUser[]>([])
   const [quotationMemberId, setQuotationMemberId] = useState('')
   const [loadingQuotationMembers, setLoadingQuotationMembers] = useState(false)
+  const [reassignQuotationOpen, setReassignQuotationOpen] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 400)
@@ -205,6 +211,45 @@ export function CadPhaseQueueBoard({
     }
   }
 
+  const openReassignQuotation = async (lead: LeadRecord) => {
+    if (!lead.canReassignQuotation) {
+      toast.error('Quotation reassignment is only available during quotation assigned/working.')
+      return
+    }
+    setActiveLead(lead)
+    setQuotationMemberId(lead.quotationAssignment?.user.id ?? '')
+    setReassignQuotationOpen(true)
+    await loadQuotationMembers()
+  }
+
+  const submitReassignQuotation = async () => {
+    if (!activeLead || !quotationMemberId) return
+    if (!activeLead.canReassignQuotation) {
+      toast.error('Quotation reassignment is only available during quotation assigned/working.')
+      return
+    }
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/lead/${activeLead.id}/assignments/QUOTATION`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: quotationMemberId }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error ?? 'Failed to reassign quotation')
+      }
+      toast.success('Quotation reassigned successfully')
+      setReassignQuotationOpen(false)
+      setActiveLead(null)
+      await loadLeads()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to reassign quotation')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const openFirstMeetingDialog = (lead: LeadRecord) => {
     setActiveLead(lead)
     setMeetingAt(toDateTimeLocalInput(new Date()))
@@ -271,6 +316,10 @@ export function CadPhaseQueueBoard({
 
   const submitCompleteMeeting = async () => {
     if (!completeMeetingLead) return
+    if (!quotationMemberId) {
+      toast.error('Select a quotation member to complete meeting')
+      return
+    }
     setSaving(true)
     try {
       const response = await fetch(`/api/lead/${completeMeetingLead.id}/meetings/complete`, {
@@ -359,19 +408,15 @@ export function CadPhaseQueueBoard({
                       <Button asChild size="sm" variant="outline">
                         <Link href={`${leadBasePath}/${lead.id}`}>Open Lead</Link>
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openReassign(lead)}
-                        disabled={lead.canReassignJrArchitect === false}
-                        title={
-                          lead.canReassignJrArchitect === false
-                            ? 'Reassign is disabled after CAD approval'
-                            : undefined
-                        }
-                      >
-                        Reassign JR Architect
-                      </Button>
+                      {lead.canReassignJrArchitect !== false ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openReassign(lead)}
+                        >
+                          Reassign JR Architect
+                        </Button>
+                      ) : null}
                       {cadApprovedOnly ? (
                         lead.canSetMeeting ? (
                           <Button size="sm" onClick={() => openFirstMeetingDialog(lead)}>
@@ -382,6 +427,10 @@ export function CadPhaseQueueBoard({
                           <Button size="sm" onClick={() => void openCompleteMeetingDialog(lead)}>
                             <CalendarClock className="mr-1 h-4 w-4" />
                             Complete Meeting
+                          </Button>
+                        ) : lead.canReassignQuotation ? (
+                          <Button size="sm" variant="outline" onClick={() => void openReassignQuotation(lead)}>
+                            Reassign Quotation
                           </Button>
                         ) : null
                       ) : null}
@@ -405,6 +454,12 @@ export function CadPhaseQueueBoard({
                       <UserRound className="h-3.5 w-3.5" />
                       SR CRM: {lead.srCrmAssignment?.user.fullName ?? 'Unassigned'}
                     </p>
+                    {cadApprovedOnly ? (
+                      <p className="inline-flex items-center gap-1">
+                        <UserRound className="h-3.5 w-3.5" />
+                        Quotation: {lead.quotationAssignment?.user.fullName ?? 'Unassigned'}
+                      </p>
+                    ) : null}
                     {cadApprovedOnly && lead.latestFirstMeeting ? (
                       <p className="inline-flex items-center gap-1 md:col-span-2">
                         <CalendarClock className="h-3.5 w-3.5" />
@@ -478,7 +533,44 @@ export function CadPhaseQueueBoard({
           </div>
           <DialogFooter>
             <Button disabled={saving || !meetingAt} onClick={submitFirstMeeting}>
-              Submit Meeting Data
+              Schedule Meeting
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reassignQuotationOpen} onOpenChange={setReassignQuotationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reassign Quotation</DialogTitle>
+            <DialogDescription>Select a quotation member for this lead.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Quotation Member</Label>
+            <Select value={quotationMemberId} onValueChange={setQuotationMemberId}>
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    loadingQuotationMembers
+                      ? 'Loading members...'
+                      : quotationMembers.length === 0
+                        ? 'No quotation members available'
+                        : 'Select quotation member'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {quotationMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button disabled={saving || !quotationMemberId} onClick={submitReassignQuotation}>
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -494,7 +586,7 @@ export function CadPhaseQueueBoard({
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Quotation Member (optional)</Label>
+              <Label>Quotation Member</Label>
               <Select value={quotationMemberId} onValueChange={setQuotationMemberId}>
                 <SelectTrigger>
                   <SelectValue

@@ -188,11 +188,23 @@ async function ensureJrArchitectUser(tx: Prisma.TransactionClient, userId: strin
   return user
 }
 
-export async function listVisitCompleteQueueItems(): Promise<VisitCompleteQueueItem[]> {
+export async function listVisitCompleteQueueItems(input?: {
+  srAssigneeUserId?: string | null
+}): Promise<VisitCompleteQueueItem[]> {
   const leads = await prisma.lead.findMany({
     where: {
       stage: LeadStage.VISIT_PHASE,
       subStatus: LeadSubStatus.VISIT_COMPLETED,
+      ...(input?.srAssigneeUserId
+        ? {
+            assignments: {
+              some: {
+                department: LeadAssignmentDepartment.SR_CRM,
+                userId: input.srAssigneeUserId,
+              },
+            },
+          }
+        : {}),
     },
     select: {
       id: true,

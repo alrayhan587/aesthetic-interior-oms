@@ -57,6 +57,11 @@ export async function GET(request: NextRequest) {
               subStatus: LeadSubStatus.FIRST_MEETING_SET,
               cadWorkSubmissions: { some: {} },
             },
+            {
+              stage: LeadStage.QUOTATION_PHASE,
+              subStatus: { in: [LeadSubStatus.QUOTATION_ASSIGNED, LeadSubStatus.QUOTATION_WORKING] },
+              cadWorkSubmissions: { some: {} },
+            },
           ],
         }
       : {
@@ -73,11 +78,21 @@ export async function GET(request: NextRequest) {
         }
       : null
 
-    const where: Prisma.LeadWhereInput = searchScope
-      ? {
-          AND: [phaseScope, searchScope],
-        }
-      : phaseScope
+    const srScope: Prisma.LeadWhereInput =
+      isSeniorCrm && !isAdmin
+        ? {
+            assignments: {
+              some: {
+                department: LeadAssignmentDepartment.SR_CRM,
+                userId: authResult.actorUserId,
+              },
+            },
+          }
+        : {}
+
+    const where: Prisma.LeadWhereInput = {
+      AND: [phaseScope, srScope, ...(searchScope ? [searchScope] : [])],
+    }
 
     const leads = await prisma.lead.findMany({
       where,
@@ -86,7 +101,11 @@ export async function GET(request: NextRequest) {
         assignments: {
           where: {
             department: {
-              in: [LeadAssignmentDepartment.JR_ARCHITECT, LeadAssignmentDepartment.SR_CRM],
+              in: [
+                LeadAssignmentDepartment.JR_ARCHITECT,
+                LeadAssignmentDepartment.SR_CRM,
+                LeadAssignmentDepartment.QUOTATION,
+              ],
             },
           },
           include: {
@@ -120,6 +139,8 @@ export async function GET(request: NextRequest) {
           lead.assignments.find((item) => item.department === LeadAssignmentDepartment.JR_ARCHITECT) ?? null
         const srCrmAssignment =
           lead.assignments.find((item) => item.department === LeadAssignmentDepartment.SR_CRM) ?? null
+        const quotationAssignment =
+          lead.assignments.find((item) => item.department === LeadAssignmentDepartment.QUOTATION) ?? null
 
         return {
           id: lead.id,
@@ -132,6 +153,7 @@ export async function GET(request: NextRequest) {
           budget: lead.budget,
           jrArchitectAssignment,
           srCrmAssignment,
+          quotationAssignment,
           latestFirstMeeting: lead.meetingEvents[0] ?? null,
           canSetMeeting:
             lead.stage === LeadStage.CAD_PHASE && lead.subStatus === LeadSubStatus.CAD_APPROVED,
@@ -140,8 +162,13 @@ export async function GET(request: NextRequest) {
           canReassignJrArchitect:
             !(
               lead.subStatus === LeadSubStatus.CAD_APPROVED ||
-              (lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET)
+              (lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET) ||
+              lead.stage === LeadStage.QUOTATION_PHASE
             ),
+          canReassignQuotation:
+            lead.stage === LeadStage.QUOTATION_PHASE &&
+            (lead.subStatus === LeadSubStatus.QUOTATION_ASSIGNED ||
+              lead.subStatus === LeadSubStatus.QUOTATION_WORKING),
         }
       }),
     })
