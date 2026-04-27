@@ -92,7 +92,7 @@ export function LeadInfoCard({ lead, stage, hasPendingFollowup }: LeadInfoCardPr
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className={`px-4 py-2 rounded-full text-sm font-medium ${stageColors[stage]}`}>
-              {stage}
+              {formatLabel(stage)}
             </span>
             <span className="px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
               {lead.subStatus ? formatLabel(lead.subStatus) : 'No substatus'}

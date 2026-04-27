@@ -948,7 +948,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="flex items-center justify-between gap-3">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${stageColors[lead.stage]}`}>
-                            {lead.stage}
+                            {formatStageDisplay(lead.stage)}
                           </span>
                           <div className="flex items-center gap-2">
                             <Link href={getLeadHref(lead.id, { openSchedule: true })}>
@@ -1025,7 +1025,7 @@ export default function LeadsPage() {
                           <td className="py-4 px-4">{lead.location || '—'}</td>
                           <td className="py-4 px-4">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${stageColors[lead.stage]}`}>
-                              {lead.stage}
+                              {formatStageDisplay(lead.stage)}
                             </span>
                           </td>
                           <td className="py-4 px-4 text-center">

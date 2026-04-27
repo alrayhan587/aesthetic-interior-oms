@@ -41,6 +41,7 @@ import { CrmPageHeader } from '@/components/crm/shared/page-header'
 import { fetchMeCached } from '@/lib/client-me'
 import { toast } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
+import { hasVisitTeamLeadershipRole } from '@/lib/visit-team-roles'
 import {
   budgetRangeOptions,
   clientMoodOptions,
@@ -200,6 +201,8 @@ export function VisitsPageView({
   const [searchTerm, setSearchTerm] = useState('')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [actorDepartments, setActorDepartments] = useState<Set<string>>(new Set())
+  const [isAdminActor, setIsAdminActor] = useState(false)
+  const [isVisitTeamLeaderActor, setIsVisitTeamLeaderActor] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
   const [requestVisitId, setRequestVisitId] = useState('')
   const [requestType, setRequestType] = useState<'RESCHEDULE' | 'CANCEL'>('RESCHEDULE')
@@ -367,6 +370,13 @@ export function VisitsPageView({
               .filter((name): name is string => Boolean(name))
           : []
         setActorDepartments(new Set(departments))
+        setIsAdminActor(departments.includes('ADMIN'))
+        const roleNames = Array.isArray((data as { userRoles?: unknown }).userRoles)
+          ? ((data as { userRoles?: Array<{ role?: { name?: string | null } | null } | null> }).userRoles ?? [])
+              .map((item) => item?.role?.name)
+              .filter((name): name is string => Boolean(name))
+          : []
+        setIsVisitTeamLeaderActor(hasVisitTeamLeadershipRole(roleNames))
       })
       .catch((error) => {
         console.error('Error loading current user:', error)
@@ -491,6 +501,7 @@ export function VisitsPageView({
   }, [currentDate, daysInMonth, visitsByDate])
 
   const canViewVisit = (visit: VisitRecord) => {
+    if (isAdminActor || isVisitTeamLeaderActor) return true
     if (blurUnassignedVisitDetails) {
       return getVisitRole(visit) !== 'NONE'
     }
@@ -565,12 +576,13 @@ export function VisitsPageView({
 
   const canManageSupportForVisit = (visit: VisitRecord) => {
     if (!currentUserId) return false
+    if (isAdminActor || isVisitTeamLeaderActor) return true
     return visit.assignedTo?.id === currentUserId
   }
   const canRequestVisitUpdate = (visit: VisitRecord) => {
     if (visit.status === 'COMPLETED' || visit.status === 'CANCELLED') return false
     const isElevatedCrm = actorDepartments.has('JR_CRM') || actorDepartments.has('ADMIN')
-    if (isElevatedCrm) return true
+    if (isElevatedCrm || isVisitTeamLeaderActor) return true
     return getVisitRole(visit) === 'LEAD'
   }
 
@@ -999,7 +1011,7 @@ export function VisitsPageView({
     const updateDisabledReason =
       visit.status === 'COMPLETED' || visit.status === 'CANCELLED'
         ? 'Reschedule and cancel are disabled after visit completion/cancellation.'
-        : 'Only assigned visit lead, JR CRM, or Admin can reschedule/cancel.'
+        : 'Only assigned visit lead, JR CRM, Admin, or Visit Team Leader can reschedule/cancel.'
     const canNavigateFromCard = cardNavigatesToLead && isVisible
 
     const handleCardNavigation = (event: MouseEvent<HTMLDivElement>) => {
@@ -1112,7 +1124,7 @@ export function VisitsPageView({
                         <Link href={leadHref}>Open Lead Details</Link>
                       </Button>
                     ) : null}
-                    {allowManageAssignment ? (
+                    {allowManageAssignment || isAdminActor ? (
                       <Button size="sm" variant="outline" className="w-full sm:w-auto" onClick={() => openAssignDialog(visit)}>
                         {visit.assignedTo ? 'Reassign' : 'Assign'}
                       </Button>
