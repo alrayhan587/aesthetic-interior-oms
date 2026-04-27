@@ -137,6 +137,11 @@ export async function GET(request: NextRequest) {
             lead.stage === LeadStage.CAD_PHASE && lead.subStatus === LeadSubStatus.CAD_APPROVED,
           canSubmitMeetingData:
             lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET,
+          canReassignJrArchitect:
+            !(
+              lead.subStatus === LeadSubStatus.CAD_APPROVED ||
+              (lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET)
+            ),
         }
       }),
     })

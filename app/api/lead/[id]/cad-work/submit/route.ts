@@ -18,7 +18,6 @@ import {
   ALLOWED_CAD_UPLOAD_MIME_TYPES,
   CAD_EXTENSION_CONTENT_TYPE_MAP,
   isCadSubmissionFileTypeValue,
-  MAX_CAD_SUBMISSION_FILES,
   MAX_CAD_SUBMISSION_FILE_SIZE_BYTES,
   sanitizeCadFileName,
   getCadFileExtension,
@@ -26,8 +25,9 @@ import {
 import { logActivity, logLeadStageChanged, logLeadSubStatusChanged } from '@/lib/activity-log-service'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
-const BLOB_UPLOAD_MAX_ATTEMPTS = 3
-const BLOB_UPLOAD_RETRY_DELAY_MS = 350
+const BLOB_UPLOAD_MAX_ATTEMPTS = 5
+const BLOB_UPLOAD_RETRY_DELAY_MS = 1000
+const BLOB_UPLOAD_CONCURRENCY = 3
 
 async function resolveLeadId(context: RouteContext): Promise<string | null> {
   const resolvedParams = await context.params
@@ -85,6 +85,21 @@ function waitMs(duration: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, duration))
 }
 
+function isRetryableBlobUploadError(error: unknown): boolean {
+  if (!error) return false
+  const status = (error as { status?: unknown }).status
+  if (typeof status === 'number' && status >= 500) return true
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('network') ||
+    message.includes('socket') ||
+    message.includes('fetch failed') ||
+    message.includes('temporary')
+  )
+}
+
 async function uploadCadFileToBlobWithRetry(input: {
   leadId: string
   file: File
@@ -95,9 +110,11 @@ async function uploadCadFileToBlobWithRetry(input: {
       return await uploadCadFileToBlob(input)
     } catch (error) {
       lastError = error
-      if (attempt < BLOB_UPLOAD_MAX_ATTEMPTS) {
+      if (attempt < BLOB_UPLOAD_MAX_ATTEMPTS && isRetryableBlobUploadError(error)) {
         await waitMs(BLOB_UPLOAD_RETRY_DELAY_MS * attempt)
+        continue
       }
+      break
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Upload failed')
@@ -125,9 +142,24 @@ async function uploadCadFilesToBlob(input: {
     return { uploadedFiles: [], failedUploads: [] }
   }
 
-  const settled = await Promise.allSettled(
-    input.files.map((file) => uploadCadFileToBlobWithRetry({ leadId: input.leadId, file })),
+  const settled: Array<PromiseSettledResult<{ url: string; fileName: string; fileType: string }>> = Array(
+    input.files.length,
   )
+  const concurrency = Math.max(1, Math.min(BLOB_UPLOAD_CONCURRENCY, input.files.length))
+  let cursor = 0
+
+  const uploadNext = async () => {
+    while (cursor < input.files.length) {
+      const index = cursor
+      cursor += 1
+      const file = input.files[index]
+      settled[index] = await uploadCadFileToBlobWithRetry({ leadId: input.leadId, file })
+        .then((value) => ({ status: 'fulfilled', value }) as const)
+        .catch((reason) => ({ status: 'rejected', reason }) as const)
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => uploadNext()))
 
   const uploadedFiles: UploadedCadFileMeta[] = []
   const failedUploads: FailedCadUploadMeta[] = []
@@ -192,13 +224,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'At least one file is required' }, { status: 400 })
     }
 
-    if (files.length > MAX_CAD_SUBMISSION_FILES) {
-      return NextResponse.json(
-        { success: false, error: `A maximum of ${MAX_CAD_SUBMISSION_FILES} files is allowed` },
-        { status: 400 },
-      )
-    }
-
     if (cadFileTypesRaw.length !== files.length) {
       return NextResponse.json(
         { success: false, error: 'Each uploaded file must include a selected CAD file type' },
@@ -241,199 +266,219 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const payload = await prisma.$transaction(async (tx) => {
-      const lead = await tx.lead.findFirst({
-        where: {
-          id: leadId,
-          ...(isAdmin || isSeniorCrm
-            ? {}
-            : {
-                assignments: {
-                  some: {
-                    userId: authResult.actorUserId,
-                    department: LeadAssignmentDepartment.JR_ARCHITECT,
-                  },
+    const lead = await prisma.lead.findFirst({
+      where: {
+        id: leadId,
+        ...(isAdmin || isSeniorCrm
+          ? {}
+          : {
+              assignments: {
+                some: {
+                  userId: authResult.actorUserId,
+                  department: LeadAssignmentDepartment.JR_ARCHITECT,
                 },
-              }),
-        },
-        select: {
-          id: true,
-          name: true,
-          stage: true,
-          subStatus: true,
-          assignments: {
-            where: { department: LeadAssignmentDepartment.SR_CRM },
-            select: { userId: true },
+              },
+            }),
+      },
+      select: {
+        id: true,
+        stage: true,
+        subStatus: true,
+      },
+    })
+
+    if (!lead) {
+      throw new Error('LEAD_NOT_FOUND')
+    }
+
+    if (lead.subStatus === LeadSubStatus.CAD_COMPLETED || lead.subStatus === LeadSubStatus.CAD_APPROVED) {
+      throw new Error('ALREADY_SUBMITTED')
+    }
+
+    if (!(lead.stage === LeadStage.CAD_PHASE && lead.subStatus === LeadSubStatus.CAD_WORKING)) {
+      throw new Error('WORK_NOT_STARTED')
+    }
+
+    const { uploadedFiles, failedUploads } = await uploadCadFilesToBlob({
+      leadId: lead.id,
+      files,
+      cadFileTypes,
+    })
+    if (uploadedFiles.length === 0) {
+      throw new Error('CAD_UPLOAD_FAILED')
+    }
+
+    const payload = await prisma.$transaction(
+      async (tx) => {
+        const scopedLead = await tx.lead.findFirst({
+          where: {
+            id: lead.id,
+            stage: LeadStage.CAD_PHASE,
+            subStatus: LeadSubStatus.CAD_WORKING,
           },
-        },
-      })
+          select: {
+            id: true,
+            name: true,
+            stage: true,
+            subStatus: true,
+            assignments: {
+              where: { department: LeadAssignmentDepartment.SR_CRM },
+              select: { userId: true },
+            },
+          },
+        })
 
-      if (!lead) {
-        throw new Error('LEAD_NOT_FOUND')
-      }
+        if (!scopedLead) {
+          throw new Error('WORK_STATE_CHANGED')
+        }
 
-      if (lead.subStatus === LeadSubStatus.CAD_COMPLETED || lead.subStatus === LeadSubStatus.CAD_APPROVED) {
-        throw new Error('ALREADY_SUBMITTED')
-      }
-
-      if (!(lead.stage === LeadStage.CAD_PHASE && lead.subStatus === LeadSubStatus.CAD_WORKING)) {
-        throw new Error('WORK_NOT_STARTED')
-      }
-
-      const submission = await tx.cadWorkSubmission.create({
-        data: {
-          leadId: lead.id,
-          submittedById: authResult.actorUserId,
-          note,
-        },
-      })
-
-      const now = new Date()
-      const { uploadedFiles, failedUploads } = await uploadCadFilesToBlob({
-        leadId: lead.id,
-        files,
-        cadFileTypes,
-      })
-      if (uploadedFiles.length === 0) {
-        throw new Error('CAD_UPLOAD_FAILED')
-      }
-      for (const uploaded of uploadedFiles) {
-        await tx.cadWorkSubmissionFile.create({
+        const submission = await tx.cadWorkSubmission.create({
           data: {
+            leadId: scopedLead.id,
+            submittedById: authResult.actorUserId,
+            note,
+          },
+        })
+
+        await tx.cadWorkSubmissionFile.createMany({
+          data: uploadedFiles.map((uploaded) => ({
             submissionId: submission.id,
             url: uploaded.url,
             fileName: uploaded.fileName,
             fileType: uploaded.fileType,
             cadFileType: uploaded.cadFileType,
             sizeBytes: uploaded.sizeBytes,
-          },
+          })),
         })
 
-        await tx.leadAttachment.create({
-          data: {
-            leadId: lead.id,
+        await tx.leadAttachment.createMany({
+          data: uploadedFiles.map((uploaded) => ({
+            leadId: scopedLead.id,
             url: uploaded.url,
             fileName: uploaded.fileName,
             fileType: uploaded.fileType,
             category: toLeadAttachmentCategory(uploaded.fileType),
             sizeBytes: uploaded.sizeBytes,
+          })),
+        })
+
+        const now = new Date()
+
+        await tx.leadPhaseTask.updateMany({
+          where: {
+            leadId: scopedLead.id,
+            phaseType: LeadPhaseType.CAD,
+            status: LeadPhaseTaskStatus.OPEN,
+          },
+          data: {
+            status: LeadPhaseTaskStatus.IN_REVIEW,
+            updatedAt: now,
           },
         })
-      }
 
-      await tx.leadPhaseTask.updateMany({
-        where: {
-          leadId: lead.id,
-          phaseType: LeadPhaseType.CAD,
-          status: LeadPhaseTaskStatus.OPEN,
-        },
-        data: {
-          status: LeadPhaseTaskStatus.IN_REVIEW,
-          updatedAt: now,
-        },
-      })
-
-      const updatedLead = await tx.lead.update({
-        where: { id: lead.id },
-        data: {
-          stage: LeadStage.CAD_PHASE,
-          subStatus: LeadSubStatus.CAD_COMPLETED,
-        },
-        select: {
-          id: true,
-          stage: true,
-          subStatus: true,
-        },
-      })
-
-      if (lead.stage !== LeadStage.CAD_PHASE) {
-        await logLeadStageChanged(tx, {
-          leadId: lead.id,
-          userId: authResult.actorUserId,
-          from: lead.stage,
-          to: LeadStage.CAD_PHASE,
-          reason: 'CAD work submitted for review',
+        const updatedLead = await tx.lead.update({
+          where: { id: scopedLead.id },
+          data: {
+            stage: LeadStage.CAD_PHASE,
+            subStatus: LeadSubStatus.CAD_COMPLETED,
+          },
+          select: {
+            id: true,
+            stage: true,
+            subStatus: true,
+          },
         })
-      }
 
-      await logLeadSubStatusChanged(tx, {
-        leadId: lead.id,
-        userId: authResult.actorUserId,
-        from: lead.subStatus,
-        to: LeadSubStatus.CAD_COMPLETED,
-        reason: 'JR Architect submitted CAD files',
-      })
+        if (scopedLead.stage !== LeadStage.CAD_PHASE) {
+          await logLeadStageChanged(tx, {
+            leadId: scopedLead.id,
+            userId: authResult.actorUserId,
+            from: scopedLead.stage,
+            to: LeadStage.CAD_PHASE,
+            reason: 'CAD work submitted for review',
+          })
+        }
 
-      await logActivity(tx, {
-        leadId: lead.id,
-        userId: authResult.actorUserId,
-        type: ActivityType.NOTE,
-        description: `CAD work submitted with ${files.length} file${files.length === 1 ? '' : 's'} for Senior CRM review.`,
-      })
+        await logLeadSubStatusChanged(tx, {
+          leadId: scopedLead.id,
+          userId: authResult.actorUserId,
+          from: scopedLead.subStatus,
+          to: LeadSubStatus.CAD_COMPLETED,
+          reason: 'JR Architect submitted CAD files',
+        })
 
-      const startOfToday = new Date()
-      startOfToday.setHours(0, 0, 0, 0)
+        await logActivity(tx, {
+          leadId: scopedLead.id,
+          userId: authResult.actorUserId,
+          type: ActivityType.NOTE,
+          description: `CAD work submitted with ${files.length} file${files.length === 1 ? '' : 's'} for Senior CRM review.`,
+        })
 
-      const adminUsers = await tx.user.findMany({
-        where: {
-          isActive: true,
-          userDepartments: {
-            some: {
-              department: { name: 'ADMIN' },
+        const startOfToday = new Date()
+        startOfToday.setHours(0, 0, 0, 0)
+
+        const adminUsers = await tx.user.findMany({
+          where: {
+            isActive: true,
+            userDepartments: {
+              some: {
+                department: { name: 'ADMIN' },
+              },
             },
           },
-        },
-        select: { id: true },
-      })
-
-      const targetUserIds = Array.from(
-        new Set([...lead.assignments.map((item) => item.userId), ...adminUsers.map((item) => item.id)]),
-      ).filter((userId) => userId !== authResult.actorUserId)
-
-      if (targetUserIds.length > 0) {
-        const existingToday = await tx.notification.findMany({
-          where: {
-            userId: { in: targetUserIds },
-            leadId: lead.id,
-            type: NotificationType.LEAD_ASSIGNED_TO_YOU,
-            title: 'CAD work submitted for review',
-            createdAt: { gte: startOfToday },
-          },
-          select: { userId: true },
+          select: { id: true },
         })
-        const existingUsers = new Set(existingToday.map((item) => item.userId))
 
-        const notifications = targetUserIds
-          .filter((userId) => !existingUsers.has(userId))
-          .map((userId) => ({
-            userId,
-            leadId: lead.id,
-            type: NotificationType.LEAD_ASSIGNED_TO_YOU,
-            title: 'CAD work submitted for review',
-            message: `${lead.name} CAD files are ready in Review Center.`,
-            scheduledFor: now,
-          }))
+        const targetUserIds = Array.from(
+          new Set([...scopedLead.assignments.map((item) => item.userId), ...adminUsers.map((item) => item.id)]),
+        ).filter((userId) => userId !== authResult.actorUserId)
 
-        if (notifications.length > 0) {
-          await tx.notification.createMany({ data: notifications })
+        if (targetUserIds.length > 0) {
+          const existingToday = await tx.notification.findMany({
+            where: {
+              userId: { in: targetUserIds },
+              leadId: scopedLead.id,
+              type: NotificationType.LEAD_ASSIGNED_TO_YOU,
+              title: 'CAD work submitted for review',
+              createdAt: { gte: startOfToday },
+            },
+            select: { userId: true },
+          })
+          const existingUsers = new Set(existingToday.map((item) => item.userId))
+
+          const notifications = targetUserIds
+            .filter((userId) => !existingUsers.has(userId))
+            .map((userId) => ({
+              userId,
+              leadId: scopedLead.id,
+              type: NotificationType.LEAD_ASSIGNED_TO_YOU,
+              title: 'CAD work submitted for review',
+              message: `${scopedLead.name} CAD files are ready in Review Center.`,
+              scheduledFor: now,
+            }))
+
+          if (notifications.length > 0) {
+            await tx.notification.createMany({ data: notifications })
+          }
         }
-      }
 
-      return {
-        lead: updatedLead,
-        submissionId: submission.id,
-        uploadWarnings:
-          failedUploads.length > 0
-            ? {
-                failedCount: failedUploads.length,
-                failedFiles: failedUploads.map((item) => item.fileName),
-              }
-            : null,
-      }
-    }, {
-      maxWait: 10_000,
-      timeout: 60_000,
-    })
+        return {
+          lead: updatedLead,
+          submissionId: submission.id,
+          uploadWarnings:
+            failedUploads.length > 0
+              ? {
+                  failedCount: failedUploads.length,
+                  failedFiles: failedUploads.map((item) => item.fileName),
+                }
+              : null,
+        }
+      },
+      {
+        maxWait: 10_000,
+        timeout: 30_000,
+      },
+    )
 
     return NextResponse.json(
       {
@@ -454,6 +499,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message === 'WORK_NOT_STARTED') {
       return NextResponse.json(
         { success: false, error: 'Please click Start Work before submitting CAD files' },
+        { status: 409 },
+      )
+    }
+    if (error instanceof Error && error.message === 'WORK_STATE_CHANGED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Lead status changed while uploading. Refresh and try again.',
+        },
         { status: 409 },
       )
     }

@@ -77,6 +77,11 @@ type LeadSummary = {
   subStatus: string | null
   location: string | null
   created_at: string
+  phaseTasks?: Array<{
+    id: string
+    status: string
+    currentReviewRound: number
+  }>
   attachments?: Array<{
     id: string
     url: string
@@ -131,6 +136,13 @@ function isImageAttachment(attachment: LeadAttachmentPreview): boolean {
 function canShowQuickPreview(lead: LeadSummary): boolean {
   if (lead.stage !== 'CAD_PHASE') return false
   return lead.subStatus === 'CAD_WORKING' || lead.subStatus === 'CAD_COMPLETED' || lead.subStatus === 'CAD_APPROVED'
+}
+
+function isReturnedForCorrection(lead: LeadSummary): boolean {
+  const latestCadTask = lead.phaseTasks?.[0]
+  if (!latestCadTask) return false
+  const isCadReworkStatus = lead.subStatus === 'CAD_ASSIGNED' || lead.subStatus === 'CAD_WORKING'
+  return isCadReworkStatus && latestCadTask.currentReviewRound > 0
 }
 
 export default function JrArchLeadsPage() {
@@ -190,6 +202,7 @@ export default function JrArchLeadsPage() {
         limit: PAGE_SIZE.toString(),
         offset: offset.toString(),
         includeAttachmentPreview: '1',
+        includeCadCorrectionFlag: '1',
         stage: 'CAD_PHASE',
       })
       if (search) params.set('search', search)
@@ -326,12 +339,27 @@ export default function JrArchLeadsPage() {
         method: 'POST',
         body: formData,
       })
-      const payload = (await response.json()) as { success?: boolean; message?: string; error?: string }
+      const payload = (await response.json()) as {
+        success?: boolean
+        message?: string
+        error?: string
+        data?: {
+          uploadWarnings?: {
+            failedCount: number
+            failedFiles: string[]
+          } | null
+        }
+      }
       if (!response.ok || !payload.success) {
         throw new Error(payload.error ?? 'Failed to submit CAD work')
       }
 
       toast.success(payload.message ?? 'CAD work submitted successfully')
+      if (payload.data?.uploadWarnings?.failedCount) {
+        toast.warning(
+          `${payload.data.uploadWarnings.failedCount} file upload(s) failed and were skipped.`,
+        )
+      }
       setSubmitWorkOpen(false)
       setSubmitWorkLead(null)
       setSubmissionRows([createCadSubmissionRow()])
@@ -379,7 +407,9 @@ export default function JrArchLeadsPage() {
             {leads.map((lead) => (
               <Card
                 key={lead.id}
-                className="overflow-hidden border-border/70 shadow-sm transition hover:border-primary/40 hover:shadow-md"
+                className={`overflow-hidden border-border/70 shadow-sm transition hover:border-primary/40 hover:shadow-md ${
+                  isReturnedForCorrection(lead) ? 'bg-amber-50/60 border-amber-300/80' : ''
+                }`}
               >
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -393,6 +423,11 @@ export default function JrArchLeadsPage() {
                         </Link>
                         <Badge variant="secondary">{formatLabel(lead.stage)}</Badge>
                         {lead.subStatus ? <Badge variant="outline">{formatLabel(lead.subStatus)}</Badge> : null}
+                        {isReturnedForCorrection(lead) ? (
+                          <Badge className="border-amber-500/60 bg-amber-100 text-amber-900 hover:bg-amber-100">
+                            Correction Required
+                          </Badge>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
@@ -676,11 +711,14 @@ export default function JrArchLeadsPage() {
                 size="sm"
                 className="gap-2"
                 onClick={addSubmissionRow}
-                disabled={submissionRows.length >= 12}
               >
                 <Plus className="h-4 w-4" />
                 Add Another File
               </Button>
+              <p className="text-[11px] text-muted-foreground">
+                {submissionRows.filter((row) => row.file).length} file(s) ready to upload
+                {submittingWork ? ' • Uploading in progress...' : ''}
+              </p>
             </div>
 
             <div className="space-y-2">

@@ -3,6 +3,7 @@ import {
   LeadAssignmentDepartment,
   LeadPrimaryOwnerDepartment,
   LeadStage,
+  LeadSubStatus,
 } from '@/generated/prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireDatabaseRoles } from '@/lib/authz';
@@ -245,13 +246,29 @@ export async function PUT(
     // Verify lead exists
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, name: true, stage: true },
+      select: { id: true, name: true, stage: true, subStatus: true },
     });
 
     if (!lead) {
       return NextResponse.json(
         { success: false, error: 'Lead not found' },
         { status: 404 }
+      );
+    }
+
+    if (
+      department === 'JR_ARCHITECT' &&
+      (
+        lead.subStatus === LeadSubStatus.CAD_APPROVED ||
+        (lead.stage === LeadStage.DISCOVERY && lead.subStatus === LeadSubStatus.FIRST_MEETING_SET)
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'JR Architect cannot be reassigned after CAD approval.',
+        },
+        { status: 409 }
       );
     }
 

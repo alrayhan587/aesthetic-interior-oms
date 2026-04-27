@@ -21,6 +21,11 @@ type LeadSummary = {
   location: string | null
   created_at: string
   updated_at: string
+  phaseTasks?: Array<{
+    id: string
+    status: string
+    currentReviewRound: number
+  }>
 }
 
 type LeadsResponse = {
@@ -64,6 +69,13 @@ function formatLabel(value: string | null | undefined): string {
     .replace(/_/g, ' ')
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function isReturnedForCorrection(lead: LeadSummary): boolean {
+  const latestCadTask = lead.phaseTasks?.[0]
+  if (!latestCadTask) return false
+  const isCadReworkStatus = lead.subStatus === 'CAD_ASSIGNED' || lead.subStatus === 'CAD_WORKING'
+  return isCadReworkStatus && latestCadTask.currentReviewRound > 0
 }
 
 export default function JrArchitectMyWorkPage() {
@@ -117,6 +129,7 @@ export default function JrArchitectMyWorkPage() {
         const params = new URLSearchParams({
           limit: PAGE_SIZE.toString(),
           offset: offset.toString(),
+          includeCadCorrectionFlag: '1',
         })
         if (search) params.set('search', search)
 
@@ -203,7 +216,9 @@ export default function JrArchitectMyWorkPage() {
             {leads.map((lead) => (
               <Card
                 key={lead.id}
-                className="overflow-hidden border-border/70 shadow-sm transition hover:border-primary/40 hover:shadow-md"
+                className={`overflow-hidden border-border/70 shadow-sm transition hover:border-primary/40 hover:shadow-md ${
+                  isReturnedForCorrection(lead) ? 'bg-amber-50/60 border-amber-300/80' : ''
+                }`}
               >
                 <CardContent className="space-y-3 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -214,6 +229,11 @@ export default function JrArchitectMyWorkPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="secondary">{formatLabel(lead.stage)}</Badge>
                         {lead.subStatus ? <Badge variant="outline">{formatLabel(lead.subStatus)}</Badge> : null}
+                        {isReturnedForCorrection(lead) ? (
+                          <Badge className="border-amber-500/60 bg-amber-100 text-amber-900 hover:bg-amber-100">
+                            Correction Required
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
                   </div>

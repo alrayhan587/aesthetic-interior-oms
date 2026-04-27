@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import {
   LeadAssignmentDepartment,
+  LeadPhaseType,
   LeadPrimaryOwnerDepartment,
   LeadStage,
   Prisma,
@@ -270,6 +271,7 @@ export async function GET(request: NextRequest) {
     const searchParam = toOptionalString(searchParams.get('search'));
     const sourceParam = toOptionalString(searchParams.get('source'));
     const includeAttachmentPreview = toBooleanParam(searchParams.get('includeAttachmentPreview'));
+    const includeCadCorrectionFlag = toBooleanParam(searchParams.get('includeCadCorrectionFlag'));
     const unassignedOnly = toBooleanParam(searchParams.get('unassigned'));
     const createdFrom = parseDateAtStartOfDayUtc(searchParams.get('createdFrom'));
     const createdTo = parseDateAtEndOfDayUtc(searchParams.get('createdTo'));
@@ -396,6 +398,20 @@ export async function GET(request: NextRequest) {
                   category: true,
                   sizeBytes: true,
                   createdAt: true,
+                },
+              },
+            }
+          : {}),
+        ...(includeCadCorrectionFlag
+          ? {
+              phaseTasks: {
+                where: { phaseType: LeadPhaseType.CAD },
+                orderBy: [{ createdAt: 'desc' }],
+                take: 1,
+                select: {
+                  id: true,
+                  status: true,
+                  currentReviewRound: true,
                 },
               },
             }

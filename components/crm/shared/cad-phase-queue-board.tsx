@@ -39,6 +39,7 @@ type LeadRecord = {
   } | null
   canSetMeeting: boolean
   canSubmitMeetingData: boolean
+  canReassignJrArchitect?: boolean
 }
 
 type QueueResponse = {
@@ -164,6 +165,10 @@ export function CadPhaseQueueBoard({
   }
 
   const openReassign = async (lead: LeadRecord) => {
+    if (lead.canReassignJrArchitect === false) {
+      toast.error('JR Architect reassignment is disabled after CAD approval.')
+      return
+    }
     setActiveLead(lead)
     setSelectedMemberId(lead.jrArchitectAssignment?.user.id ?? '')
     setReassignOpen(true)
@@ -176,6 +181,10 @@ export function CadPhaseQueueBoard({
 
   const submitReassign = async () => {
     if (!activeLead || !selectedMemberId) return
+    if (activeLead.canReassignJrArchitect === false) {
+      toast.error('JR Architect reassignment is disabled after CAD approval.')
+      return
+    }
     setSaving(true)
     try {
       const response = await fetch(`/api/lead/${activeLead.id}/assignments/JR_ARCHITECT`, {
@@ -350,7 +359,17 @@ export function CadPhaseQueueBoard({
                       <Button asChild size="sm" variant="outline">
                         <Link href={`${leadBasePath}/${lead.id}`}>Open Lead</Link>
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => openReassign(lead)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openReassign(lead)}
+                        disabled={lead.canReassignJrArchitect === false}
+                        title={
+                          lead.canReassignJrArchitect === false
+                            ? 'Reassign is disabled after CAD approval'
+                            : undefined
+                        }
+                      >
                         Reassign JR Architect
                       </Button>
                       {cadApprovedOnly ? (

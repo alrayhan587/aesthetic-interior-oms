@@ -284,7 +284,7 @@ export function Sidebar({ open, onOpenChange, role }: SidebarProps) {
       let changed = false
       groups.forEach((group) => {
         if (typeof next[group.id] === 'undefined') {
-          next[group.id] = group.defaultOpen ?? true
+          next[group.id] = false
           changed = true
         }
       })
