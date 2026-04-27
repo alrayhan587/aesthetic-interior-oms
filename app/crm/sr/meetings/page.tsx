@@ -468,52 +468,54 @@ export function SeniorCrmMeetingsView({
                     </div>
                   </>
                 ) : (
-                  <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {MONTH_LABELS.map((monthLabel, monthIndex) => {
-                      const monthCells = buildMonthGrid(focusDate.getFullYear(), monthIndex)
-                      const monthItems = yearMeetings.filter((meeting) => meeting.start.getMonth() === monthIndex)
-                      const monthTaskCount = monthItems.filter((meeting) => meeting.source === 'TASK').length
-                      const isSelectedMonth = selectedYearMonth === monthIndex
+                  <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {MONTH_LABELS.map((monthLabel, monthIndex) => {
+                        const monthCells = buildMonthGrid(focusDate.getFullYear(), monthIndex)
+                        const monthItems = yearMeetings.filter((meeting) => meeting.start.getMonth() === monthIndex)
+                        const monthTaskCount = monthItems.filter((meeting) => meeting.source === 'TASK').length
+                        const isSelectedMonth = selectedYearMonth === monthIndex
 
-                      return (
-                        <button
-                          key={monthLabel}
-                          type="button"
-                          onClick={() => setSelectedYearMonth((current) => (current === monthIndex ? null : monthIndex))}
-                          className={`flex min-h-0 flex-col rounded-xl border p-2 text-left transition ${
-                            isSelectedMonth
-                              ? 'border-primary/45 bg-primary/10'
-                              : 'border-border/70 bg-background hover:border-primary/30'
-                          }`}
-                        >
-                          <div className="mb-1 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-foreground">{monthLabel}</p>
-                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              {monthItems.length}
-                            </span>
-                          </div>
-                          <p className="mb-2 text-[10px] text-muted-foreground">Tasks: {monthTaskCount}</p>
-                          <div className="grid grid-cols-7 gap-1 text-[9px]">
-                            {monthCells.map((day) => {
-                              const dayCount = meetingsByDay.get(formatDayKey(day))?.length ?? 0
-                              const inMonth = day.getMonth() === monthIndex
-                              return (
-                                <div
-                                  key={`${monthLabel}-${formatDayKey(day)}`}
-                                  className={`rounded border px-1 py-0.5 text-center ${
-                                    inMonth
-                                      ? 'border-border/60 text-foreground'
-                                      : 'border-transparent text-muted-foreground'
-                                  } ${dayCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''}`}
-                                >
-                                  {day.getDate()}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </button>
-                      )
-                    })}
+                        return (
+                          <button
+                            key={monthLabel}
+                            type="button"
+                            onClick={() => setSelectedYearMonth((current) => (current === monthIndex ? null : monthIndex))}
+                            className={`flex min-h-0 flex-col rounded-xl border p-2 text-left transition ${
+                              isSelectedMonth
+                                ? 'border-primary/45 bg-primary/10'
+                                : 'border-border/70 bg-background hover:border-primary/30'
+                            }`}
+                          >
+                            <div className="mb-1 flex items-center justify-between">
+                              <p className="text-sm font-semibold text-foreground">{monthLabel}</p>
+                              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                {monthItems.length}
+                              </span>
+                            </div>
+                            <p className="mb-2 text-[10px] text-muted-foreground">Tasks: {monthTaskCount}</p>
+                            <div className="grid grid-cols-7 gap-1 text-[9px]">
+                              {monthCells.map((day) => {
+                                const dayCount = meetingsByDay.get(formatDayKey(day))?.length ?? 0
+                                const inMonth = day.getMonth() === monthIndex
+                                return (
+                                  <div
+                                    key={`${monthLabel}-${formatDayKey(day)}`}
+                                    className={`rounded border px-1 py-0.5 text-center ${
+                                      inMonth
+                                        ? 'border-border/60 text-foreground'
+                                        : 'border-transparent text-muted-foreground'
+                                    } ${dayCount > 0 ? 'bg-primary/10 text-primary border-primary/20' : ''}`}
+                                  >
+                                    {day.getDate()}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </CardContent>

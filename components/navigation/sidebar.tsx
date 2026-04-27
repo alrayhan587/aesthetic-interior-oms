@@ -87,19 +87,33 @@ const navigationGroups: Record<string, NavGroup[]> = {
       id: 'sr-overview',
       label: 'Overview',
       defaultOpen: true,
-      items: [{ icon: LayoutDashboard, label: 'Today To-Do', href: '/crm/sr/dashboard' }],
+      items: [{ icon: LayoutDashboard, label: 'Dashboard', href: '/crm/sr/dashboard' }],
     },
     {
       id: 'sr-workflow',
       label: 'Workflow',
       defaultOpen: true,
       items: [
-        { icon: ClipboardList, label: 'Visit Queue', href: '/crm/sr/queue' },
+        { icon: CalendarClock, label: 'Calendar', href: '/crm/sr/meetings' },
+        { icon: CalendarClock, label: 'Meeting Queue', href: '/crm/sr/meeting-queue' },
         { icon: Users, label: 'Lead Journey', href: '/crm/sr/lead-journey' },
+      ],
+    },
+    {
+      id: 'sr-review-flow',
+      label: 'Review Flow',
+      defaultOpen: true,
+      items: [
         { icon: ClipboardList, label: 'Review Center', href: '/crm/sr/review-center' },
         { icon: ClipboardList, label: 'CAD Queue', href: '/crm/sr/cad-phase-queue' },
-        { icon: CalendarClock, label: 'Meeting Queue', href: '/crm/sr/meeting-queue' },
-        { icon: CalendarClock, label: 'Calendar', href: '/crm/sr/meetings' },
+        { icon: ClipboardList, label: 'Visit Queue', href: '/crm/sr/queue' },
+      ],
+    },
+    {
+      id: 'sr-others',
+      label: 'Others',
+      defaultOpen: true,
+      items: [
         { icon: ClipboardList, label: 'Handoff Center', href: '/crm/sr/handoffs' },
         { icon: CheckSquare, label: 'Conversion & Payment', href: '/crm/sr/conversion-payment' },
       ],

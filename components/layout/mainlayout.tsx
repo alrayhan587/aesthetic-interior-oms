@@ -15,11 +15,10 @@ export function MainLayout({
   children,
   role = 'JR CRM',
 }: MainLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    const isDesktop = window.matchMedia('(min-width: 1024px)').matches
-    setSidebarOpen(isDesktop)
+    setSidebarOpen(false)
   }, [])
 
   const rootBgClass = 'bg-background'
