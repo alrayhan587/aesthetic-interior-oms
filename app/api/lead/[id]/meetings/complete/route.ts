@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ActivityType, LeadAssignmentDepartment, LeadStage, LeadSubStatus } from '@/generated/prisma/client'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
-import { buildScopedLeadWhere } from '@/lib/lead-access'
 import { canManagePrimaryLeadFlow, isSrOrAdmin } from '@/lib/lead-workflow-auth'
 import { logActivity, logLeadStageChanged, logLeadSubStatusChanged } from '@/lib/activity-log-service'
 
@@ -41,14 +40,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const note = toOptionalString(body.note)
     const quotationMemberId = toOptionalString(body.quotationMemberId)
 
-    const scopedWhere = buildScopedLeadWhere({
-      leadId,
-      actorUserId: authResult.actorUserId,
-      actorDepartments,
-    })
-
-    const lead = await prisma.lead.findFirst({
-      where: scopedWhere,
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
       select: { id: true, name: true, stage: true, subStatus: true, primaryOwnerUserId: true },
     })
 

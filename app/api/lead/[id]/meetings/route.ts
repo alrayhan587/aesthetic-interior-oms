@@ -2,7 +2,6 @@ import { ActivityType, LeadMeetingEventType } from '@/generated/prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireDatabaseRoles } from '@/lib/authz'
-import { buildScopedLeadWhere } from '@/lib/lead-access'
 import { canManagePrimaryLeadFlow, isSrOrAdmin } from '@/lib/lead-workflow-auth'
 import { logActivity } from '@/lib/activity-log-service'
 
@@ -78,14 +77,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'endsAt must be after startsAt' }, { status: 400 })
     }
 
-    const scopedWhere = buildScopedLeadWhere({
-      leadId,
-      actorUserId: authResult.actorUserId,
-      actorDepartments,
-    })
-
-    const lead = await prisma.lead.findFirst({
-      where: scopedWhere,
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
       select: { id: true, name: true, primaryOwnerUserId: true },
     })
 
