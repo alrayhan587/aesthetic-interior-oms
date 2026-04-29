@@ -9,33 +9,8 @@ import { logActivity, logLeadStageChanged } from '@/lib/activity-log-service'
 import { getVisitWorkflowControlState } from '@/lib/visit-workflow-control'
 
 type RouteContext = { params: { id: string } | Promise<{ id: string }> }
-const MAX_UPLOAD_FILES = 10
-const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const BLOB_UPLOAD_MAX_ATTEMPTS = 3
 const BLOB_UPLOAD_RETRY_DELAY_MS = 350
-const ALLOWED_UPLOAD_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'video/mp4',
-  'video/quicktime',
-])
-const ALLOWED_UPLOAD_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'webp',
-  'gif',
-  'heic',
-  'heif',
-  'pdf',
-  'doc',
-  'docx',
-  'txt',
-  'mp4',
-  'mov',
-])
 const EXTENSION_CONTENT_TYPE_MAP: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -205,21 +180,6 @@ function toOptionalNumber(value: string | null): number | null {
   return parsed
 }
 
-function isAllowedUploadType(fileType: string): boolean {
-  if (!fileType) return false
-  if (fileType.startsWith('image/')) return true
-  return ALLOWED_UPLOAD_MIME_TYPES.has(fileType)
-}
-
-function isAllowedUploadFile(file: File): boolean {
-  const fileType = file.type || ''
-  if (isAllowedUploadType(fileType)) return true
-
-  // iOS/Safari can send empty or generic types; fallback to extension allow-list.
-  const extension = getFileExtension(file.name || '')
-  return ALLOWED_UPLOAD_EXTENSIONS.has(extension)
-}
-
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const authResult = await requireDatabaseRoles([])
@@ -361,32 +321,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const files = formData
       .getAll('files')
       .filter((entry): entry is File => entry instanceof File && entry.size > 0)
-    if (files.length > MAX_UPLOAD_FILES) {
-      return NextResponse.json(
-        { success: false, error: `A maximum of ${MAX_UPLOAD_FILES} files is allowed` },
-        { status: 400 },
-      )
-    }
-    for (const file of files) {
-      if (file.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `File "${file.name}" exceeds the ${Math.floor(MAX_UPLOAD_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`,
-          },
-          { status: 400 },
-        )
-      }
-      if (!isAllowedUploadFile(file)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: `File "${file.name}" type "${file.type || 'unknown'}" is not allowed`,
-          },
-          { status: 400 },
-        )
-      }
-    }
 
     const result = await prisma.$transaction(async (tx) => {
       const visit = await tx.visit.findUnique({

@@ -231,7 +231,6 @@ export function VisitsPageView({
     useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([])
-  const [failedUploadFiles, setFailedUploadFiles] = useState<string[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
@@ -272,7 +271,6 @@ export function VisitsPageView({
       <div className="space-y-1 rounded-md border border-border/70 bg-muted/20 p-2">
         {completeFiles.map((file, index) => {
           const isUploading = submittingComplete && uploadingFileNames.includes(file.name)
-          const isFailed = failedUploadFiles.includes(file.name)
           const Icon = getFileIcon(file)
           return (
             <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2 text-xs">
@@ -285,11 +283,6 @@ export function VisitsPageView({
                   <span className="inline-flex items-center gap-1 text-primary">
                     <Loader2 className="size-3.5 animate-spin" />
                     Uploading...
-                  </span>
-                ) : isFailed ? (
-                  <span className="inline-flex items-center gap-1 text-destructive">
-                    <XCircle className="size-3.5" />
-                    Failed
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-emerald-600">
@@ -917,7 +910,6 @@ export function VisitsPageView({
 
     setSubmittingComplete(true)
     setCompleteError(null)
-    setFailedUploadFiles([])
     setUploadingFileNames(completeFiles.map((file) => file.name))
     try {
       const formData = new FormData()
@@ -952,16 +944,6 @@ export function VisitsPageView({
       if (!res.ok || !payload?.success) {
         throw new Error(payload?.error || 'Failed to complete visit')
       }
-      const failedFiles = Array.isArray(payload.uploadWarnings?.failedFiles)
-        ? payload.uploadWarnings.failedFiles
-        : []
-      setFailedUploadFiles(failedFiles)
-      if (failedFiles.length > 0) {
-        toast.info(
-          `Submitted with attachment warnings: ${failedFiles.slice(0, 5).join(', ')}${failedFiles.length > 5 ? ` (+${failedFiles.length - 5} more)` : ''}`,
-        )
-      }
-
       visitsCacheByScope = {}
       setCompleteOpen(false)
       setCompleteVisitId('')
@@ -971,7 +953,6 @@ export function VisitsPageView({
       setCompleteProjectStatus('')
       setCompleteFiles([])
       setUploadingFileNames([])
-      setFailedUploadFiles([])
       toast.success(completeRole === 'SUPPORT' ? 'Support data submitted.' : 'Visit marked as completed.')
 
       setLoading(true)

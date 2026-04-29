@@ -25,20 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Clock,
-  MapPin,
-  AlertCircle,
-  Loader2,
-  CalendarDays,
-  CheckCircle2,
-  XCircle,
-  Phone,
-  FileImage,
-  FileText,
-  FileVideo,
-  X,
-} from 'lucide-react'
+import { Clock, MapPin, Loader2, CalendarDays, CheckCircle2, XCircle, Phone, FileImage, FileText, FileVideo, X } from 'lucide-react'
 import { toast } from '@/components/ui/sonner'
 import { fetchMeCached } from '@/lib/client-me'
 import { CrmPageHeader } from '@/components/crm/shared/page-header'
@@ -168,48 +155,10 @@ function buildDialPhoneWithout88(phone: string | null | undefined): string | nul
 }
 
 const selectUnsetValue = '__UNSET__'
-const MAX_UPLOAD_FILES = 10
-const MAX_UPLOAD_FILE_SIZE_BYTES = 10 * 1024 * 1024
-const ALLOWED_UPLOAD_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'video/mp4',
-  'video/quicktime',
-])
-const ALLOWED_UPLOAD_EXTENSIONS = new Set([
-  'jpg',
-  'jpeg',
-  'png',
-  'webp',
-  'gif',
-  'heic',
-  'heif',
-  'pdf',
-  'doc',
-  'docx',
-  'txt',
-  'mp4',
-  'mov',
-])
 const defaultProjectStatusOptions: ProjectStatusOption[] = [
   { value: 'UNDER_CONSTRUCTION', label: 'Under Construction' },
   { value: 'READY', label: 'Ready' },
 ]
-
-function getFileExtension(fileName: string): string {
-  const safeName = (fileName || '').trim().toLowerCase()
-  const dotIndex = safeName.lastIndexOf('.')
-  if (dotIndex === -1 || dotIndex === safeName.length - 1) return ''
-  return safeName.slice(dotIndex + 1)
-}
-
-function isAllowedUploadType(fileType: string): boolean {
-  if (!fileType) return false
-  if (fileType.startsWith('image/')) return true
-  return ALLOWED_UPLOAD_MIME_TYPES.has(fileType)
-}
 
 export default function VisitTodayPage() {
   const [visits, setVisits] = useState<VisitRecord[]>([])
@@ -245,7 +194,6 @@ export default function VisitTodayPage() {
     useState<ProjectStatusOption[]>(defaultProjectStatusOptions)
   const [completeFiles, setCompleteFiles] = useState<File[]>([])
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([])
-  const [failedUploadFiles, setFailedUploadFiles] = useState<string[]>([])
   const [completeError, setCompleteError] = useState<string | null>(null)
   const [submittingComplete, setSubmittingComplete] = useState(false)
   const [supportDialogOpen, setSupportDialogOpen] = useState(false)
@@ -276,64 +224,29 @@ export default function VisitTodayPage() {
 
   const handleCompleteFilesSelected = (files: FileList | null) => {
     setCompleteFiles(Array.from(files ?? []))
-    setFailedUploadFiles([])
   }
 
   const removeCompleteFileAtIndex = (targetIndex: number) => {
     setCompleteFiles((prev) => prev.filter((_, index) => index !== targetIndex))
-    setFailedUploadFiles([])
   }
 
-  const completeFileValidation = useMemo(() => {
-    return completeFiles.map((file, index) => {
-      if (index >= MAX_UPLOAD_FILES) {
-        return {
-          file,
-          index,
-          canUpload: false,
-          reason: `Only the first ${MAX_UPLOAD_FILES} files can be uploaded.`,
-        }
-      }
-      if (file.size > MAX_UPLOAD_FILE_SIZE_BYTES) {
-        return {
-          file,
-          index,
-          canUpload: false,
-          reason: `Exceeds ${Math.floor(MAX_UPLOAD_FILE_SIZE_BYTES / (1024 * 1024))}MB limit.`,
-        }
-      }
-      const extension = getFileExtension(file.name || '')
-      const isAllowedByType = isAllowedUploadType(file.type || '')
-      const isAllowedByExtension = ALLOWED_UPLOAD_EXTENSIONS.has(extension)
-      if (!isAllowedByType && !isAllowedByExtension) {
-        return {
-          file,
-          index,
-          canUpload: false,
-          reason: `Type "${file.type || 'unknown'}" is not allowed.`,
-        }
-      }
-      return {
+  const completeFileValidation = useMemo(
+    () =>
+      completeFiles.map((file, index) => ({
         file,
         index,
         canUpload: true,
         reason: null,
-      }
-    })
-  }, [completeFiles])
-
-  const uploadableCompleteFiles = useMemo(
-    () => completeFileValidation.filter((item) => item.canUpload).map((item) => item.file),
-    [completeFileValidation],
+      })),
+    [completeFiles],
   )
 
   const selectedFilesStatusList =
     completeFiles.length > 0 ? (
       <div className="space-y-1 rounded-md border border-border/70 bg-muted/20 p-2">
         {completeFileValidation.map((item) => {
-          const { file, index, canUpload, reason } = item
+          const { file, index } = item
           const isUploading = submittingComplete && uploadingFileNames.includes(file.name)
-          const isFailed = failedUploadFiles.includes(file.name)
           const Icon = getFileIcon(file)
           return (
             <div key={`${file.name}-${file.size}-${index}`} className="flex items-center justify-between gap-2 text-xs">
@@ -346,16 +259,6 @@ export default function VisitTodayPage() {
                   <span className="inline-flex items-center gap-1 text-primary">
                     <Loader2 className="size-3.5 animate-spin" />
                     Uploading...
-                  </span>
-                ) : isFailed ? (
-                  <span className="inline-flex items-center gap-1 text-destructive">
-                    <XCircle className="size-3.5" />
-                    Failed
-                  </span>
-                ) : !canUpload ? (
-                  <span className="inline-flex items-center gap-1 text-amber-700">
-                    <AlertCircle className="size-3.5" />
-                    Will not upload{reason ? `: ${reason}` : ''}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-emerald-600">
@@ -897,11 +800,7 @@ export default function VisitTodayPage() {
 
     setSubmittingComplete(true)
     setCompleteError(null)
-    setFailedUploadFiles([])
-    if (completeFileValidation.some((item) => !item.canUpload)) {
-      toast.info('Some selected files are invalid and will be skipped.')
-    }
-    setUploadingFileNames(uploadableCompleteFiles.map((file) => file.name))
+    setUploadingFileNames(completeFiles.map((file) => file.name))
     try {
       const formData = new FormData()
       formData.append('resultType', completeRole)
@@ -922,7 +821,7 @@ export default function VisitTodayPage() {
         formData.append('supportProjectStatus', supportProjectStatus.trim())
         if (supportExtraConcern.trim()) formData.append('supportExtraConcern', supportExtraConcern.trim())
       }
-      uploadableCompleteFiles.forEach((file) => {
+      completeFiles.forEach((file) => {
         formData.append('files', file)
       })
 
@@ -934,21 +833,10 @@ export default function VisitTodayPage() {
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || 'Failed to complete visit')
       }
-      const failedFiles = Array.isArray(payload.uploadWarnings?.failedFiles)
-        ? payload.uploadWarnings.failedFiles
-        : []
-      setFailedUploadFiles(failedFiles)
-      if (failedFiles.length > 0) {
-        toast.info(
-          `Submitted with attachment warnings: ${failedFiles.slice(0, 5).join(', ')}${failedFiles.length > 5 ? ` (+${failedFiles.length - 5} more)` : ''}`,
-        )
-      }
-
       setCompleteOpen(false)
       setCompleteVisit(null)
       setCompleteFiles([])
       setUploadingFileNames([])
-      setFailedUploadFiles([])
       toast.success(
         completeRole === 'SUPPORT'
           ? 'Support data submitted.'
@@ -1374,7 +1262,7 @@ export default function VisitTodayPage() {
                   />
                   {completeFiles.length > 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      {completeFiles.length} file(s) selected, {uploadableCompleteFiles.length} ready to upload
+                      {completeFiles.length} file(s) selected
                     </p>
                   ) : null}
                   {selectedFilesStatusList}
@@ -1598,7 +1486,7 @@ export default function VisitTodayPage() {
                     />
                     {completeFiles.length > 0 ? (
                       <p className="text-xs text-muted-foreground">
-                        {completeFiles.length} file(s) selected, {uploadableCompleteFiles.length} ready to upload
+                        {completeFiles.length} file(s) selected
                       </p>
                     ) : null}
                     {selectedFilesStatusList}

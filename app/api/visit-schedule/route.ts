@@ -17,6 +17,8 @@ function toVisitStatus(value: string | null): VisitStatus | null {
     : null;
 }
 
+//Get function - 
+
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireDatabaseRoles([]);
